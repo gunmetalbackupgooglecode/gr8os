@@ -243,6 +243,7 @@ ExpAllocateHeapInBlock(
 	nSize = ALIGN_UP (Size, EX_HEAP_ALIGN);
 	nSize /= EX_HEAP_ALIGN;
 
+	//
 	//        BEFORE                AFTER
 	//
 	//  [  BLOCK HEADER  ]    [  BLOCK HEADER  ]
@@ -253,10 +254,6 @@ ExpAllocateHeapInBlock(
 	//  [   .. FREE ..   ]    [   .. FREE ..   ]
 	//  [   .. FREE ..   ]    [   .. FREE ..   ]
 	//
-	//  Block->Size = 6
-	//  Size = 2
-	//  Diff = 4
-
 
 	Diff = Block->Size - nSize;
 
