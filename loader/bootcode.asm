@@ -13,7 +13,7 @@ ends
 
 ;
 ; This is the structure used to pass all shared data between the boot sector
-; and NTLDR.
+; and GRLDR.
 ;
 
 struct SHARED
