@@ -131,6 +131,9 @@ typedef struct CBUFFER
 // Dump packets
 #define TRACE_PACKETS			1
 
+// Dump head allocation/freeing atttempts
+#define EX_TRACE_HEAP			1
+
 
 extern "C"
 {
