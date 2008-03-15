@@ -14,7 +14,7 @@ copy loader\grldr.bin image
 copy kernel.exe image
 
 echo Creating image
-D:\Progs\makefd\Debug\makefd.exe image
+makefd.exe image
 
 echo Image created
 
