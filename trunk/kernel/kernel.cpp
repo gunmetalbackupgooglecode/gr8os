@@ -673,6 +673,7 @@ KeBugCheck(
 	KiDebugPrint ("  %08x\n  %08x\n\n", Argument3, Argument4);
 
 
+	// Wake up kernel debugger and pass the control to it.
 	for( ;; )
 	{
 		KD_WAKE_UP_DEBUGGER_BP();
@@ -684,7 +685,11 @@ KeBugCheck(
 //           Start up
 //==================================
 
-
+//
+// Demo code with three counter threads..
+//
+// BUGBUG: Delete in final version
+//
 
 THREAD Thread1, Thread2, Thread3;
 
@@ -739,6 +744,9 @@ PsCounterThread(
 		
 		KiIncChar( Pos );
 
+		// This is stupid determining of the current thread.
+		// We can use PsGetCurrentThread()==&Thread1 instead.
+
 		if ( Argument == (PVOID)( 80*3 + 40 ) && KiReadChar(Pos) == '3' )
 		{
 			KeClearEvent (&ev);
@@ -747,37 +755,6 @@ PsCounterThread(
 
 		if ( Argument == (PVOID)( 80*4 + 45 ) && KiReadChar(Pos) == '7' )
 		{
-			/*
-			if (STATUS_SUCCESS != HalWriteComPort (0, "Hello", 5))
-			{
-				KiDebugPrintRaw ("HalWriteComPort failed\n");
-			}
-			else
-			{
-				KiDebugPrintRaw ("HalWriteComPort OK\n");
-
-				char mes[4] = { 0, 0, 0, 0 };
-				ULONG size = 4;
-
-				switch (HalReadComPort (0, mes, &size))
-				{
-				case STATUS_PARTIAL_READ:
-					KiDebugPrint ("HalReadComPort: Partial read performed : [%d bytes] %02x %02x %02x %02x\n",
-						size, mes[0], mes[1], mes[2], mes[3]);
-					break;
-				case STATUS_SUCCESS:
-					KiDebugPrint ("HalReadComPort: Full read performed : %02x %02x %02x %02x\n",
-						mes[0], mes[1], mes[2], mes[3]);
-					break;
-				case STATUS_DEVICE_NOT_READY:
-					KiDebugPrint ("HalReadComPort: Not ready\n");
-					break;
-				default:
-					KiDebugPrint ("HalReadComPort: FAILURE\n");
-				}
-			}
-			*/
-
 			KeSetEvent (&ev, 0);
 		}
 
@@ -837,6 +814,11 @@ KiStallExecutionMilliseconds(
 	UCHAR Ms,
 	USHORT WorkingFreq
 	)
+/*++
+	Suspends exeuction for the specified number of milliseconds.
+
+	BUGBUG: Does not tested. It seems not to work now..
+--*/
 {
 	USHORT Cnt, Cnt2, Diff;
 	Diff = (Ms * WorkingFreq) / 1000;
@@ -924,6 +906,10 @@ KiInitSystem(
 	
 	Tpr = KiReadApicConfig (APIC_TPR);
 	KiDebugPrint ("INIT: APIC[TPR] = %08x\n", Tpr);
+
+	//
+	// Here i tried to set programmable timer..
+	//
 
 	/*KiWriteApicConfig (APIC_TPR, 0xFFFFFFFF);
 
@@ -1066,6 +1052,10 @@ KiInitSystem(
 
 	KiDebugPrintRaw( "INIT: Initialization phase 0 completed, starting initialization phase 1\n"  );
 
+	//
+	// Correct kernel stack PTEs
+	//
+
 	ULONG KernelStack;
 
 	__asm mov [KernelStack], esp
@@ -1076,19 +1066,11 @@ KiInitSystem(
 	PMMPTE Pte = MiGetPteAddress (KernelStack);
 	Pte->PteType = PTE_TYPE_TRIMMED;
 
-/*
-	__asm call $
-
-	__asm
-	{
-		xor esp, esp
-		push eax
-	}
-*/
 	KeInitializeEvent (&ev, SynchronizationEvent, FALSE);
 
 	//KeBugCheck (0, 0, 0, 0, 0);
 
+	// Create two additional threads
 	PspCreateThread( &Thread1, &InitialSystemProcess, PsCounterThread, (PVOID)( 80*3 + 40 ) );
 	PspCreateThread( &Thread2, &InitialSystemProcess, PsCounterThread, (PVOID)( 80*4 + 45 ) );
 
@@ -1096,8 +1078,10 @@ KiInitSystem(
 
 	KiDebugPrintRaw( "INIT: Initialization completed.\n\n" );
 
+	// Demo code for thread execution's delaying.
 	PsDelayThreadExecution( 30 );
 
+	// Fall through counter thread code.
 	PsCounterThread( (PVOID)( 80*5 + 35 ) );
 
 	//MiZeroPageThread( );
