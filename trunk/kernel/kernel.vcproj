@@ -340,6 +340,10 @@
 				>
 			</File>
 		</Filter>
+		<File
+			RelativePath=".\kernel.res"
+			>
+		</File>
 	</Files>
 	<Globals>
 	</Globals>
