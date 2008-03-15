@@ -14,7 +14,11 @@ ULONG ExpHeapSize;
 
 LOCK ExpKernelHeapLock;
 
+#if EX_TRACE_HEAP
 #define KdPrint(x) KiDebugPrint x
+#else
+#define KdPrint(x)
+#endif
 
 VOID
 KEAPI
@@ -110,9 +114,7 @@ ExpAcquireHeapLock(
 	PBOOLEAN OldState
 	)
 {
-	//BUGBUG:!!!!!
-
-	//*OldState = KeAcquireLock (&ExpKernelHeapLock);
+	*OldState = KeAcquireLock (&ExpKernelHeapLock);
 }
 
 VOID
@@ -121,8 +123,8 @@ ExpReleaseHeapLock(
 	BOOLEAN OldState
 	)
 {
-	//KeReleaseLock (&ExpKernelHeapLock);
-	//KeReleaseIrqState (OldState);
+	KeReleaseLock (&ExpKernelHeapLock);
+	KeReleaseIrqState (OldState);
 }
 
 
@@ -587,6 +589,7 @@ ExFreeHeap(
 	ExpReleaseHeapLock (OldState);
 }
 
+#if EX_TRACE_HEAP
 void DumpMemory( DWORD base, ULONG length, DWORD DisplayBase )
 {
 #define ptc(x) KiDebugPrint("%c", x)
@@ -679,6 +682,8 @@ ExpDumpBlockData(
 
 	KiDebugPrint("\n");
 }
+
+#endif
 
 KESYSAPI
 PVOID
