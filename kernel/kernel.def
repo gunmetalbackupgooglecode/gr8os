@@ -1,0 +1,96 @@
+EXPORTS
+	
+	;
+	; Executive
+	;
+	
+	ExAllocateHeap
+	ExFreeHeap
+	ExReallocHeap
+	ExLockHeapBlock
+	ExUnlockHeapBlock
+	ExEnterHeapGuardedRegion
+	ExLeaveHeapGuardedRegion
+	
+	;
+	; HAL
+	;
+	
+	HalReadComPort
+	HalWriteComPort
+	
+	;
+	; DBGKD
+	;
+	
+	KdCheckSumPacket
+	KdPollBreakIn
+	KdPortGetByte
+	KdPortPutByte
+	KdReceivePacket
+	KdReceivePacketWithType
+	KdSendPacket
+	KdWakeUpDebugger
+	
+	;
+	; Kernel
+	;
+	
+	KiInPort
+	KiOutPort
+	KeAllocateGdtDescriptor
+	KeAssertionFailed
+	KeBugCheck
+	KeClearEvent
+	KeConfigureTimer
+	KeDispatchException
+	KeGdtEntry
+	KeIdtEntry
+	KeInitializeEvent
+	KeInsertQueueDpc
+	KeQueryTimerCounter
+	KeReadSystemPort
+	KeRemoveQueueDpc
+	KeSetEvent
+	KeStallExecution
+	KeWaitForSingleObject
+	KiDebugPrint
+	KiDebugPrintRaw
+	KiFillDataSegment
+	
+	;
+	; Mm
+	;
+	
+	MmIsAddressValid
+	
+	
+	
+	;
+	; Processes
+	;
+	
+	FindReadyThread
+	PsCreateProcess
+	PsCreateThread
+	PsDelayThreadExecution
+	PsExitThread
+	PsGetCurrentProcess
+	PsGetCurrentThread
+	PsTerminateThread
+	PspDumpReadyQueue
+	PspDumpSystemThreads
+	PspLockSchedulerDatabase
+	PspUnlockSchedulerDatabase
+	
+	
+	;
+	; RTL
+	;
+	
+	memset
+	memcpy
+	memmove
+	sprintf
+	vsprintf
+	

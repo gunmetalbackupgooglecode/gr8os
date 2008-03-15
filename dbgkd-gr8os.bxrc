@@ -1,0 +1,31 @@
+###############################################################
+# bxrc file for GR8OS disk image.
+###############################################################
+
+cpu: count=1, ips=5000000, reset_on_triple_fault=1
+
+# how much memory the emulated machine will have
+megs: 256
+
+# filename of ROM images
+romimage: file="D:\Soft\Bochs\BIOS-bochs-latest", address=0xf0000
+vgaromimage: file="D:\Soft\Bochs\VGABIOS-lgpl-latest"
+
+# what disk images will be used 
+floppya: 1_44=image/floppy.ima, status=inserted
+
+# hard disk
+#ata0: enabled=1, ioaddr1=0x1f0, ioaddr2=0x3f0, irq=14
+#ata0-master: type=disk, path="", cylinders=306, heads=4, spt=17
+
+# choose the boot disk.
+boot: a
+
+# where do we send log messages?
+#log: bochsout.txt
+
+# disable the mouse
+mouse: enabled=0
+
+# com port
+com1: enabled=1, mode=pipe, dev=\\.\pipe\com_1
