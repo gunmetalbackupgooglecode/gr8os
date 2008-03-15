@@ -482,7 +482,7 @@ PROTECTED_ENTRY:
 
     invoke EnablePaging, ContinueLoading
 
-include 'paging.asm'
+include 'paging.inc'
 
 ;
 ; Second GDT for paging
@@ -659,37 +659,37 @@ my_dpc:
     msg  db '[ ]  Starting GR8OS ...',0
 
 ; Memory Manager
-include 'mm.asm'
+include 'mm.inc'
 
 ; ќбработчики IRQ
-include 'irq.asm'
+include 'irq.inc'
 
 ; ќбработчики программных прерываний
-include 'interrupts.asm'
+include 'interrupts.inc'
 
 ; ќбработчики исключений
-include 'except.asm'
+include 'except.inc'
 
 ; ѕереключение в реальный режим
-;include 'realmode.asm'
+;include 'realmode.inc'
 
 ; Run Time
 buf rb 32
 
 ;buffer rb 512
-include 'runtime.asm'
+include 'runtime.inc'
 
 ; ќтладчик
-include 'krnldbg.asm'
+include 'krnldbg.inc'
 
 ; ядро
-include 'kernel.asm'
+include 'kernel.inc'
 
 ; TSS
-include 'tss.asm'
+include 'tss.inc'
 
 ; Tasks
-include 'tasks.asm'
+include 'tasks.inc'
 
 
 ;===========================
