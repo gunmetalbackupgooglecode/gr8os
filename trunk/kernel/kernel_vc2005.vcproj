@@ -114,17 +114,18 @@
 			/>
 			<Tool
 				Name="VCCLCompilerTool"
+				EnableIntrinsicFunctions="false"
 				AdditionalIncludeDirectories="inc"
 				PreprocessorDefinitions="NDEBUG;_USRDLL;KERNEL_EXPORTS;DBG=1"
 				RuntimeLibrary="2"
 				BufferSecurityCheck="false"
-				UsePrecompiledHeader="1"
+				UsePrecompiledHeader="2"
 				PrecompiledHeaderThrough="common.h"
 				WarningLevel="3"
 				WarnAsError="true"
 				Detect64BitPortabilityProblems="false"
 				DebugInformationFormat="3"
-				DisableSpecificWarnings="4733,4731"
+				DisableSpecificWarnings="4733,4731,4244"
 			/>
 			<Tool
 				Name="VCManagedResourceCompilerTool"
@@ -139,7 +140,7 @@
 				Name="VCLinkerTool"
 				AdditionalOptions="/SECTION:.text,rwe /MERGE:.data=.text /MERGE:.rdata=.text /ALIGN:32 /IGNORE:4108 /IGNORE:4254"
 				AdditionalDependencies="$(NOINHERIT)"
-				OutputFile="../$(ProjectName).exe"
+				OutputFile="../build/~Debug/$(ProjectName).exe"
 				LinkIncremental="1"
 				GenerateManifest="false"
 				IgnoreAllDefaultLibraries="true"
@@ -256,7 +257,7 @@
 					>
 					<Tool
 						Name="VCCustomBuildTool"
-						CommandLine="fasm exc386.asm exc386.obj"
+						CommandLine="fasm exc386.asm exc386.obj&#x0D;&#x0A;"
 						Outputs="exc386.obj"
 					/>
 				</FileConfiguration>
@@ -277,7 +278,7 @@
 					>
 					<Tool
 						Name="VCCustomBuildTool"
-						CommandLine="fasm.exe irq386.asm irq386.obj"
+						CommandLine="fasm.exe irq386.asm irq386.obj&#x0D;&#x0A;"
 						Outputs="irq386.obj"
 					/>
 				</FileConfiguration>
@@ -294,7 +295,7 @@
 					>
 					<Tool
 						Name="VCCustomBuildTool"
-						CommandLine="fasm.exe ke386.asm ke386.obj"
+						CommandLine="fasm.exe ke386.asm ke386.obj&#x0D;&#x0A;"
 						Outputs="ke386.obj"
 					/>
 				</FileConfiguration>
@@ -335,7 +336,7 @@
 					>
 					<Tool
 						Name="VCCustomBuildTool"
-						CommandLine="fasm.exe ps386.asm ps386.obj"
+						CommandLine="fasm.exe ps386.asm ps386.obj&#x0D;&#x0A;"
 						Outputs="ps386.obj"
 					/>
 				</FileConfiguration>
