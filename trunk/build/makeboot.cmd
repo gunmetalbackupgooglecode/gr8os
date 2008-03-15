@@ -9,7 +9,7 @@ goto end
 :error_1
 echo.
 echo Error.
-pause
-
+exit 1
 :end
 echo.
+exit 0
