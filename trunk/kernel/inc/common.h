@@ -7,9 +7,11 @@
 
 typedef long LONG, *PLONG;
 typedef int INT, *PINT;
-typedef char CHAR, *PCHAR, BOOLEAN, *PBOOLEAN, LOGICAL;
+typedef short SHORT, *PSHORT;
+typedef char CHAR, *PCHAR, BOOLEAN, *PBOOLEAN, LOGICAL, *PLOGICAL;
 typedef unsigned long DWORD, *PDWORD, ULONG, *PULONG, ULONG_PTR, *PULONG_PTR;
 typedef unsigned short WORD, *PWORD, USHORT, *PUSHORT;
+typedef wchar_t WCHAR, *PWCHAR, WSTR, *PWSTR;
 typedef unsigned char BYTE, *PBYTE, UCHAR, *PUCHAR;
 typedef void VOID, *PVOID, **PPVOID;
 typedef long long LONGLONG, *PLONGLONG, LONG64, *PLONG64;
@@ -31,6 +33,8 @@ typedef ULONG STATUS, *PSTATUS;
 #define STATUS_REPEAT_NEEDED				((STATUS) -9)
 #define STATUS_DEVICE_NOT_READY				((STATUS) -10)
 #define STATUS_PARTIAL_READ					((STATUS) -11)
+
+#define SUCCESS(Status) ((Status)>=0)
 
 
 #define IN
@@ -60,26 +64,6 @@ typedef  ULONG* va_list;
 
 #define MAXLONG ((long)0xFFFFFFFF)
 
-BOOLEAN
-FORCEINLINE
-isdigit(
-	CHAR ch
-	)
-{
-	if( ch >= '0' && ch <= '9' )
-		return TRUE;
-	return FALSE;
-}
-
-extern "C"
-{
-KESYSAPI
-int _cdecl sprintf(char * buf, const char *fmt, ...);
-
-KESYSAPI
-int KEAPI vsprintf(char *buf, const char *fmt, va_list args);
-}
-
 #define INT3 { __asm _emit 0xEB __asm _emit 0xFE }
 
 //
@@ -104,13 +88,21 @@ typedef struct LARGE_INTEGER
 	};
 } *PLARGE_INTEGER;
 
-typedef struct CBUFFER
+template <class T>
+struct COUNTED_BUFFER
 {
 	USHORT Length;
-	USHORT MaxLength;
-	PVOID Buffer;
-} *PCBUFFER;
+	union
+	{
+		USHORT MaxLength;
+		USHORT MaximumLength;	// Backward support for Windows WDM drivers
+	};
+	T Buffer;
+};
 
+typedef struct COUNTED_BUFFER<PVOID> CBUFFER, *PCBUFFER;
+typedef struct COUNTED_BUFFER<PWSTR> UNICODE_STRING, *PUNICODE_STRING;
+typedef struct COUNTED_BUFFER<PCHAR> ANSI_STRING, *PANSI_STRING;
 
 //
 // Configuration
@@ -139,6 +131,7 @@ extern "C"
 {
 
 // Other include files
+#include "rtl.h"
 #include "init.h"
 #include "ke.h"
 #include "mm.h"
@@ -146,6 +139,8 @@ extern "C"
 #include "ex.h"
 #include "hal.h"
 #include "kd.h"
+#include "ob.h"
+#include "io.h"
 
 }
 

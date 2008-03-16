@@ -400,8 +400,10 @@ KeBugCheck(
 #define KERNEL_MODE_EXCEPTION_NOT_HANDLED 0x00000006	// ( exc code, arg1, arg2, arg3 )
 #define MANUALLY_INITIATED_CRASH 0x00000007		// ( caused from dbgkd, 0, 0, 0 )
 #define EX_KERNEL_HEAP_FAILURE 0x00000008
+#define OB_INITIALIZATION_FAILED 0x00000009
+#define IO_INITIALIZATION_FAILED 0x0000000A
 
-#define MAXIMUM_BUGCHECK		 0x00000009
+#define MAXIMUM_BUGCHECK		 0x0000000B
 
 extern PCHAR KeBugCheckDescriptions[];
 
@@ -544,11 +546,11 @@ typedef struct EVENT
 	SCHEDULER_HEADER Header;
 } *PEVENT;
 
-typedef enum OBJECT_TYPE
+typedef enum KE_OBJECT_TYPE
 {
 	NotificationEvent,
 	SynchronizationEvent
-} *POBJECT_TYPE;
+} *PKE_OBJECT_TYPE;
 
 KESYSAPI
 VOID
