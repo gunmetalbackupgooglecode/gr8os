@@ -50,7 +50,7 @@ ObCreateObjectType(
 	Type->CloseRoutine = CloseRoutine;
 	Type->OwnerTag = OwnerTag;
 
-	RtlDuplicateUnicodeString (&Type->ObjectTypeName, TypeName);
+	RtlDuplicateUnicodeString (TypeName, &Type->ObjectTypeName);
 
 	*ObjectType = Type;
 	return STATUS_SUCCESS;
@@ -85,7 +85,7 @@ ObCreateObject(
 
 	if (ARGUMENT_PRESENT (ObjectName))
 	{
-		RtlDuplicateUnicodeString (&ObjectHeader->ObjectName, ObjectName);
+		RtlDuplicateUnicodeString (ObjectName, &ObjectHeader->ObjectName);
 	}
 	else
 	{
