@@ -212,6 +212,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\inc\io.h"
+				>
+			</File>
+			<File
 				RelativePath=".\inc\kd.h"
 				>
 			</File>
@@ -224,7 +228,15 @@
 				>
 			</File>
 			<File
+				RelativePath=".\inc\ob.h"
+				>
+			</File>
+			<File
 				RelativePath=".\inc\ps.h"
+				>
+			</File>
+			<File
+				RelativePath=".\inc\rtl.h"
 				>
 			</File>
 		</Filter>
@@ -262,6 +274,10 @@
 			</File>
 			<File
 				RelativePath=".\hal.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\io.cpp"
 				>
 			</File>
 			<File
@@ -304,6 +320,10 @@
 			</File>
 			<File
 				RelativePath=".\mm.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\ob.cpp"
 				>
 			</File>
 			<File

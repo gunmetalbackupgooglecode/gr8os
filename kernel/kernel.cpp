@@ -591,6 +591,8 @@ PCHAR KeBugCheckDescriptions[] = {
 	"KERNEL_MODE_EXCEPTION_NOT_HANDLED",
 	"MANUALLY_INITIATED_CRASH",
 	"EX_KERNEL_HEAP_FAILURE",
+	"OB_INITIALIZATION_FAILED",
+	"IO_INITIALIZATION_FAILED",
 	NULL
 };
 
@@ -1049,6 +1051,14 @@ KiInitSystem(
 	// Initialize memory management
 	MmInitSystem( );
 	KiDebugPrintRaw( "MM: Passed initialization\n" );
+
+	// Initialize objective subsystem
+	ObInitSystem( );
+	KiDebugPrintRaw( "OB: Passed initialization\n" );
+
+	// Initialize I/O subsystem
+	IoInitSystem( );
+	KiDebugPrintRaw( "IO: Passed initialization\n" );
 
 	KiDebugPrintRaw( "INIT: Initialization phase 0 completed, starting initialization phase 1\n"  );
 

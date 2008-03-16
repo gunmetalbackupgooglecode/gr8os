@@ -739,5 +739,42 @@ char* strncpy(char* to, const char* from, int count)
 	return to;
 }
 
+KESYSAPI
+INT
+KEAPI
+wcslen(
+	PWSTR wstr
+	)
+{
+	int length;
+	for (length = 0;*wstr;wstr++,length++);
+	return length;
+}
+
+KESYSAPI
+VOID
+KEAPI
+RtlInitUnicodeString(
+	OUT PUNICODE_STRING UnicodeString,
+	IN PWSTR Buffer
+	)
+{
+	UnicodeString->Buffer = Buffer;
+	UnicodeString->Length = wcslen(Buffer)*2;
+	UnicodeString->MaxLength = UnicodeString->Length + 2;
+}
+
+KESYSAPI
+VOID
+KEAPI
+RtlDuplicateUnicodeString(
+	IN PUNICODE_STRING SourceString,
+	OUT PUNICODE_STRING DestinationString
+	)
+{
+	*DestinationString = *SourceString;
+	DestinationString->Buffer = (PWSTR) ExAllocateHeap (FALSE, SourceString->MaxLength);
+	memcpy (DestinationString->Buffer, SourceString->Buffer, SourceString->MaximumLength);
+}
 
 /* EOF */
