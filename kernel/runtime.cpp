@@ -752,6 +752,74 @@ wcslen(
 }
 
 KESYSAPI
+INT
+KEAPI
+wcscmp(
+	PWSTR wstr,
+	PWSTR wstr2
+	)
+{
+	int l1 = wcslen(wstr);
+	int l2 = wcslen(wstr2);
+
+	if (l1!=l2)
+		return -1;
+
+	for (int i=0; i<l1;i++)
+	{
+		WCHAR diff = wstr[i] - wstr2[i];
+
+		if (diff)
+			return diff;
+	}
+
+	return 0;
+}
+
+KESYSAPI
+VOID
+KEAPI
+wcsncpy(
+	PWSTR dst,
+	PWSTR src,
+	INT count
+	)
+{
+	for (int i=0;i<count && (dst[i] = src[i]);i++);
+}
+
+KESYSAPI
+VOID
+KEAPI
+wcssubstr(
+	PWSTR SourceString,
+	INT StartPosition,
+	INT Length,
+	PWSTR DestinationBuffer
+	)
+{
+	wcsncpy (DestinationBuffer, SourceString + StartPosition, Length);
+	DestinationBuffer[Length]=0;
+}
+
+KESYSAPI
+PWSTR
+KEAPI
+wcsrchr(
+	 PWSTR SourceString,
+	 WCHAR Char
+	 )
+{
+	for (PWSTR end = SourceString + wcslen(SourceString) - 1; end>=SourceString; end--)
+	{
+		if (*end == Char)
+			return end;
+	}
+	return NULL;
+}
+
+
+KESYSAPI
 VOID
 KEAPI
 RtlInitUnicodeString(
@@ -775,6 +843,80 @@ RtlDuplicateUnicodeString(
 	*DestinationString = *SourceString;
 	DestinationString->Buffer = (PWSTR) ExAllocateHeap (FALSE, SourceString->MaxLength);
 	memcpy (DestinationString->Buffer, SourceString->Buffer, SourceString->MaximumLength);
+}
+
+void DumpMemory( DWORD base, ULONG length, DWORD DisplayBase )
+{
+#define ptc(x) KiDebugPrint("%c", x)
+#define is_print(c) ( (c) >= '!' && (c) <= '~' )
+	bool left = true;
+	bool newline = true;
+	int based_length = length;
+	int i;
+	int baseoffs;
+
+	if( DisplayBase==-1 ) DisplayBase = base;
+
+	baseoffs = DisplayBase - (DisplayBase&0xFFFFFFF0);
+	base -= baseoffs;
+	DisplayBase &= 0xFFFFFFF0;
+
+	length += baseoffs;
+
+	if( length % 16 )
+		based_length += 16-(length%16);
+
+	for( i=0; i<based_length; i++ )
+	{
+		if( newline )
+		{
+			newline = false;
+			KiDebugPrint("%08x [", DisplayBase+i);
+		}
+
+#define b (*((unsigned char*)base+i))
+
+		if( left )
+		{
+			if( (unsigned)i < length && i >= baseoffs )
+				KiDebugPrint(" %02x", b);
+			else
+				KiDebugPrint("   ");
+
+			if( (i+1) % 16 == 0 )
+			{
+				left = false;
+				i -= 16;
+				KiDebugPrint(" ] ");
+				continue;
+			}
+
+			if( (i+1) % 8 == 0 )
+			{
+				KiDebugPrint(" ");
+			}
+
+		}
+		else
+		{
+			if( (unsigned)i < length && i >= baseoffs )
+				ptc(is_print(b)?b:'.');
+			else
+				ptc(' ');
+
+			if( (i+1) % 16 == 0 )
+			{
+				KiDebugPrint("\n");
+				newline = true;
+				left = true;
+				continue;
+			}
+			if( (i+1) % 8 == 0 )
+			{
+				KiDebugPrint(" ");
+			}
+		}
+	}
 }
 
 /* EOF */

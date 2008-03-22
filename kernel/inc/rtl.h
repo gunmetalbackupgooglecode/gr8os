@@ -36,6 +36,40 @@ wcslen(
 	PWSTR wstr
 	);
 
+KESYSAPI
+INT
+KEAPI
+wcscmp(
+	PWSTR wstr,
+	PWSTR wstr2
+	);
+
+KESYSAPI
+VOID
+KEAPI
+wcsncpy(
+	PWSTR dst,
+	PWSTR src,
+	INT count
+	);
+
+KESYSAPI
+VOID
+KEAPI
+wcssubstr(
+	PWSTR SourceString,
+	INT StartPosition,
+	INT Length,
+	PWSTR DestinationBuffer
+	);
+
+KESYSAPI
+PWSTR
+KEAPI
+wcsrchr(
+	 PWSTR SourceString,
+	 WCHAR Char
+	 );
 
 KESYSAPI
 VOID

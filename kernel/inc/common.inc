@@ -107,6 +107,9 @@ struct THREAD
     ExitCode		  dd ?
     ExceptionList	  dd ?
     CurrentException  dd ?
+    
+    IrpListLock		  SCHEDULER_HEADER
+    IrpList			  LIST_ENTRY
 ends
 
 struct PROCESS
@@ -114,6 +117,8 @@ struct PROCESS
 	DirectoryTableBase	dd ?
 	ThreadListHead		LIST_ENTRY
 	NumberOfThreads		dd ?
+	ObjectTableLock		SCHEDULER_HEADER
+	ObjectTable			dd ?
 ends
 
 THREAD_STATE_READY = 0
@@ -130,7 +135,7 @@ KernelMode = 0
 DriverMode = 1
 UserMode   = 3
 
-THREAD_NORMAL_QUANTUM = 10
+THREAD_NORMAL_QUANTUM = 3
 
 struct CONTEXT
     Eax  dd ?
@@ -200,3 +205,5 @@ ends
 TIMER_MODIFY_INITIAL_COUNTER	= 0x01
 TIMER_MODIFY_DIVISOR			= 0x02
 TIMER_MODIFY_LVT_ENTRY			= 0x04
+
+PIT_FREQ = 1193180

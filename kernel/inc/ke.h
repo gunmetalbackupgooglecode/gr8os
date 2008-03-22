@@ -402,6 +402,9 @@ KeBugCheck(
 #define EX_KERNEL_HEAP_FAILURE 0x00000008
 #define OB_INITIALIZATION_FAILED 0x00000009
 #define IO_INITIALIZATION_FAILED 0x0000000A
+#define IO_MULTIPLE_COMPLETE_REQUESTS 0x0000000B
+#define IO_NO_MORE_IRP_STACK_LOCATIONS 0x0000000C
+#define IO_IRP_COMPLETION_WITH_PENDING 0x0000000D
 
 #define MAXIMUM_BUGCHECK		 0x0000000B
 
@@ -585,169 +588,19 @@ KeWaitForSingleObject(
 	IN PLARGE_INTEGER Timeout
 	);
 
-KESYSAPI
-ULONG
+BOOLEAN
 KEAPI
-KeQueryTimerTickMult(
+KiSetEvent(
+	IN PEVENT Event,
+	IN USHORT QuantumIncrement
 	);
 
-#pragma pack(1)
-
-typedef union APIC_LVT_ENTRY
-{
-	ULONG RawValue;
-	struct
-	{
-		ULONG Vector : 8;
-		ULONG Reserved1 : 4;
-		ULONG DeliveryStatus : 1;
-		ULONG Reserved2 : 3;
-		ULONG Masked : 1;
-		ULONG TimerMode : 1;
-		ULONG Reserved3 : 14;
-	};
-} *PAPIC_LVT_ENTRY;
-
-typedef struct APIC_TIMER_CONFIG
-{
-	ULONG Flags;
-	ULONG InitialCounter;
-	ULONG CurrentCounter;
-	ULONG Divisor;
-	APIC_LVT_ENTRY LvtTimer;
-} *PAPIC_TIMER_CONFIG;
-
-enum TIMER_MODE
-{
-	OneShot,
-	Periodic
-};
-
-#pragma pack()
-
-#define TIMER_MODIFY_INITIAL_COUNTER	0x01
-#define TIMER_MODIFY_DIVISOR			0x02
-#define TIMER_MODIFY_LVT_ENTRY			0x04
+enum PROCESSOR_MODE;
 
 KESYSAPI
-VOID
+PROCESSOR_MODE
 KEAPI
-KeQueryApicTimerConf(
-	PAPIC_TIMER_CONFIG Config
+KeGetRequestorMode(
 	);
 
-KESYSAPI
-VOID
-KEAPI
-KeSetApicTimerConf(
-	PAPIC_TIMER_CONFIG Config
-	);
-
-KESYSAPI
-ULONG
-KEAPI
-KiReadApicConfig(
-	ULONG Offset
-	);
-
-KESYSAPI
-ULONG
-KEAPI
-KiWriteApicConfig(
-	ULONG Offset,
-	ULONG Value
-	);
-
-#define APIC_TPR	0x0080
-
-#pragma pack(1)
-
-typedef union SYSTEM_PORT
-{
-	UCHAR RawValue;
-
-	struct
-	{
-		// R/W
-		UCHAR Gate2 : 1;
-		UCHAR Speaker : 1;
-		UCHAR RamControlErr : 1;
-		UCHAR IsaControl : 1;
-
-		// R
-		UCHAR RamReg : 1;
-		UCHAR Timer2Out : 1;
-		UCHAR IsaControlFault : 1;
-		UCHAR RamParityError : 1;
-	};
-} *PSYSTEM_PORT;
-
-#pragma pack()
-
-#define SYSTEM_PORT_NUMBER	0x61
-
-KESYSAPI
-SYSTEM_PORT
-KEAPI
-KeReadSystemPort(
-	);
-
-#define TIMER_GATE0			0x40
-#define TIMER_GATE1			0x41
-#define TIMER_GATE2			0x42
-#define TIMER_CONTROL_PORT	0x43
-
-#pragma pack(1)
-
-enum TIMER_COUNTER_MODE
-{
-	CounterIrq = 0,
-	WaitingMultivibrator = 1,
-	ShortSignals = 2,
-	MeandrGenerator = 3
-	// 4
-	// 5
-};
-
-enum TIMER_REQUEST_MODE
-{
-	LockCurrentValue = 0,
-	LSB = 1,
-	MSB = 2,
-	LSBMSB = 3
-};
-
-typedef union TIMER_CONTROL
-{
-	UCHAR RawValue;
-
-	struct
-	{
-		UCHAR  CountMode : 1; // 0=Binary, 1=BCD
-		UCHAR  CounterMode : 3; // see TIMER_COUNTER_MODE
-
-		UCHAR  RequestMode : 2; // see TIMER_REQUEST_MODE
-		UCHAR  CounterSelector : 2; // 0, 1, 2
-	};
-} *PTIMER_CONTROL;
-
-#pragma pack()
-
-KESYSAPI
-VOID
-KEAPI
-KeConfigureTimer(
-	UCHAR Timer,
-	ULONG Freq
-	);
-
-
-KESYSAPI
-USHORT
-KEAPI
-KeQueryTimerCounter(
-	UCHAR Timer
-	);
-
-	
-#define TIMER_FREQ  1193180
+#define KeGetRequestorMode() (PsGetCurrentThread()->PreviousMode)

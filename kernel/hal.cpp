@@ -8,7 +8,9 @@
 
 #include "common.h"
 
-
+//
+// COM Port
+//
 
 USHORT ComPorts[2] = {
 	PORT_COM1_BASE,
@@ -264,4 +266,156 @@ KdPortPutByte(
 #endif
 		
 	WRITE_COM( KdpComPortPreferred, 0, Byte );
+}
+
+
+//
+// Programmable Interval Timer (PIT) Intel 8253
+//
+
+KESYSAPI
+VOID
+KEAPI
+HalConfigureTimer(
+	UCHAR Timer,
+	ULONG Freq
+	)
+/*++
+	Congure one of three counters of i8254 timer
+--*/
+{
+	TIMER_CONTROL Tmr;
+	Tmr.CounterSelector = Timer;
+	Tmr.CountMode = 0;
+	Tmr.CounterMode = MeandrGenerator;
+	Tmr.RequestMode = LSBMSB;
+
+	ULONG Div32 = ( (ULONG)TIMER_FREQ / (ULONG)Freq );
+	USHORT Divisor = (USHORT) Div32;
+
+	if( Div32 >= 0x10000 )
+		Divisor = 0;
+
+	KiDebugPrint ("KE: Timer configured for: channel=%d, freq=%d, divisor=0x%04x\n", Timer, Freq, Divisor);
+
+
+	KiOutPort (0x43, Tmr.RawValue);
+	KeStallExecution(1);
+
+	KiOutPort (0x40 + Timer, Divisor & 0xFF);
+	KeStallExecution(1);
+
+	KiOutPort (0x40 + Timer, Divisor >> 8);
+	KeStallExecution(1);
+}
+
+KESYSAPI
+VOID
+KEAPI
+HalReadConfigTimer(
+	UCHAR Timer,
+	ULONG *Freq
+	)
+/*++
+	Congure one of three counters of i8254 timer
+--*/
+{
+	UCHAR c1 = KiInPort (0x40 + Timer);
+	KeStallExecution(1);
+	UCHAR c2 = KiInPort (0x40 + Timer);
+
+	ULONG Divisor = (c2 << 8) | c1;
+	
+	*Freq = (ULONG)TIMER_FREQ / Divisor;
+}
+
+KESYSAPI
+USHORT
+KEAPI
+HalQueryTimerCounter(
+	UCHAR Timer
+	)
+/*++
+	Query counter channel current value
+--*/
+{
+	UCHAR lsb, msb;
+
+	lsb = KiInPort (Timer + 0x40);
+	__asm nop
+	__asm nop
+
+	msb = KiInPort (Timer + 0x40);
+	__asm nop
+	__asm nop
+
+	return (msb << 8) | lsb;
+}
+
+
+KESYSAPI
+SYSTEM_PORT
+KEAPI
+HalReadSystemPort(
+	)
+/*++
+	Reads system port
+--*/
+{
+	volatile UCHAR Val = KiInPort( SYSTEM_PORT_NUMBER );
+	return *(SYSTEM_PORT*)&Val;
+}
+
+ULONG HalBusClockFrequency;
+
+
+#define KiDebugPrint
+
+VOID
+KEAPI
+HalInitSystem(
+	)
+/*++
+	Initialize HAL
+--*/
+{
+	//
+	// Configure APIC timer
+	//
+
+	APIC_TIMER_CONFIG Timer = {0};
+
+	Timer.Divisor = 0xA;
+	Timer.Flags = TIMER_MODIFY_DIVISOR | TIMER_MODIFY_LVT_ENTRY | TIMER_MODIFY_INITIAL_COUNTER;
+	Timer.LvtTimer.Masked = FALSE;
+	Timer.LvtTimer.Vector = 6;
+	Timer.LvtTimer.TimerMode = Periodic;
+	Timer.InitialCounter = -1;
+
+	HalSetApicTimerConf (&Timer);
+	__asm nop;
+	HalQueryApicTimerConf (&Timer);
+
+	KiDebugPrint ("HAL: APIC Timer:\n  Initial = %08x, Current = %08x, Divisor = %08x, LVT = %08x\n", 
+		Timer.InitialCounter,
+		Timer.CurrentCounter,
+		Timer.Divisor,
+		Timer.LvtTimer.RawValue
+		);
+	
+	//
+	// Query bus clock frequency
+	//
+
+	KiDebugPrint("HAL: Quering bus clock freq..\n");
+
+	HalBusClockFrequency = HalQueryBusClockFreq();
+
+	KiDebugPrint("HAL: BusFreq=%08x (%d)\n", HalBusClockFrequency, HalBusClockFrequency);
+
+	//
+	// Re-Configure channel 2
+	//
+
+	HalConfigureTimer( 2, 200 );
 }

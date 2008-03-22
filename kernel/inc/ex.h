@@ -213,3 +213,29 @@ VOID
 KEAPI
 ExInitSystem(
 	);
+
+typedef struct MUTEX
+{
+	SCHEDULER_HEADER Header;
+} *PMUTEX;
+
+KESYSAPI
+VOID
+KEAPI
+ExInitializeMutex(
+	  PMUTEX Mutex
+	  );
+
+KESYSAPI
+VOID
+KEAPI
+ExAcquireMutex(
+	PMUTEX Mutex
+	);
+
+KESYSAPI
+VOID
+KEAPI
+ExReleaseMutex(
+	PMUTEX Mutex
+	);

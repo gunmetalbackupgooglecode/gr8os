@@ -14,9 +14,8 @@ ULONG ExpHeapSize;
 
 LOCK ExpKernelHeapLock;
 
-#if EX_TRACE_HEAP
-#define KdPrint(x) KiDebugPrint x
-#else
+#if !EX_TRACE_HEAP
+#undef KdPrint
 #define KdPrint(x)
 #endif
 
@@ -587,80 +586,6 @@ ExFreeHeap(
 }
 
 #if EX_TRACE_HEAP
-void DumpMemory( DWORD base, ULONG length, DWORD DisplayBase )
-{
-#define ptc(x) KiDebugPrint("%c", x)
-#define is_print(c) ( (c) >= '!' && (c) <= '~' )
-	bool left = true;
-	bool newline = true;
-	int based_length = length;
-	int i;
-	int baseoffs;
-
-	if( DisplayBase==-1 ) DisplayBase = base;
-
-	baseoffs = DisplayBase - (DisplayBase&0xFFFFFFF0);
-	base -= baseoffs;
-	DisplayBase &= 0xFFFFFFF0;
-
-	length += baseoffs;
-
-	if( length % 16 )
-		based_length += 16-(length%16);
-
-	for( i=0; i<based_length; i++ )
-	{
-		if( newline )
-		{
-			newline = false;
-			KiDebugPrint("%08x [", DisplayBase+i);
-		}
-
-#define b (*((unsigned char*)base+i))
-
-		if( left )
-		{
-			if( (unsigned)i < length && i >= baseoffs )
-				KiDebugPrint(" %02x", b);
-			else
-				KiDebugPrint("   ");
-
-			if( (i+1) % 16 == 0 )
-			{
-				left = false;
-				i -= 16;
-				KiDebugPrint(" ] ");
-				continue;
-			}
-
-			if( (i+1) % 8 == 0 )
-			{
-				KiDebugPrint(" ");
-			}
-
-		}
-		else
-		{
-			if( (unsigned)i < length && i >= baseoffs )
-				ptc(is_print(b)?b:'.');
-			else
-				ptc(' ');
-
-			if( (i+1) % 16 == 0 )
-			{
-				KiDebugPrint("\n");
-				newline = true;
-				left = true;
-				continue;
-			}
-			if( (i+1) % 8 == 0 )
-			{
-				KiDebugPrint(" ");
-			}
-		}
-	}
-}
-
 VOID
 KEAPI
 ExpDumpBlockData(
@@ -1206,4 +1131,129 @@ ExLeaveHeapGuardedRegion(
 	ExFreeHeap (GuardTable);
 
 	ExCurrentThreadGuardTable() = NULL;
+}
+
+
+KESYSAPI
+VOID
+KEAPI
+ExInitializeMutex(
+	PMUTEX Mutex
+	)
+/*++
+	Initialize mutex
+--*/
+{
+	KeInitializeEvent ((PEVENT)Mutex, SynchronizationEvent, FALSE);
+}
+
+
+KESYSAPI
+VOID
+KEAPI
+ExAcquireMutex(
+	PMUTEX Mutex
+	)
+/*++
+	Acquire lock with event
+--*/
+{
+	return;
+	BOOLEAN OldIrqState;
+	PTHREAD Thread;
+	PWAIT_BLOCK WaitBlock;
+	PSCHEDULER_HEADER Header;
+	CONTEXT_FRAME *ContextFrame;
+
+	OldIrqState = PspLockSchedulerDatabase ();
+	Thread = PsGetCurrentThread();
+	Header = (PSCHEDULER_HEADER) Mutex;
+
+	if (Header->SignaledState)
+	{
+		Mutex->Header.SignaledState = 0;
+
+		PspUnlockSchedulerDatabase ();
+		KeReleaseIrqState(OldIrqState);
+		return;
+	}
+
+
+	WaitBlock = &Thread->WaitBlocks[0];
+	WaitBlock->BackLink = Thread;
+	InsertTailList (&Header->WaitListHead, &WaitBlock->WaitListEntry);
+	
+	Thread->WaitBlockUsed = WaitBlock;
+	Thread->State = THREAD_STATE_WAIT;
+	Thread->WaitType = THREAD_WAIT_SCHEDULEROBJECTS_ANY; // doesn't matter, we're waiting for one object.
+	Thread->NumberOfObjectsWaiting = 1;
+
+	RemoveEntryList (&Thread->SchedulerListEntry);
+	InsertTailList (&PsWaitListHead, &Thread->SchedulerListEntry);
+
+	//
+	// Create fictive trap frame
+	//
+
+	__asm
+	{
+		pushfd
+		push cs
+		call $+5
+		push fs
+		push gs
+		push es
+		push ds
+		push edi
+		push esi
+		push ebp
+		push esp
+		push ebx
+		push 0    ; edx
+		push 0    ; ecx
+		push 0    ; eax
+		push 0    ; irq0_handler->PspSchedulerTimerInterruptDispatcher
+		push 0    ; PspScheduler...->PsQuantumEnd
+		push 0    ; PsQuantumEnd->PsSwapThread
+				  ; PsSwapThread->PspSwapThread
+	    mov [ContextFrame], esp
+	}
+	Thread->ContextFrame = ContextFrame;
+
+	PspSwapThread();
+
+	//
+	// Restore trap frame
+	//
+
+	__asm
+	{
+		add  esp, 24   ; ret addresses; eax, ecx, edx
+		pop  ebx
+		add  esp, 4    ; esp
+		pop  ebp
+		pop  esi
+		pop  edi
+		add  esp, 16  ; segment regs
+		add  esp, 12  ; cs,eip,efl
+	}
+
+	Mutex->Header.SignaledState = 0;
+	PspUnlockSchedulerDatabase ();
+	KeReleaseIrqState(OldIrqState);
+	return;
+}
+
+KESYSAPI
+VOID
+KEAPI
+ExReleaseMutex(
+	PMUTEX Mutex
+	)
+/*++
+	Release lock with event
+--*/
+{
+	return;
+	KeSetEvent ((PEVENT)Mutex, 0);
 }

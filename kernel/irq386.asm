@@ -335,14 +335,22 @@ KiSystemCall:
 	
 __syscall_print_string:
     lodsb
-    .if al,ne,13
+    cmp  al, 13
+    jz _nextline
+    cmp  al, 10
+    jz _nextline
+    
+    _regularchar:
       mov  edi, dword [cursor]
       mov  [gs:edi*2], al
       inc  dword [cursor]
-    .else
+      jmp _sps_quit
+      
+    _nextline:
       mov  ax, 1
       int  30h
-    .endif
+
+	_sps_quit:
 
     .if dword [cursor],g,2000
       mov  dword [cursor], 0

@@ -161,22 +161,6 @@ InitializeLApic:
 	; Map Local APIC registers to virtual memory
 	invoke MiMapPhysicalPages, LAPIC_BASE, LAPIC_BASE_P, 1
 
-	; test apic presence
-	mov  ecx, APIC_BASE_MSR
-	rdmsr
-	ccall DbgPrint, "APIC_BASE_MSR: %08x`%08x", edx, eax
-
-
-	ccall DbgPrint, "ID: %08x",  dword [APIC_ID]
-	ccall DbgPrint, "VER: %08x", dword [APIC_VER]
-	ccall DbgPrint, "SPINTV: %08x", dword [APIC_SPINTV]
-
-	mov  eax, [APIC_SPINTV]
-	;or   eax, (1 shl 8)
-	mov  [APIC_SPINTV], eax
-
-	ccall DbgPrint, "SPINTV: %08x", dword [APIC_SPINTV]
-
 	xor  eax, eax
 	inc  eax
 	cpuid
@@ -191,10 +175,32 @@ InitializeLApic:
   @@:
 	; APIC on chip. Initialize it
 	; APIC registers are mapped to physical memory
-	; range FEEE0000 - FEEE0FFF
+	; range FEE00000 - FEE00FFF
 	invoke DbgPrintRaw, "APIC present"
-	mov  eax, [APIC_VER]
-	;int3
+
+	; test apic presence
+	mov  ecx, APIC_BASE_MSR
+	rdmsr
+	ccall DbgPrint, "APIC_BASE_MSR: %08x`%08x", edx, eax
+
+
+	ccall DbgPrint, "ID: %08x",  dword [APIC_ID]
+	ccall DbgPrint, "VER: %08x", dword [APIC_VER]
+	ccall DbgPrint, "SPINTV: %08x", dword [APIC_SPINTV]
+
+	mov  eax, [APIC_SPINTV]
+	or   eax, (1 shl 8)
+	mov  [APIC_SPINTV], eax
+
+	ccall DbgPrint, "SPINTV: %08x", dword [APIC_SPINTV]
+
+
+;        cli
+;        mov  dword [APIC_INITCNT], 0xFFFFFFFF
+;        mov  dword [APIC_LVTTMR],  0x20012
+;        mov  dword [APIC_DIVCONF], 1
+;        sti
+
 	retn
 
 
