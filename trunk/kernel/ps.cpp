@@ -129,7 +129,7 @@ FindReadyThread(
 		if(Thread->State != THREAD_STATE_READY)
 		{
 			ASSERT (Thread->State == THREAD_STATE_READY);
-			KiDebugPrint ("PS: Thread->State = %d (%s)\n", Thread->State, ThreadStates[Thread->State]);
+			KiDebugPrint ("PS: Thread->State = %d (%s)\n", Thread->State, /*ThreadStates[Thread->State]*/0);
 		}
 #endif
 

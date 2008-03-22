@@ -141,16 +141,16 @@ KeGetCpuFeatures:
 	retn 4
 
 
-public KeQueryTimerTickMult as '_KeQueryTimerTickMult@0'
+public HalQueryTimerTickMult as '_HalQueryTimerTickMult@0'
 extrn irq0_handler
 
 ; @implemented
 ;
-; KeQueryTimerTickMult
+; HalQueryTimerTickMult
 ;
 ;  Query timer ticks multiplier
 ;
-KeQueryTimerTickMult:
+HalQueryTimerTickMult:
 	push edi
 
 	; Disable interrupts
@@ -195,16 +195,16 @@ KeQueryTimerTickMult:
 	retn
 	
 
-public KeQueryApicTimerConf as '_KeQueryApicTimerConf@4'
+public HalQueryApicTimerConf as '_HalQueryApicTimerConf@4'
 
 ; @implemented
 ;
-; KeQueryApicTimerConf
+; HalQueryApicTimerConf
 ;
 ;  Query APIC timer conf
 ;  esp+4   APIC_TIMER_CONFIG
 ;
-KeQueryApicTimerConf:
+HalQueryApicTimerConf:
 	mov  ecx, [esp+4]
 	
 	pushfd
@@ -227,16 +227,16 @@ KeQueryApicTimerConf:
 	retn 4
 
 
-public KeSetApicTimerConf as '_KeSetApicTimerConf@4'
+public HalSetApicTimerConf as '_HalSetApicTimerConf@4'
 
 ; @implemented
 ;
-; KeSetApicTimerConf
+; HalSetApicTimerConf
 ;
 ;  Set APIC timer conf
 ;  esp+4   APIC_TIMER_CONFIG
 ;
-KeSetApicTimerConf:
+HalSetApicTimerConf:
 	mov  ecx, [esp+4]
 	
 	pushfd
@@ -266,38 +266,106 @@ KeSetApicTimerConf:
 	retn 4
 
 
-public KiReadApicConfig as '_KiReadApicConfig@4'
+public HalpReadApicConfig as '_HalpReadApicConfig@4'
 
 ; @implemented
 ;
-; KiReadApicConfig
+; HalpReadApicConfig
 ;
 ;  Reads APIC config registers
 ;  esp+4  Offset
 ;
-KiReadApicConfig:
+HalpReadApicConfig:
 	mov  eax, [esp+4]
 	add  eax, LAPIC_BASE
 	mov  eax, [eax]
 	retn 4
 
 
-public KiWriteApicConfig as '_KiWriteApicConfig@8'
+public HalpWriteApicConfig as '_HalpWriteApicConfig@8'
 
 ; @implemented
 ;
-; KiWriteApicConfig
+; HalpWriteApicConfig
 ;
 ;  Writes APIC config registers
 ;  esp+4  Offset
 ;  esp+8  New value
 ;
-KiWriteApicConfig:
+HalpWriteApicConfig:
 	mov  eax, [esp+4]
 	mov  ecx, [esp+8]
 	add  eax, LAPIC_BASE
 	mov  [eax], ecx
 	retn 8
+
+
+public HalQueryBusClockFreq as '_HalQueryBusClockFreq@0'
+
+; @implemented
+;
+; HalQueryBusClockFreq
+;
+;  Determines bus clock frequency in ticks per second.
+;
+HalQueryBusClockFreq:
+	pushfd
+	cli
+
+	; Set divisor to 128 and some initial counter
+	mov  dword [APIC_DIVCONF], 1010b
+	mov  dword [APIC_INITCNT], 0x10000
+
+	; Stop channel 2
+	mov  edx, 0x61
+	in   al, dx
+	and  al, 11111100b
+	out  dx, al
+	jmp  $+2
+
+	; Channel 2, LSBMSB, one-shot
+	mov  al, 10111000b
+	out  43h, al
+	jmp  $+2
+	
+	; Set divisor
+	mov  eax, 1024
+	out  42h, al
+	jmp  $+2
+	mov  al, ah
+	out  42h, al
+	jmp  $+2
+	
+	mov  ebx, 0x10000
+	
+	; Start channel 2
+	in   al, dx
+	or   al, 1
+	out  dx, al
+	
+	; Set initial counter
+	mov  dword [APIC_INITCNT], ebx
+	
+	; Wait for 5 bit in system port
+	
+@@:	in   al, dx
+	test al, 100000b
+;	inc  byte [gs:0]
+	jnz  @B
+	
+	sub  ebx, [APIC_CURRCNT]
+	xor  edx, edx
+	mov  eax, PIT_FREQ
+	mul  ebx
+	shr  eax, 3
+	
+	; Set divisor to 1
+	mov  dword [APIC_DIVCONF], 1011b
+	
+	popfd
+	retn
+	
+	
 
 
 ;

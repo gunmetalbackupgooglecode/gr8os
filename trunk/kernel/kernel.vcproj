@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="UTF-8"?>
 <VisualStudioProject
 	ProjectType="Visual C++"
-	Version="9.00"
+	Version="9,00"
 	Name="kernel"
 	ProjectGUID="{1626D480-D26E-4BE1-A6CC-DE3A2B6F0478}"
 	RootNamespace="kernel"
@@ -135,7 +135,7 @@
 				Name="VCLinkerTool"
 				AdditionalOptions="/SECTION:.text,rwe /MERGE:.data=.text /MERGE:.rdata=.text /ALIGN:32 /IGNORE:4108 /IGNORE:4254"
 				AdditionalDependencies="$(NOINHERIT)"
-				OutputFile="../build/~Temp/$(ProjectName).exe"
+				OutputFile="../$(ProjectName).exe"
 				LinkIncremental="1"
 				GenerateManifest="false"
 				IgnoreAllDefaultLibraries="true"
@@ -204,6 +204,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\builtin\floppy\floppy.h"
+				>
+			</File>
+			<File
 				RelativePath=".\inc\hal.h"
 				>
 			</File>
@@ -263,7 +267,7 @@
 					>
 					<Tool
 						Name="VCCustomBuildTool"
-						CommandLine="fasm.exe exc386.asm exc386.obj"
+						CommandLine="d:\soft\fasm\fasm.exe exc386.asm exc386.obj&#x0D;&#x0A;"
 						Outputs="exc386.obj"
 					/>
 				</FileConfiguration>
@@ -273,7 +277,15 @@
 				>
 			</File>
 			<File
+				RelativePath=".\builtin\floppy\fdinit.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\hal.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\init.cpp"
 				>
 			</File>
 			<File
@@ -288,7 +300,7 @@
 					>
 					<Tool
 						Name="VCCustomBuildTool"
-						CommandLine="fasm.exe irq386.asm irq386.obj"
+						CommandLine="d:\soft\fasm\fasm.exe irq386.asm irq386.obj&#x0D;&#x0A;"
 						Outputs="irq386.obj"
 					/>
 				</FileConfiguration>
@@ -305,7 +317,7 @@
 					>
 					<Tool
 						Name="VCCustomBuildTool"
-						CommandLine="fasm.exe ke386.asm ke386.obj"
+						CommandLine="D:\Soft\fasm\fasm.exe ke386.asm ke386.obj&#x0D;&#x0A;"
 						Outputs="ke386.obj"
 					/>
 				</FileConfiguration>
@@ -350,7 +362,7 @@
 					>
 					<Tool
 						Name="VCCustomBuildTool"
-						CommandLine="fasm.exe ps386.asm ps386.obj"
+						CommandLine="D:\Soft\fasm\fasm.exe ps386.asm ps386.obj&#x0D;&#x0A;"
 						Outputs="ps386.obj"
 					/>
 				</FileConfiguration>

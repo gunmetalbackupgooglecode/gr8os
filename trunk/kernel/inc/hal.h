@@ -70,3 +70,194 @@ KdPortPutByte(
 
 #define COMPORT_BASEFREQ 1843200
 
+
+KESYSAPI
+ULONG
+KEAPI
+HalQueryTimerTickMult(
+	);
+
+#pragma pack(1)
+
+typedef union APIC_LVT_ENTRY
+{
+	ULONG RawValue;
+	struct
+	{
+		ULONG Vector : 8;
+		ULONG Reserved1 : 4;
+		ULONG DeliveryStatus : 1;
+		ULONG Reserved2 : 3;
+		ULONG Masked : 1;
+		ULONG TimerMode : 1;
+		ULONG Reserved3 : 14;
+	};
+} *PAPIC_LVT_ENTRY;
+
+typedef struct APIC_TIMER_CONFIG
+{
+	ULONG Flags;
+	ULONG InitialCounter;
+	ULONG CurrentCounter;
+	ULONG Divisor;
+	APIC_LVT_ENTRY LvtTimer;
+} *PAPIC_TIMER_CONFIG;
+
+enum TIMER_MODE
+{
+	OneShot,
+	Periodic
+};
+
+#pragma pack()
+
+#define TIMER_MODIFY_INITIAL_COUNTER	0x01
+#define TIMER_MODIFY_DIVISOR			0x02
+#define TIMER_MODIFY_LVT_ENTRY			0x04
+
+KESYSAPI
+VOID
+KEAPI
+HalQueryApicTimerConf(
+	PAPIC_TIMER_CONFIG Config
+	);
+
+KESYSAPI
+VOID
+KEAPI
+HalSetApicTimerConf(
+	PAPIC_TIMER_CONFIG Config
+	);
+
+KESYSAPI
+ULONG
+KEAPI
+HalpReadApicConfig(
+	ULONG Offset
+	);
+
+KESYSAPI
+ULONG
+KEAPI
+HalpWriteApicConfig(
+	ULONG Offset,
+	ULONG Value
+	);
+
+KESYSAPI
+ULONG
+KEAPI
+HalQueryBusClockFreq(
+	);
+
+extern ULONG HalBusClockFrequency;
+
+#define APIC_TPR	0x0080
+#define APIC_LVTTMR  0x0320
+#define APIC_INITCNT 0x0380
+#define APIC_CURRCNT 0x0390
+#define APIC_DIVCONF 0x03E0
+
+#pragma pack(1)
+
+typedef union SYSTEM_PORT
+{
+	UCHAR RawValue;
+
+	struct
+	{
+		// R/W
+		UCHAR Gate2 : 1;
+		UCHAR Speaker : 1;
+		UCHAR RamControlErr : 1;
+		UCHAR IsaControl : 1;
+
+		// R
+		UCHAR RamReg : 1;
+		UCHAR Timer2Out : 1;
+		UCHAR IsaControlFault : 1;
+		UCHAR RamParityError : 1;
+	};
+} *PSYSTEM_PORT;
+
+#pragma pack()
+
+#define SYSTEM_PORT_NUMBER	0x61
+
+KESYSAPI
+SYSTEM_PORT
+KEAPI
+HalReadSystemPort(
+	);
+
+#define TIMER_GATE0			0x40
+#define TIMER_GATE1			0x41
+#define TIMER_GATE2			0x42
+#define TIMER_CONTROL_PORT	0x43
+
+#pragma pack(1)
+
+enum TIMER_COUNTER_MODE
+{
+	CounterIrq = 0,
+	WaitingMultivibrator = 1,
+	ShortSignals = 2,
+	MeandrGenerator = 3
+	// 4
+	// 5
+};
+
+enum TIMER_REQUEST_MODE
+{
+	LockCurrentValue = 0,
+	LSB = 1,
+	MSB = 2,
+	LSBMSB = 3
+};
+
+typedef union TIMER_CONTROL
+{
+	UCHAR RawValue;
+
+	struct
+	{
+		UCHAR  CountMode : 1; // 0=Binary, 1=BCD
+		UCHAR  CounterMode : 3; // see TIMER_COUNTER_MODE
+
+		UCHAR  RequestMode : 2; // see TIMER_REQUEST_MODE
+		UCHAR  CounterSelector : 2; // 0, 1, 2
+	};
+} *PTIMER_CONTROL;
+
+#pragma pack()
+
+KESYSAPI
+VOID
+KEAPI
+HalConfigureTimer(
+	UCHAR Timer,
+	ULONG Freq
+	);
+
+
+KESYSAPI
+USHORT
+KEAPI
+HalQueryTimerCounter(
+	UCHAR Timer
+	);
+
+#define TIMER_FREQ  1193180
+
+VOID
+KEAPI
+HalInitSystem(
+	);
+
+KESYSAPI
+VOID
+KEAPI
+HalReadConfigTimer(
+	UCHAR Timer,
+	ULONG *Freq
+	);

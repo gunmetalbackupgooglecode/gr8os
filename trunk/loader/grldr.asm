@@ -475,7 +475,6 @@ PROTECTED_ENTRY:
     shl  ecx, 8    ; in pages
     mov  [PhysicalMemoryPages and 0xFFFFFF], ecx
 
-
     ;
     ; Enable paging
     ;

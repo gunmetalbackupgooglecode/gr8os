@@ -19,20 +19,40 @@ typedef unsigned long long ULONGLONG, *PULONGLONG, ULONG64, *PULONG64;
 
 typedef ULONG STATUS, *PSTATUS;
 
-#define STATUS_TIMEOUT						((STATUS)  2)
-#define STATUS_MORE_AVAILABLE				((STATUS)  1)
-#define STATUS_SUCCESS						((STATUS)  0)
-#define STATUS_UNSUCCESSFUL					((STATUS) -1)
-#define STATUS_INSUFFICIENT_RESOURCES		((STATUS) -2)
-#define STATUS_ACCESS_DENIED				((STATUS) -3)
-#define STATUS_ACCESS_VIOLATION				((STATUS) -4)
-#define STATUS_NOT_FOUND					((STATUS) -5)
-#define STATUS_INVALID_PARAMETER			((STATUS) -6)
-#define STATUS_INTERNAL_FAULT				((STATUS) -7)
-#define STATUS_NOT_IMPLEMENTED				((STATUS) -8)
-#define STATUS_REPEAT_NEEDED				((STATUS) -9)
-#define STATUS_DEVICE_NOT_READY				((STATUS) -10)
-#define STATUS_PARTIAL_READ					((STATUS) -11)
+//
+// Notice codes
+//
+#define STATUS_FINISH_PARSING				((STATUS) 0x00000004)
+#define STATUS_REPARSE						((STATUS) 0x00000003)
+#define STATUS_TIMEOUT						((STATUS) 0x00000002)
+#define STATUS_MORE_AVAILABLE				((STATUS) 0x00000001)
+
+// Success code
+#define STATUS_SUCCESS						((STATUS) 0x00000000)
+
+// 
+// Error codes
+//
+
+#define STATUS_UNSUCCESSFUL					((STATUS) 0xF0000001)
+#define STATUS_INSUFFICIENT_RESOURCES		((STATUS) 0xF0000002)
+#define STATUS_ACCESS_DENIED				((STATUS) 0xF0000003)
+#define STATUS_ACCESS_VIOLATION				((STATUS) 0xF0000004)
+#define STATUS_NOT_FOUND					((STATUS) 0xF0000005)
+#define STATUS_INVALID_PARAMETER			((STATUS) 0xF0000006)
+#define STATUS_INTERNAL_FAULT				((STATUS) 0xF0000007)
+#define STATUS_NOT_IMPLEMENTED				((STATUS) 0xF0000008)
+#define STATUS_REPEAT_NEEDED				((STATUS) 0xF0000009)
+#define STATUS_DEVICE_NOT_READY				((STATUS) 0xF000000A)
+#define STATUS_PARTIAL_READ					((STATUS) 0xF000000B)
+#define STATUS_IN_USE						((STATUS) 0xF000000C)
+#define STATUS_INVALID_HANDLE				((STATUS) 0xF000000D)
+
+//
+// Warning codes
+//
+
+#define STATUS_PENDING						((STATUS) 0x80000003)
 
 #define SUCCESS(Status) ((Status)>=0)
 
@@ -40,6 +60,7 @@ typedef ULONG STATUS, *PSTATUS;
 #define IN
 #define OUT
 #define OPTIONAL
+#define UNIMPLEMENTED
 
 #define KEVAR extern "C" extern
 #define KECDECL		__cdecl
@@ -104,6 +125,9 @@ typedef struct COUNTED_BUFFER<PVOID> CBUFFER, *PCBUFFER;
 typedef struct COUNTED_BUFFER<PWSTR> UNICODE_STRING, *PUNICODE_STRING;
 typedef struct COUNTED_BUFFER<PCHAR> ANSI_STRING, *PANSI_STRING;
 
+#define max(a,b) ( (a) > (b) ? (a) : (b) )
+#define min(a,b) ( (a) < (b) ? (a) : (b) )
+
 //
 // Configuration
 //
@@ -124,7 +148,9 @@ typedef struct COUNTED_BUFFER<PCHAR> ANSI_STRING, *PANSI_STRING;
 #define TRACE_PACKETS			1
 
 // Dump head allocation/freeing atttempts
-#define EX_TRACE_HEAP			1
+#define EX_TRACE_HEAP			0
+
+#define OB_TRACE_REF_DEREF		1
 
 
 extern "C"
@@ -135,14 +161,19 @@ extern "C"
 #include "init.h"
 #include "ke.h"
 #include "mm.h"
-#include "ps.h"
 #include "ex.h"
+#include "ps.h"
 #include "hal.h"
 #include "kd.h"
 #include "ob.h"
 #include "io.h"
 
+// Built-in driver includes
+#include "builtin/floppy/floppy.h"
+
 }
+
+#define KdPrint(x) KiDebugPrint x
 
 
 #endif

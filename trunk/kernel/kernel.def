@@ -11,6 +11,9 @@ EXPORTS
 	ExUnlockHeapBlock
 	ExEnterHeapGuardedRegion
 	ExLeaveHeapGuardedRegion
+	ExAcquireMutex
+	ExReleaseMutex
+	ExInitializeMutex
 	
 	;
 	; HAL
@@ -18,6 +21,11 @@ EXPORTS
 	
 	HalReadComPort
 	HalWriteComPort
+	HalConfigureTimer
+	HalQueryTimerCounter
+	HalReadSystemPort
+	HalReadConfigTimer
+	HalBusClockFrequency
 	
 	;
 	; DBGKD
@@ -42,14 +50,11 @@ EXPORTS
 	KeAssertionFailed
 	KeBugCheck
 	KeClearEvent
-	KeConfigureTimer
 	KeDispatchException
 	KeGdtEntry
 	KeIdtEntry
 	KeInitializeEvent
 	KeInsertQueueDpc
-	KeQueryTimerCounter
-	KeReadSystemPort
 	KeRemoveQueueDpc
 	KeSetEvent
 	KeStallExecution
@@ -59,12 +64,52 @@ EXPORTS
 	KiFillDataSegment
 	
 	;
+	; Io
+	;
+	
+	IoAllocateIrp
+	IoCallDriver
+	IoBuildDeviceIoControlRequest
+	IoBuildDeviceRequest
+	IoCreateDevice
+	IoAttachDevice
+	IoDetachDevice
+	IoDeleteDevice
+	IoGetAttachedDevice
+	IoGetNextDevice
+	IoCreateFile
+	IoCloseFile
+	IoReadFile
+	IoWriteFile
+	IoDeviceIoControlFile
+	IoCompleteRequest
+		
+		
+	;
+	; Ob
+	;
+	
+	ObCreateDirectory
+	ObCreateObject
+	ObCreateObjectType
+	ObDeleteObject
+	ObReferenceObject
+	ObDereferenceObject
+	ObDereferenceObjectEx
+	ObInsertObject
+	ObMakeTemporaryObject
+	ObReferenceObjectByName
+	ObOpenObjectByName
+	ObOpenObjectByPointer
+	ObQueryObjectName
+	ObReferenceObjectByHandle
+	
+	;
 	; Mm
 	;
 	
 	MmIsAddressValid
-	
-	
+		
 	
 	;
 	; Processes
@@ -93,4 +138,12 @@ EXPORTS
 	memmove
 	sprintf
 	vsprintf
+	RtlDuplicateUnicodeString
+	RtlInitUnicodeString
+	wcscmp
+	wcslen
+	wcsncpy
+	wcssubstr
+	wcsrchr
+
 	

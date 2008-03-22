@@ -89,6 +89,12 @@ typedef struct THREAD
 	BOOLEAN InExGuardedRegion;
 	PVOID ExGuardTable;
 
+	// Irp list
+	MUTEX IrpListLock;
+	LIST_ENTRY IrpList;
+
+	PROCESSOR_MODE PreviousMode;
+
 } *PTHREAD;
 
 enum THREAD_STATE
@@ -136,6 +142,14 @@ extern LIST_ENTRY PsWaitListHead;
 
 #define THREAD_INITIAL_STACK_SIZE  0x3000
 
+typedef struct OBJECT_HANDLE *POBJECT_HANDLE;
+
+typedef struct OBJECT_TABLE
+{
+	MUTEX TableLock;
+	POBJECT_HANDLE HandleTable;
+} *POBJECT_TABLE;
+
 //
 // Process
 //
@@ -153,6 +167,9 @@ typedef struct PROCESS
 
 	// Number of thread that belong to this process
 	ULONG  NumberOfThreads;
+
+	// Object table
+	OBJECT_TABLE ObjectTable;
 
 } *PPROCESS;
 

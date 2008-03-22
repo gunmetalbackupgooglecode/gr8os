@@ -19,11 +19,22 @@ KiDebugPrintRaw(
 	Out debug string
 --*/
 {
-	for( PCHAR sp=String; *sp; sp++ )
+	if (KiInPort (BOCHS_LOGGER_PORT) == BOCHS_LOGGER_PORT)
 	{
-		if( *sp == '\n' )
-			KiOutPort( BOCHS_LOGGER_PORT, '\r' );
-		KiOutPort( BOCHS_LOGGER_PORT, *sp );
+		for( PCHAR sp=String; *sp; sp++ )
+		{
+			if( *sp == '\n' )
+				KiOutPort( BOCHS_LOGGER_PORT, '\r' );
+			KiOutPort( BOCHS_LOGGER_PORT, *sp );
+		}
+	}
+	else
+	{
+		__asm push esi
+		__asm mov  esi, [String]
+		__asm xor  ax, ax
+		__asm int  0x30
+		__asm pop  esi
 	}
 }
 
