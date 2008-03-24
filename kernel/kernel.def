@@ -26,6 +26,8 @@ EXPORTS
 	HalReadSystemPort
 	HalReadConfigTimer
 	HalBusClockFrequency
+	HalRequestDma
+	HalFreeDma
 	
 	;
 	; DBGKD

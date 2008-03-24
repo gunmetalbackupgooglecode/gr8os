@@ -277,6 +277,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\builtin\floppy\fdfunc.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\builtin\floppy\fdinit.cpp"
 				>
 			</File>
