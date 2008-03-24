@@ -20,6 +20,9 @@ extern POBJECT_DIRECTORY IoDriverDirectory;
 #define DEVICE_TYPE_VIDEO		0x00000005
 //#define DEVICE_TYPE_
 
+#define DEVICE_FLAGS_BUFFERED_IO	0x00000001
+#define DEVICE_FLAGS_NEITHER_IO		0x00000002
+
 typedef struct DRIVER *PDRIVER;
 typedef struct IRP *PIRP;
 typedef struct DEVICE *PDEVICE;
@@ -182,6 +185,7 @@ struct IRP
 	PFILE FileObject;					// File object used to queue this IRP
 	PEVENT UserEvent;					// Pointer to the user event in asynchronous i/o
 	LIST_ENTRY ThreadListEntry;			// Double-linked list with the IRPs of the specified thread. See THREAD::IrpList
+	PIRP AssosiatedIrp;					// An IRP, associated with this.
 
 	UCHAR StackSize;					// Stack size (= IRP::Size-FIELD_OFFSET(IrpStackLocations))/sizeof(IRP_STACK_LOCATION)
 	UCHAR CurrentLocation;				// Current stack location number

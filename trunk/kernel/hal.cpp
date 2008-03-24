@@ -419,3 +419,48 @@ HalInitSystem(
 
 	HalConfigureTimer( 2, 200 );
 }
+
+#define MAX_DMA_CHANNELS  8
+
+LONG HalpDmaChannelBusy[MAX_DMA_CHANNELS] = { 1, 0, 0, 0, 1, 0, 0, 0 };
+
+
+KESYSAPI
+STATUS
+KEAPI
+HalRequestDma(
+	UCHAR Channel
+	)
+/*++
+	This routine requests DMA channel for the device driver.
+	Channel should be freed with HalFreeDma() later.
+--*/
+{
+	if (Channel >= MAX_DMA_CHANNELS)
+		return STATUS_INVALID_PARAMETER;
+
+	if (InterlockedExchange (&HalpDmaChannelBusy[Channel], 1) != 0)
+		return STATUS_BUSY;
+
+	return STATUS_SUCCESS;
+}
+
+
+KESYSAPI
+STATUS
+KEAPI
+HalFreeDma(
+	UCHAR Channel
+	)
+/*++
+	This routine frees DMA channel allocated by HalRequestDma()
+--*/
+{
+	if (Channel >= MAX_DMA_CHANNELS)
+		return STATUS_INVALID_PARAMETER;
+
+	if (InterlockedExchange (&HalpDmaChannelBusy[Channel], 1) == 0)
+		return STATUS_ALREADY_FREE;
+
+	return STATUS_SUCCESS;
+}

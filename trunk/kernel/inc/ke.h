@@ -604,3 +604,20 @@ KeGetRequestorMode(
 	);
 
 #define KeGetRequestorMode() (PsGetCurrentThread()->PreviousMode)
+
+KESYSAPI
+LONG
+KEFASTAPI
+InterlockedExchange(
+	PLONG Variable,
+	LONG NewValue
+	);
+
+KESYSAPI
+LONG
+KEFASTAPI
+InterlockedCompareExchange(
+	PLONG Variable,			// @ECX
+	LONG Exchange,			// @EDX
+	LONG Comperand
+	);

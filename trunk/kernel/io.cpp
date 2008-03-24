@@ -851,9 +851,9 @@ IopInvalidDeviceRequest(
 	This is the default handler for all IRP requests
 --*/
 {
-	Irp->IoStatus.Status = STATUS_UNSUCCESSFUL;
+	Irp->IoStatus.Status = STATUS_INVALID_FUNCTION;
 	IoCompleteRequest (Irp, 0);
-	return STATUS_UNSUCCESSFUL;
+	return STATUS_INVALID_FUNCTION;
 }
 
 STATUS

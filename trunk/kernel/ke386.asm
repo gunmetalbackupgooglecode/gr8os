@@ -10,6 +10,39 @@ public tempbuffer
 tempbuffer rb 512
 
 
+public InterlockedExchange as '@InterlockedExchange@8'
+;
+;KESYSAPI
+;LONG
+;KEFASTAPI
+;InterlockedExchange(
+;	PLONG Variable,			// @ECX
+;	LONG NewValue			// @EDX
+;	);
+;
+InterlockedExchange:
+	mov  eax, edx
+	lock xchg [ecx], eax
+	retn
+
+
+public InterlockedCompareExchange as '@InterlockedCompareExchange@12'
+;
+;KESYSAPI
+;LONG
+;KEFASTAPI
+;InterlockedCompareExchange(
+;	PLONG Variable,			// @ECX
+;	LONG Exchange,			// @EDX
+;	LONG Comperand
+;	);
+;
+InterlockedCompareExchange:
+	mov  eax, [esp+4]
+	lock cmpxchg dword [ecx], edx
+	retn 4
+
+
 ;
 ; KeAcquireLock
 ;

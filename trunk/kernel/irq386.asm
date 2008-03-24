@@ -201,6 +201,19 @@ clear_request:
     pop  edi
     pop  ax
     jmp  KiEoiHelper
+    
+;
+; FD IRQ
+;
+
+public FdpIrqState as '_FdpIrqState'
+FdpIrqState db 0
+
+FdIrq_handler:
+	or  [FdpIrqState], 1
+	cli
+	hlt
+	jmp KiEoiHelper
 
 ;
 ; EOI helper
@@ -253,6 +266,26 @@ KiWriteVector:
 	pop  ecx
 	retn 8
 	
+; @implemented
+;
+; KiWriteNewVector
+;
+;  Writes IDT vector
+;  esp+4  idt number
+;  esp+8  handler
+;
+KiWriteNewVector:
+	push ecx
+	
+	mov  ecx, [esp+8]
+	mov  word [esi + ecx*8], 0  ; offset
+	mov  word [esi + ecx*8 + 2], 8  ; KE_GDT_CODE
+	mov  word [esi + ecx*8 + 4], 1000111000000000b
+	mov  word [esi + ecx*8 + 6], 0  ; offset
+		
+	pop  ecx
+	
+	jmp  KiWriteVector
 	
 extrn exDE_handler
 extrn exDB_handler
@@ -308,6 +341,7 @@ KiInitializeIdt:
 	invoke KiWriteVector, 19, exXF_handler
 	invoke KiWriteVector, 0x20, irq0_handler
 	invoke KiWriteVector, 0x21, irq1_handler
+	invoke KiWriteNewVector, 0x26, FdIrq_handler	; IRQ6 - FD
 	invoke KiWriteVector, 0x30, KiSystemCall
 	
 	popfd

@@ -261,3 +261,22 @@ HalReadConfigTimer(
 	UCHAR Timer,
 	ULONG *Freq
 	);
+
+#define MAX_DMA_CHANNELS  8
+
+extern LONG HalpDmaChannelBusy[MAX_DMA_CHANNELS];
+
+KESYSAPI
+STATUS
+KEAPI
+HalRequestDma(
+	UCHAR Channel
+	);
+
+KESYSAPI
+STATUS
+KEAPI
+HalFreeDma(
+	UCHAR Channel
+	);
+

@@ -75,6 +75,12 @@ struct WAIT_BLOCK
 	WaitListEntry	LIST_ENTRY
 ends
 
+struct SCHEDULER_HEADER
+	ObjectType			dd ?
+	SignaledState		dd ?
+	WaitListHead		LIST_ENTRY
+ends
+
 struct THREAD
     NextThread        dd ?
     PrevThread        dd ?
