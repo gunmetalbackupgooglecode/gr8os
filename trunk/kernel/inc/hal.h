@@ -435,3 +435,6 @@ KEAPI
 HalCmosRead(
 	UCHAR Offset
 	);
+
+#define CMOS_SELECTOR	0x70
+#define CMOS_DATA		0x71

@@ -191,34 +191,6 @@ typedef struct FD_INT_STATE
 
 extern FD_INT_STATE FdpIrqState;
 
-// BIOS Disk Parameter Table (DPT)
-
-#define DPT_PTR_PHYSICAL	0x00000078
-#define DPT_PTR_VIRTUAL		0xFFFFB000
-#define DPT_BASE_VIRTUAL	0xFFFFB000
-
-typedef struct FDBIOSPT
-{
-	UCHAR StepRateTime : 4;
-	UCHAR HeadsUnloadTime : 4;
-
-	UCHAR DmaEnabled : 1;
-	UCHAR Reserved : 1;
-	UCHAR HeadsLoadTime : 6;
-	
-	UCHAR MotorOffDelay;
-	UCHAR SectorSize; // 0-128, 1-256, 2-512, 3-1024
-	UCHAR LastSectorInTrack;
-	UCHAR SectorGapRw;
-	UCHAR MaximumTransmitLength;
-	UCHAR GapFormat;
-	UCHAR FormatFillChar;
-	UCHAR HeadSetTime;
-	UCHAR MotorStart; // in 1/8 sec
-} *PFDBIOSPT;
-
-extern PFDBIOSPT FdBiosDPT;
-
 typedef struct FD_MEDIA_TYPE {
 	ULONG NumberOfSectors;
 	UCHAR SectorsPerTrack;

@@ -750,8 +750,6 @@ KeBugCheck(
 	__asm mov bl, 75	// white on the red.
 	__asm int 0x30
 
-	INT3
-
 	// Wake up kernel debugger and pass the control to it.
 	for( ;; )
 	{

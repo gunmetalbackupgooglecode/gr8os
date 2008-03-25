@@ -867,4 +867,6 @@ HalCmosRead(
 	Read cmos memory
 --*/
 {
+	KiOutPort (CMOS_SELECTOR, Offset);
+	return KiInPort (CMOS_DATA);
 }

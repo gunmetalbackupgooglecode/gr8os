@@ -112,8 +112,6 @@ FdWrite(
 	COMPLETE_IRP (Irp, STATUS_NOT_SUPPORTED, 0);
 }
 
-PFDBIOSPT FdBiosDPT;
-
 STATUS
 KEAPI 
 FdDriverEntry(
@@ -154,29 +152,6 @@ FdDriverEntry(
 	DriverObject->IrpHandlers[IRP_WRITE] = FdWrite;
 
 	DriverObject->DriverUnload = NULL; // We don't support unloading.
-
-	//
-	// Map BIOS DPT (Disk Parameter Table)
-	//
-
-	// Map bios page with address of DPT
-	MiMapPhysicalPages ((PVOID)DPT_PTR_VIRTUAL, 
-						DPT_PTR_PHYSICAL, 1
-						);
-
-	// Read address of DPT
-	USHORT DPT_Offset = *(USHORT*)(DPT_PTR_VIRTUAL + DPT_PTR_PHYSICAL);
-	USHORT DPT_Segment = *(USHORT*)(DPT_PTR_VIRTUAL + DPT_PTR_PHYSICAL);
-	ULONG DPT_Linear = DPT_Segment * 16  +  DPT_Offset;
-
-	// Unmap bios page & map DPT
-	MiUnmapPhysicalPages ((PVOID)DPT_PTR_VIRTUAL, 1);
-	MiMapPhysicalPages ((PVOID)DPT_PTR_VIRTUAL, DPT_Linear, 1);
-
-	*(ULONG*)&FdBiosDPT = DPT_PTR_VIRTUAL + (DPT_Linear & 0xFFF);
-
-	KdPrint(("FdBiosDPT: %08x\n", FdBiosDPT));
-	KdPrint(("FdBiosDPT->SectorSize %02x\n", FdBiosDPT->SectorSize));
 
 	return FdInit();
 }
