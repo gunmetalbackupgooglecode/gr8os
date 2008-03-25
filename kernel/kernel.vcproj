@@ -133,7 +133,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
-				AdditionalOptions="/SECTION:.text,rwe /MERGE:.data=.text /MERGE:.rdata=.text /ALIGN:32 /IGNORE:4108 /IGNORE:4254"
+				AdditionalOptions="/SECTION:.text,rwe /MERGE:.data=.text /MERGE:.rdata=.text /ALIGN:32 /IGNORE:4108 /IGNORE:4254 /IGNORE:4216"
 				AdditionalDependencies="$(NOINHERIT)"
 				OutputFile="../$(ProjectName).exe"
 				LinkIncremental="1"

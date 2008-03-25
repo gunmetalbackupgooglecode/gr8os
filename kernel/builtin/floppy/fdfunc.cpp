@@ -31,10 +31,6 @@ void FdpWait()
 }
 
 
-void FdpDmaInit()
-{
-}
-
 // From linux-1.0 kernel
 FD_MEDIA_TYPE FdpFloppyTypes[] = {
 	{  720, 9,2,40,0,0x2A,0x02,0xDF,0x50,"360k/PC" }, /* 360kB PC diskettes */

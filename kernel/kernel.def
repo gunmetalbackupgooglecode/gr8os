@@ -36,7 +36,7 @@ EXPORTS
 	HalDisableDma
 	HalClearDmaFf
 	HalSetDmaMode
-	
+	HalCmosRead
 	
 	;
 	; DBGKD
@@ -73,6 +73,7 @@ EXPORTS
 	KiDebugPrint
 	KiDebugPrintRaw
 	KiFillDataSegment
+	KiInitSystem
 	
 	;
 	; Io
@@ -122,6 +123,7 @@ EXPORTS
 	MmIsAddressValid
 	MmMapPhysicalPages
 	MmUnmapPhysicalPages = MiUnmapPhysicalPages
+	MmIsAddressValidEx
 		
 	
 	;
@@ -158,5 +160,6 @@ EXPORTS
 	wcsncpy
 	wcssubstr
 	wcsrchr
-
+	strlen
+	
 	
