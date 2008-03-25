@@ -176,13 +176,16 @@ FdInit(
 STATUS
 KEAPI
 FdPerformRead(
+	IN PFILE FileObject,
+	IN ULONG ClusterNumber,
 	OUT PVOID Buffer,
-	IN OUT PULONG BufferLength,
-	IN ULONG LbaSector,
-	IN BOOLEAN SynchronousOperation
+	IN ULONG Size
 	)
 {
 	FdPrepareController (0);
+
+	ULONG LbaSector = /* Sector to cluster */ ClusterNumber;
+	ULONG* BufferLength = &Size;
 
 	KdPrint(("FdRead: controller prepared\n"));
 
@@ -272,15 +275,4 @@ FdPerformRead(
 	FdMotorOff (0);
 
 	return Status;
-}
-
-STATUS
-KEAPI
-FdPerformWrite(
-	OUT PVOID Buffer,
-	IN OUT PULONG BufferLength,
-	IN ULONG LbaSector
-	)
-{
-	return STATUS_UNSUCCESSFUL;
 }

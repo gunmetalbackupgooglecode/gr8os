@@ -33,6 +33,27 @@ FdCreateClose(
 {
 	FdPrintInfo (("FdCreateClose: MajorFunction=%d, DeviceObject=%08x\n", Irp->MajorFunction, DeviceObject));
 
+	if (Irp->MajorFunction == IRP_CREATE)
+	{
+		//
+		// Initialize caching for the floppy (support only read-only access)
+		//
+
+		CCFILE_CACHE_CALLBACKS Callbacks = { FdPerformRead, NULL };
+		CcInitializeFileCaching (Irp->FileObject, FD_SECTOR_SIZE, &Callbacks);
+	}
+	else
+	{
+		if (Irp->FileObject->Synchronize == FALSE)
+		{
+			//
+			// Purge & free cache map
+			//
+
+			CcFreeCacheMap (Irp->FileObject);
+		}
+	}
+
 	COMPLETE_IRP (Irp, STATUS_SUCCESS, 0);
 }
 
@@ -92,16 +113,17 @@ FdRead(
 		COMPLETE_IRP (Irp, STATUS_DATATYPE_MISALIGNMENT, 0);
 	}
 
-	Status = FdPerformRead (Buffer, &Size, LbaSector, (Irp->Flags&IRP_FLAGS_SYNCHRONOUS_IO) == IRP_FLAGS_SYNCHRONOUS_IO);
+	Status = CcCacheReadFile (
+		Irp->FileObject,
+		LbaSector,
+		Buffer,
+		Size
+		);
 
-	if (SUCCESS(Status))
-	{
-		Irp->FileObject->CurrentOffset.LowPart = (LbaSector << FD_SECTOR_SHIFT) + Size;
-	}
-
-	COMPLETE_IRP (Irp, Status, 0);
+	COMPLETE_IRP (Irp, Status, Size);
 }
 
+/*
 STATUS
 KEAPI
 FdWrite(
@@ -111,6 +133,7 @@ FdWrite(
 {
 	COMPLETE_IRP (Irp, STATUS_NOT_SUPPORTED, 0);
 }
+*/
 
 STATUS
 KEAPI 
@@ -149,7 +172,7 @@ FdDriverEntry(
 	DriverObject->IrpHandlers[IRP_CLOSE] = FdCreateClose;
 	DriverObject->IrpHandlers[IRP_IOCTL] = FdDeviceIoControl;
 	DriverObject->IrpHandlers[IRP_READ]  = FdRead;
-	DriverObject->IrpHandlers[IRP_WRITE] = FdWrite;
+//	DriverObject->IrpHandlers[IRP_WRITE] = FdWrite;
 
 	DriverObject->DriverUnload = NULL; // We don't support unloading.
 

@@ -77,15 +77,6 @@ IopDeleteFile(
 
 	KdPrint(("IopDeleteFile\n"));
 
-	if (FileObject->Synchronize == FALSE)
-	{
-		//
-		// Purge cache and free cache map
-		//
-
-		CcFreeCacheMap (FileObject);
-	}
-
 	ObDereferenceObject (FileObject->DeviceObject);
 	ExFreeHeap (FileObject->FileName.Buffer);
 }
@@ -238,6 +229,27 @@ IoInitSystem(
 	RtlInitUnicodeString (&FdDriverName, L"\\Driver\\floppy" );
 
 	Status = IopCreateDriverObject ( 0, 0, DRV_FLAGS_BUILTIN|DRV_FLAGS_CRITICAL, FdDriverEntry, &FdDriverName, &FdDriver );
+	if (!SUCCESS(Status))
+	{
+		KeBugCheck (IO_INITIALIZATION_FAILED,
+					__LINE__,
+					Status,
+					0,
+					0
+					);
+	}
+
+
+	//
+	// Load FS FAT driver
+	//
+
+	PDRIVER FatDriver;
+	UNICODE_STRING FatDriverName;
+
+	RtlInitUnicodeString (&FatDriverName, L"\\FileSystem\\fat" );
+
+	Status = IopCreateDriverObject ( 0, 0, DRV_FLAGS_BUILTIN|DRV_FLAGS_CRITICAL, FsFatDriverEntry, &FatDriverName, &FatDriver );
 	if (!SUCCESS(Status))
 	{
 		KeBugCheck (IO_INITIALIZATION_FAILED,
@@ -466,12 +478,6 @@ IoCreateFile(
 	File->DeleteAccess = !!(DesiredAccess & FILE_DELETE);
 	File->Synchronize = !!(DesiredAccess & SYNCHRONIZE);
 
-	if (File->Synchronize == FALSE)
-	{
-		//BUGBUG: Fixme - pass there VPB::ClusterSize
-		CcInitializeFileCaching (File, FD_SECTOR_SIZE);
-	}
-
 	PIRP Irp = IoBuildDeviceRequest (
 		DeviceObject,
 		IRP_CREATE,
@@ -501,9 +507,9 @@ IoCreateFile(
 
 	Status = IoCallDriver (DeviceObject, Irp);
 
-	if (SUCCESS(Status) && !SUCCESS(Irp->IoStatus.Status))
+	if (SUCCESS(Status) && !SUCCESS(IoStatus->Status))
 	{
-		Status = Irp->IoStatus.Status;
+		Status = IoStatus->Status;
 	}
 
 	if (!SUCCESS(Status))
@@ -595,14 +601,19 @@ IoReadFile(
 	Irp->FileObject = FileObject;
 	Irp->CurrentStackLocation->DeviceObject = FileObject->DeviceObject;
 
+	LARGE_INTEGER Offset;
+
 	if (ARGUMENT_PRESENT(FileOffset))
 	{
-		Irp->CurrentStackLocation->Parameters.ReadWrite.Offset = *FileOffset;
+		Offset = *FileOffset;
+		Irp->CurrentStackLocation->Parameters.ReadWrite.OffsetSpecified = TRUE;
 	}
 	else
 	{
-		Irp->CurrentStackLocation->Parameters.ReadWrite.Offset = FileObject->CurrentOffset;
+		Offset = FileObject->CurrentOffset;
 	}
+
+	Irp->CurrentStackLocation->Parameters.ReadWrite.Offset = Offset;
 
 	for (int i=1; i<Irp->StackSize; i++)
 	{
@@ -611,9 +622,14 @@ IoReadFile(
 
 	Status = IoCallDriver (FileObject->DeviceObject, Irp);
 
-	if (SUCCESS(Status) && !SUCCESS(Irp->IoStatus.Status))
+	if (SUCCESS(Status) && !SUCCESS(IoStatus->Status))
 	{
-		Status = Irp->IoStatus.Status;
+		Status = IoStatus->Status;
+	}
+
+	if (SUCCESS(Status))
+	{
+		FileObject->CurrentOffset.LowPart = Offset.LowPart + IoStatus->Information;
 	}
 
 	return Status;
@@ -657,14 +673,19 @@ IoWriteFile(
 
 	memcpy (Irp->SystemBuffer, Buffer, Length);
 
+	LARGE_INTEGER Offset;
+
 	if (ARGUMENT_PRESENT(FileOffset))
 	{
-		Irp->CurrentStackLocation->Parameters.ReadWrite.Offset = *FileOffset;
+		Offset = *FileOffset;
+		Irp->CurrentStackLocation->Parameters.ReadWrite.OffsetSpecified = TRUE;
 	}
 	else
 	{
-		Irp->CurrentStackLocation->Parameters.ReadWrite.Offset = FileObject->CurrentOffset;
+		Offset = FileObject->CurrentOffset;
 	}
+
+	Irp->CurrentStackLocation->Parameters.ReadWrite.Offset = Offset;
 
 	for (int i=1; i<Irp->StackSize; i++)
 	{
@@ -673,9 +694,14 @@ IoWriteFile(
 
 	Status = IoCallDriver (FileObject->DeviceObject, Irp);
 
-	if (SUCCESS(Status) && !SUCCESS(Irp->IoStatus.Status))
+	if (SUCCESS(Status) && !SUCCESS(IoStatus->Status))
 	{
-		Status = Irp->IoStatus.Status;
+		Status = IoStatus->Status;
+	}
+
+	if (SUCCESS(Status))
+	{
+		FileObject->CurrentOffset.LowPart = Offset.LowPart + IoStatus->Information;
 	}
 
 	return Status;
@@ -721,9 +747,9 @@ IoDeviceIoControlFile(
 
 	Status = IoCallDriver (FileObject->DeviceObject, Irp);
 
-	if (SUCCESS(Status) && !SUCCESS(Irp->IoStatus.Status))
+	if (SUCCESS(Status) && !SUCCESS(IoStatus->Status))
 	{
-		Status = Irp->IoStatus.Status;
+		Status = IoStatus->Status;
 	}
 
 	return Status;
@@ -972,9 +998,11 @@ IopQueueThreadIrp(
 {
 	PTHREAD Thread = Irp->CallerThread;
 
+#if !GROSEMU
 	ExAcquireMutex (&Thread->IrpListLock);
 	InsertTailList (&Thread->IrpList, &Irp->ThreadListEntry);
 	ExReleaseMutex (&Thread->IrpListLock);
+#endif
 }
 
 VOID
@@ -985,9 +1013,11 @@ IopDequeueThreadIrp(
 {
 	PTHREAD Thread = Irp->CallerThread;
 
+#if !GROSEMU
 	ExAcquireMutex (&Thread->IrpListLock);
 	RemoveEntryList (&Irp->ThreadListEntry);
 	ExReleaseMutex (&Thread->IrpListLock);
+#endif
 	InitializeListHead (&Irp->ThreadListEntry);
 }
 
@@ -1034,7 +1064,7 @@ IoCompleteRequest(
 		memcpy (
 			Irp->UserBuffer,
 			Irp->SystemBuffer,
-			Irp->BufferLength
+			Irp->IoStatus.Information
 			);
 	}
 

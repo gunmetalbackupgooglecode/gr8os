@@ -22,6 +22,7 @@ typedef ULONG STATUS, *PSTATUS;
 //
 // Notice codes
 //
+#define STATUS_CACHED						((STATUS) 0x00000006)
 #define STATUS_ALREADY_FREE					((STATUS) 0x00000005)
 #define STATUS_FINISH_PARSING				((STATUS) 0x00000004)
 #define STATUS_REPARSE						((STATUS) 0x00000003)
@@ -181,6 +182,7 @@ extern "C"
 
 // Built-in driver includes
 #include "builtin/floppy/floppy.h"
+#include "builtin/fsfat/fsfat.h"
 
 }
 

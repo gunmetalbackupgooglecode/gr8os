@@ -14,10 +14,10 @@ FdDriverEntry(
 STATUS
 KEAPI
 FdPerformRead(
+	IN PFILE FileObject,
+	IN ULONG ClusterNumber,
 	OUT PVOID Buffer,
-	IN OUT PULONG BufferLength,
-	IN ULONG LbaSector,
-	IN BOOLEAN SynchronousOperation
+	IN ULONG Size
 	);
 
 STATUS

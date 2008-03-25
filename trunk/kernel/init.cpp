@@ -383,6 +383,28 @@ KiInitSystem(
 		((UCHAR*)Buffer)[2],
 		((UCHAR*)Buffer)[3]));
 
+
+	KdPrint(("\nRead 3\n\n"));
+
+	LARGE_INTEGER offs = { 0, 0 };
+
+	Status = IoReadFile (File, Buffer, 512, &offs, &IoStatus);
+	if (!SUCCESS(Status)) {
+		KeBugCheck (KE_INITIALIZATION_FAILED,
+					__LINE__,
+					Status,
+					0,
+					0
+					);
+	}
+
+	KdPrint(("INIT: Buffer: %02x %02x %02x %02x\n",
+		((UCHAR*)Buffer)[0],
+		((UCHAR*)Buffer)[1],
+		((UCHAR*)Buffer)[2],
+		((UCHAR*)Buffer)[3]));
+
+
 	KdPrint(("\nClose\n\n"));
 
 	ExFreeHeap (Buffer);
