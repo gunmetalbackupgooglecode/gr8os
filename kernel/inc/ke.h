@@ -577,6 +577,14 @@ KeSetEvent(
 	);
 
 KESYSAPI
+BOOLEAN
+KEAPI
+KePulseEvent(
+	PEVENT Event,
+	USHORT QuantumIncrement
+	);
+
+KESYSAPI
 VOID
 KEAPI
 KeClearEvent(

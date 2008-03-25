@@ -212,15 +212,24 @@ struct FILE
 			BOOLEAN SharedRead UNIMPLEMENTED;
 			BOOLEAN SharedWrite UNIMPLEMENTED;
 			BOOLEAN SharedDelete UNIMPLEMENTED;
+			BOOLEAN Synchronize;
 		};
 	};
 	UNICODE_STRING FileName;
 	LARGE_INTEGER CurrentOffset;
 	STATUS FinalStatus;
-	PEVENT Event;
+	EVENT Event;
+	PCCFILE_CACHE_MAP CacheMap;
 };
 #pragma pack()
 
+#define SYNCHRONIZE				0x00000001
+
+#define FILE_READ_ATTRIBUTES	0x00000002
+#define FILE_WRITE_ATTRIBUTES	0x00000004
+#define FILE_READ_DATA			0x00000008
+#define FILE_WRITE_DATA			0x00000010
+#define FILE_DELETE				0x00000020
 
 KESYSAPI
 PIRP
@@ -263,7 +272,7 @@ IoCreateFile(
 	);
 
 KESYSAPI
-VOID
+STATUS
 KEAPI
 IoCloseFile(
 	IN PFILE FileObject

@@ -77,6 +77,15 @@ IopDeleteFile(
 
 	KdPrint(("IopDeleteFile\n"));
 
+	if (FileObject->Synchronize == FALSE)
+	{
+		//
+		// Purge cache and free cache map
+		//
+
+		CcFreeCacheMap (FileObject);
+	}
+
 	ObDereferenceObject (FileObject->DeviceObject);
 	ExFreeHeap (FileObject->FileName.Buffer);
 }
@@ -449,7 +458,19 @@ IoCreateFile(
 
 	File->CurrentOffset.QuadPart = 0;
 	File->FinalStatus = STATUS_SUCCESS;
-	File->Event = NULL;
+	KeInitializeEvent (&File->Event, SynchronizationEvent, FALSE);
+	File->CacheMap = NULL;
+	File->DesiredAccess = DesiredAccess;
+	File->ReadAccess = !!(DesiredAccess & FILE_READ_DATA);
+	File->WriteAccess = !!(DesiredAccess & FILE_WRITE_DATA);
+	File->DeleteAccess = !!(DesiredAccess & FILE_DELETE);
+	File->Synchronize = !!(DesiredAccess & SYNCHRONIZE);
+
+	if (File->Synchronize == FALSE)
+	{
+		//BUGBUG: Fixme - pass there VPB::ClusterSize
+		CcInitializeFileCaching (File, FD_SECTOR_SIZE);
+	}
 
 	PIRP Irp = IoBuildDeviceRequest (
 		DeviceObject,
@@ -480,6 +501,11 @@ IoCreateFile(
 
 	Status = IoCallDriver (DeviceObject, Irp);
 
+	if (SUCCESS(Status) && !SUCCESS(Irp->IoStatus.Status))
+	{
+		Status = Irp->IoStatus.Status;
+	}
+
 	if (!SUCCESS(Status))
 	{
 		ObpDeleteObjectInternal (File);
@@ -493,7 +519,7 @@ IoCreateFile(
 }
 
 KESYSAPI
-VOID
+STATUS
 KEAPI
 IoCloseFile(
 	IN PFILE FileObject
@@ -524,7 +550,12 @@ IoCloseFile(
 	//  coppersponding device object
 	//
 
-	ObpDeleteObject (FileObject);
+	if (SUCCESS(Status))
+	{
+		Status = ObpDeleteObject (FileObject);
+	}
+
+	return Status;
 }
 
 
@@ -579,6 +610,11 @@ IoReadFile(
 	}
 
 	Status = IoCallDriver (FileObject->DeviceObject, Irp);
+
+	if (SUCCESS(Status) && !SUCCESS(Irp->IoStatus.Status))
+	{
+		Status = Irp->IoStatus.Status;
+	}
 
 	return Status;
 }
@@ -637,6 +673,11 @@ IoWriteFile(
 
 	Status = IoCallDriver (FileObject->DeviceObject, Irp);
 
+	if (SUCCESS(Status) && !SUCCESS(Irp->IoStatus.Status))
+	{
+		Status = Irp->IoStatus.Status;
+	}
+
 	return Status;
 }
 
@@ -658,6 +699,8 @@ IoDeviceIoControlFile(
 	This function send IOCTL request to the appropriate driver.
 --*/
 {
+	STATUS Status;
+
 	PIRP Irp = IoBuildDeviceIoControlRequest(
 		FileObject->DeviceObject,
 		IoStatus,
@@ -676,8 +719,14 @@ IoDeviceIoControlFile(
 
 	Irp->FileObject = FileObject;
 
-	return IoCallDriver (FileObject->DeviceObject, Irp);
+	Status = IoCallDriver (FileObject->DeviceObject, Irp);
 
+	if (SUCCESS(Status) && !SUCCESS(Irp->IoStatus.Status))
+	{
+		Status = Irp->IoStatus.Status;
+	}
+
+	return Status;
 }
 
 KESYSAPI
@@ -1013,11 +1062,12 @@ IoCompleteRequest(
 
 	if (Irp->UserEvent)
 	{
-		KeSetEvent (Irp->UserEvent, 0);
+		KePulseEvent (Irp->UserEvent, (USHORT)QuantumIncrement);
 	}
-	else if (Irp->FileObject && Irp->FileObject->Event)
+	
+	if (Irp->FileObject)
 	{
-		KeSetEvent (Irp->FileObject->Event, 0);
+		KePulseEvent (&Irp->FileObject->Event, (USHORT)QuantumIncrement);
 	}
 
 	//
