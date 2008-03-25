@@ -103,7 +103,6 @@ EXPORTS
 	
 	CcInitializeFileCaching
 	CcFreeCacheMap
-	CcCacheFileCluster
 	CcCacheReadFile
 	CcCacheWriteFile
 	CcPurgeCacheFile

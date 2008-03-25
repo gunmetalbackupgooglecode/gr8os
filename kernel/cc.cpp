@@ -8,12 +8,16 @@
 
 #include "common.h"
 
+#define CcPrint(x) KdPrint(x)
+//#define CcPrint(x)
+
 KESYSAPI
 VOID
 KEAPI
 CcInitializeFileCaching(
 	IN PFILE File,
-	IN ULONG ClusterSize
+	IN ULONG ClusterSize,
+	IN PCCFILE_CACHE_CALLBACKS Callbacks
 	)
 /*++
 	Initialize file cache map. Further read/write operating may be cached.
@@ -38,6 +42,8 @@ CcInitializeFileCaching(
 	CacheMap->ClusterSize = ClusterSize;
 	CacheMap->MaxCachedClusters = MIN_CACHED_CLUSTERS;
 	CacheMap->RebuildCount = 0;
+	CacheMap->ShouldRebuild = 0;
+	CacheMap->Callbacks = *Callbacks;
 	CacheMap->ClusterCacheMap = (PCCFILE_CACHED_CLUSTER) ExAllocateHeap (TRUE, MIN_CACHED_CLUSTERS*sizeof(CCFILE_CACHED_CLUSTER));
 
 	if (CacheMap->ClusterCacheMap == NULL)
@@ -80,6 +86,19 @@ CcFreeCacheMap(
 	}
 
 	ExAcquireMutex (&File->CacheMap->CacheMapLock);
+
+	for (ULONG i=0,j=0; i<File->CacheMap->MaxCachedClusters && j<File->CacheMap->CachedClusters; i++)
+	{
+		PCCFILE_CACHED_CLUSTER Cluster = &File->CacheMap->ClusterCacheMap[i];
+
+		if (Cluster->Cached)
+		{
+			ExFreeHeap (Cluster->Buffer);
+			Cluster->Cached = 0;
+			j++;
+		}
+	}
+
 	ExFreeHeap (File->CacheMap->ClusterCacheMap);
 	ExFreeHeap (File->CacheMap);
 
@@ -95,10 +114,9 @@ CcFreeCacheMap(
 	return STATUS_SUCCESS;
 }
 
-KESYSAPI
 STATUS
 KEAPI
-CcCacheFileCluster(
+CcpCacheFileCluster(
 	IN PFILE FileObject,
 	IN ULONG ClusterNumber,
 	IN PVOID ClusterBuffer
@@ -111,7 +129,7 @@ CcCacheFileCluster(
 	PCCFILE_CACHED_CLUSTER CachedClusters;
 	STATUS Status = STATUS_UNSUCCESSFUL;
 
-	ExAcquireMutex (&CacheMap->CacheMapLock);
+//	ExAcquireMutex (&CacheMap->CacheMapLock);
 
 	CacheMap->CachedClusters ++;
 	if (CacheMap->CachedClusters == CacheMap->MaxCachedClusters)
@@ -162,7 +180,7 @@ CcCacheFileCluster(
 			CacheMap->ClusterCacheMap[i].Cached = TRUE;
 			CacheMap->ClusterCacheMap[i].Modified = FALSE;
 			CacheMap->ClusterCacheMap[i].ClusterNumber = ClusterNumber;
-			CacheMap->ClusterCacheMap[i].ClusterUseCount = 0;
+			CacheMap->ClusterCacheMap[i].ClusterUseCount = 1;
 			CacheMap->ClusterCacheMap[i].Buffer = ExAllocateHeap (TRUE, CacheMap->ClusterSize);
 
 			if (CacheMap->ClusterCacheMap[i].Buffer == NULL)
@@ -184,7 +202,7 @@ CcCacheFileCluster(
 		}
 	}
 
-	ExReleaseMutex (&CacheMap->CacheMapLock);
+//	ExReleaseMutex (&CacheMap->CacheMapLock);
 	return Status;
 }
 
@@ -203,12 +221,16 @@ CcpRebuildCacheMap(
 	    3. don't delete modified clusters, that failed to be written on disk.
 		4. if cluster has become non-modified and there was no write error, 
 		   delete this cluster from cache map.
+   This function is usually very unfrequently, frequency of calls is determined by parameter 
+    CC_CACHE_MAP_REBUILD_FREQUENCY
 --*/
 {
 	ULONG ClustersDeleted = 0;
 	ULONG UseCountTreshold = CC_CACHED_CLUSTER_USECOUNT_INITIAL_TRESHOLD;
 
 	ExAcquireMutex (&CacheMap->CacheMapLock);
+
+	CcPrint (("CC: Rebuild initiated for cache map %08x, rebuild count %d\n", CacheMap, CacheMap->RebuildCount));
 
 _rebuild:
 
@@ -221,30 +243,82 @@ _rebuild:
 			// than delete cached cluster.
 			//
 
-			if ( CacheMap->ClusterCacheMap[i].ClusterUseCount <= UseCountTreshold &&
+			PCCFILE_CACHED_CLUSTER Cluster = &CacheMap->ClusterCacheMap[i];
+
+			CcPrint (("CC: Cached cluster %d, use count %d, modified %d\n",
+				Cluster->ClusterNumber, Cluster->ClusterUseCount, Cluster->Modified));
+				
+			if (Cluster->ClusterUseCount)
+				Cluster->ClusterUseCount --;
+
+			//
+			// Ensure that this cluster was not used recently, it is modified and we are not going
+			//  to force reducing of cache map.
+			// If so, write cluster to the disk.
+			//
+
+			if ( Cluster->ClusterUseCount <= UseCountTreshold &&
+				 Cluster->Modified &&
+				 CacheMap->RebuildCount >= CC_CACHED_CLUSTER_REBUILD_COUNT_TRESHOLD &&
+				 !ForceReduceMap )
+			{
+				//
+				// It's time to write this cluster to the disk.
+				// Write cluster.
+				//
+
+				CcPrint (("CC: Writing cached cluster %d\n", Cluster->ClusterNumber));
+
+				STATUS Status;
+
+				Status = CacheMap->Callbacks.ActualWrite (
+							  CacheMap->FileObject, 
+							  Cluster->ClusterNumber,
+							  Cluster->Buffer, 
+							  CacheMap->ClusterSize
+							  );
+
+				if (!SUCCESS(Status))
+				{
+					//
+					// Write failed..
+					//
+
+					Cluster->WriteError = 1;
+					Cluster->Status = Status;
+
+					CcPrint (("CC: Error while writing cluster %d: %08x\n", Cluster->ClusterNumber, Status));
+				}
+				else
+				{
+					Cluster->Modified = FALSE;
+				}
+			}
+
+			if ( Cluster->ClusterUseCount <= UseCountTreshold &&
 				 (CacheMap->RebuildCount >= CC_CACHED_CLUSTER_REBUILD_COUNT_TRESHOLD || ForceReduceMap) )
 			{
 				//
 				// Delete cached cluster
 				//
 
-				if (CacheMap->ClusterCacheMap[i].Modified)
+				CcPrint (("CC: Deleting unused cached cluster %d\n", Cluster->ClusterNumber));
+
+				if (Cluster->Modified)
 				{
 					//
 					// Write cluster.
 					//
 
-					IO_STATUS_BLOCK IoStatus;
-					LARGE_INTEGER FileOffset = {0};
+					CcPrint (("CC: Writing cached cluster being deleted %d\n", Cluster->ClusterNumber));
+
 					STATUS Status;
 
-					FileOffset.LowPart = CacheMap->ClusterCacheMap[i].ClusterNumber * CacheMap->ClusterSize;
-
-					Status = IoWriteFile ( CacheMap->FileObject, 
-								  CacheMap->ClusterCacheMap[i].Buffer, 
-								  CacheMap->ClusterSize,
-								  &FileOffset,
-								  &IoStatus
+					Status = CacheMap->Callbacks.ActualWrite (
+								  CacheMap->FileObject, 
+								  Cluster->ClusterNumber,
+								  Cluster->Buffer, 
+								  CacheMap->ClusterSize
 								  );
 
 					if (!SUCCESS(Status))
@@ -253,24 +327,26 @@ _rebuild:
 						// Write failed.. cannot delete this cluster
 						//
 
-						CacheMap->ClusterCacheMap[i].WriteError = 1;
-						CacheMap->ClusterCacheMap[i].Status = Status;
+						Cluster->WriteError = 1;
+						Cluster->Status = Status;
+
+						CcPrint (("CC: Error while writing cluster %d: %08x\n", Cluster->ClusterNumber, Status));
 					}
 					else
 					{
-						CacheMap->ClusterCacheMap[i].Modified = FALSE;
+						Cluster->Modified = FALSE;
 					}
 				}
 
-				if ( CacheMap->ClusterCacheMap[i].Modified == FALSE &&
-					 CacheMap->ClusterCacheMap[i].WriteError == FALSE )
+				if ( Cluster->Modified == FALSE &&
+					 Cluster->WriteError == FALSE )
 				{
 					//
 					// We can delete this cached cluster
 					//
 
-					CacheMap->ClusterCacheMap[i].Cached = FALSE;
-					ExFreeHeap (CacheMap->ClusterCacheMap[i].Buffer);
+					Cluster->Cached = FALSE;
+					ExFreeHeap (Cluster->Buffer);
 
 					CacheMap->CachedClusters --;
 					ClustersDeleted ++;
@@ -285,6 +361,8 @@ _rebuild:
 		// If cache map reducing requested, but we did not delete any cluster,
 		//  raise up use count delete treshold and rebuild cache map again.
 		//
+
+		CcPrint (("CC: Rebuild: no clusters purged, re-rebuild (treshold=%d)\n", UseCountTreshold));
 
 		UseCountTreshold ++;
 		goto _rebuild;
@@ -310,25 +388,26 @@ CcPurgeCacheFile(
 
 	ExAcquireMutex (&CacheMap->CacheMapLock);
 
+	CcPrint (("CC: Purging cache map %08x\n", CacheMap));
+
 	for (ULONG i=0; i<CacheMap->MaxCachedClusters; i++)
 	{
-		if (CacheMap->ClusterCacheMap[i].Cached &&
-			CacheMap->ClusterCacheMap[i].Modified)
+		PCCFILE_CACHED_CLUSTER Cluster = &CacheMap->ClusterCacheMap[i];
+
+		if (Cluster->Cached &&
+			Cluster->Modified)
 		{
 			//
 			// Write to disk
 			//
 
-			IO_STATUS_BLOCK IoStatus;
-			LARGE_INTEGER FileOffset = {0};
+			CcPrint (("CC: Writing modified cluster %d\n", Cluster->ClusterNumber));
 
-			FileOffset.LowPart = CacheMap->ClusterCacheMap[i].ClusterNumber * CacheMap->ClusterSize;
-
-			Status = IoWriteFile ( CacheMap->FileObject, 
-						  CacheMap->ClusterCacheMap[i].Buffer, 
-						  CacheMap->ClusterSize,
-						  &FileOffset,
-						  &IoStatus
+			Status = CacheMap->Callbacks.ActualWrite (
+						  CacheMap->FileObject, 
+						  Cluster->ClusterNumber,
+						  Cluster->Buffer, 
+						  CacheMap->ClusterSize
 						  );
 
 			if (!SUCCESS(Status))
@@ -337,13 +416,13 @@ CcPurgeCacheFile(
 				// Write failed.. cannot delete this cluster
 				//
 
-				CacheMap->ClusterCacheMap[i].WriteError = 1;
-				CacheMap->ClusterCacheMap[i].Status = Status;
+				Cluster->WriteError = 1;
+				Cluster->Status = Status;
 				break;
 			}
 			else
 			{
-				CacheMap->ClusterCacheMap[i].Modified = FALSE;
+				Cluster->Modified = FALSE;
 			}
 		}
 	}
@@ -359,8 +438,7 @@ CcCacheReadFile(
 	IN PFILE FileObject,
 	IN ULONG ClusterNumber,
 	OUT PVOID Buffer,
-	IN ULONG Size,
-	OUT ULONG* ReturnedLength
+	IN ULONG Size
 	)
 /*++
 	Reads cluster from the cache
@@ -369,9 +447,9 @@ CcCacheReadFile(
 	STATUS Status = STATUS_NOT_FOUND;
 	PCCFILE_CACHE_MAP CacheMap = FileObject->CacheMap;
 
-	CcpRebuildCacheMap (CacheMap, FALSE);
-
 	ExAcquireMutex (&CacheMap->CacheMapLock);
+
+	CcPrint (("CC: Cache read requested for the file %08x, cluster %d\n", FileObject, ClusterNumber));
 
 	for (ULONG i=0; i<CacheMap->MaxCachedClusters; i++)
 	{
@@ -380,13 +458,52 @@ CcCacheReadFile(
 		{
 			CacheMap->ClusterCacheMap[i].ClusterUseCount ++;
 			memcpy (Buffer, CacheMap->ClusterCacheMap[i].Buffer, Size);
-			*ReturnedLength = Size;
 			Status = STATUS_SUCCESS;
+
+			CcPrint (("CC: Cache read satisfied from cache for the file %08x, cluster %d\n", FileObject, ClusterNumber));
+
 			break;
 		}
 	}
 
+	if (Status == STATUS_NOT_FOUND)
+	{
+		//
+		// Read the cluster
+		//
+
+		Status = CacheMap->Callbacks.ActualRead (
+			FileObject,
+			ClusterNumber,
+			Buffer,
+			Size
+			);
+
+		if (SUCCESS(Status))
+		{
+			Status = CcpCacheFileCluster (
+				FileObject,
+				ClusterNumber,
+				Buffer
+				);
+		}
+
+		if (SUCCESS(Status))
+		{
+			Status = STATUS_CACHED;
+		}
+	}
+
+	BOOLEAN rebuild = FALSE;
+	CacheMap->ShouldRebuild ++;
+	if (CacheMap->ShouldRebuild % CC_CACHE_MAP_REBUILD_FREQUENCY == 0)
+		rebuild = true;
+
 	ExReleaseMutex (&CacheMap->CacheMapLock);
+
+	if (rebuild)
+		CcpRebuildCacheMap (CacheMap, FALSE);
+
 	return Status;
 }
 
@@ -406,8 +523,6 @@ CcCacheWriteFile(
 	STATUS Status = STATUS_NOT_FOUND;
 	PCCFILE_CACHE_MAP CacheMap = FileObject->CacheMap;
 
-	CcpRebuildCacheMap (CacheMap, FALSE);
-
 	ExAcquireMutex (&CacheMap->CacheMapLock);
 
 	for (ULONG i=0; i<CacheMap->MaxCachedClusters; i++)
@@ -423,6 +538,43 @@ CcCacheWriteFile(
 		}
 	}
 
+	if (Status == STATUS_NOT_FOUND)
+	{
+		//
+		// Write the cluster
+		//
+
+		Status = CacheMap->Callbacks.ActualWrite (
+			FileObject,
+			ClusterNumber,
+			Buffer,
+			Size
+			);
+
+		if (SUCCESS(Status))
+		{
+			Status = CcpCacheFileCluster (
+				FileObject,
+				ClusterNumber,
+				Buffer
+				);
+		}
+
+		if (SUCCESS(Status))
+		{
+			Status = STATUS_CACHED;
+		}
+	}
+
+	BOOLEAN rebuild = FALSE;
+	CacheMap->ShouldRebuild ++;
+	if (CacheMap->ShouldRebuild % CC_CACHE_MAP_REBUILD_FREQUENCY == 0)
+		rebuild = true;
+
 	ExReleaseMutex (&CacheMap->CacheMapLock);
+
+	if (rebuild)
+		CcpRebuildCacheMap (CacheMap, FALSE);
+
 	return Status;
 }

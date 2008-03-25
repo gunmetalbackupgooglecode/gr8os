@@ -9,7 +9,6 @@
 #include "common.h"
 
 #define ObPrint(x)
-#define KdPrint(x) KiDebugPrint x
 
 //
 // Root unnamed object directory.
@@ -418,7 +417,7 @@ ObpDeleteObject(
 
 	ObDereferenceObject (Object);
 
-	ObpDeleteObjectInternal (Object);
+	//ObpDeleteObjectInternal (Object);
 	return STATUS_SUCCESS;
 }
 

@@ -212,6 +212,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\builtin\fsfat\fsfat.h"
+				>
+			</File>
+			<File
 				RelativePath=".\inc\hal.h"
 				>
 			</File>
@@ -294,6 +298,10 @@
 			</File>
 			<File
 				RelativePath=".\builtin\floppy\fdinit.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\builtin\fsfat\fsfat.cpp"
 				>
 			</File>
 			<File
