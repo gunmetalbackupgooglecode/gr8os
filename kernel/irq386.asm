@@ -210,10 +210,50 @@ public FdpIrqState as '_FdpIrqState'
 FdpIrqState db 0
 
 FdIrq_handler:
-	or  [FdpIrqState], 1
-	cli
-	hlt
-	jmp KiEoiHelper
+	jmp  KiEoiHelper
+	push edx
+	push eax
+
+	or   [FdpIrqState], 1
+	
+	mov  edx, 0x3F4
+	in   al, dx
+	test al, 0xC0
+	jnz   fd_normal
+	
+	; read irq state
+	mov  al, 8
+	mov  edx, 0x3f5
+	out  dx, al
+	
+	mov  edx, 0x3f4
+  @@:
+	in   al, dx
+	test al, 0xC0
+	jz   @B
+	
+  @@:
+	mov  edx, 0x3f5
+	in   al, dx
+	mov  edx, 0x3f4
+	in   al, dx
+	test al, 0xC0
+	jnz  @B
+		
+  fd_normal:
+	mov  edx, 0x3F7
+	in   al, dx
+	test al, 0x80
+	jz   @F
+	; disk change bit set
+	or   [FdpIrqState], 2
+  @@:		
+	inc  byte [gs:4]
+	
+	pop  eax
+	pop  edx
+	mov  byte [APIC_EOI], 0
+	jmp  KiEoiHelper
 
 ;
 ; EOI helper
@@ -362,10 +402,40 @@ KiSystemCall:
     pushad
 
     cmp  ax, 0
-    jz   __syscall_print_string
+    jz   __syscall_print_string_regular
     cmp  ax, 1
     jz   __syscall_goto_nextline
+    cmp  ax, 2
+    jz   __syscall_print_bugcheck
     jmp  __syscall_invalid_syscall
+    
+    
+__syscall_print_string_regular:
+	mov  bl, 0
+	jmp __syscall_print_string
+    
+__syscall_print_bugcheck:
+	mov  dword [cursor], 0
+	
+	push es
+	push gs
+	pop  es
+	
+	push edi
+	push ecx
+	push eax
+	
+	xor  eax, eax
+	mov  ah, bl
+	xor  edi, edi
+	mov  ecx, 80*25
+	cld
+	rep  stosw
+	
+	pop  eax
+	pop  ecx
+	pop  edi
+	pop  es
 	
 __syscall_print_string:
     lodsb
@@ -377,6 +447,7 @@ __syscall_print_string:
     _regularchar:
       mov  edi, dword [cursor]
       mov  [gs:edi*2], al
+      mov  [gs:edi*2+1], bl
       inc  dword [cursor]
       jmp _sps_quit
       

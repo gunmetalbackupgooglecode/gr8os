@@ -75,8 +75,16 @@ FdRead(
 	{
 		Buffer = Irp->UserBuffer;
 	}
+
+	if (Irp->CurrentStackLocation->Parameters.ReadWrite.OffsetSpecified)
+	{
+		LbaSector = (ULONG)(Irp->CurrentStackLocation->Parameters.ReadWrite.Offset.LowPart >> FD_SECTOR_SHIFT);
+	}
+	else
+	{
+		LbaSector = Irp->FileObject->CurrentOffset.LowPart >> FD_SECTOR_SHIFT;
+	}
 	
-	LbaSector = (ULONG)(Irp->CurrentStackLocation->Parameters.ReadWrite.Offset.LowPart >> FD_SECTOR_SHIFT);
 	RelativeOffset = Irp->CurrentStackLocation->Parameters.ReadWrite.Offset.LowPart % FD_SECTOR_SIZE;
 
 	if (RelativeOffset || (Size % FD_SECTOR_SIZE))
@@ -84,7 +92,12 @@ FdRead(
 		COMPLETE_IRP (Irp, STATUS_DATATYPE_MISALIGNMENT, 0);
 	}
 
-	Status = FdPerformRead (Buffer, &Size, LbaSector);
+	Status = FdPerformRead (Buffer, &Size, LbaSector, (Irp->Flags&IRP_FLAGS_SYNCHRONOUS_IO) == IRP_FLAGS_SYNCHRONOUS_IO);
+
+	if (SUCCESS(Status))
+	{
+		Irp->FileObject->CurrentOffset.LowPart = (LbaSector << FD_SECTOR_SHIFT) + Size;
+	}
 
 	COMPLETE_IRP (Irp, Status, 0);
 }
@@ -165,7 +178,5 @@ FdDriverEntry(
 	KdPrint(("FdBiosDPT: %08x\n", FdBiosDPT));
 	KdPrint(("FdBiosDPT->SectorSize %02x\n", FdBiosDPT->SectorSize));
 
-	FdInit();
-
-	return STATUS_INVALID_PARAMETER;
+	return FdInit();
 }

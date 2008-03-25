@@ -754,6 +754,18 @@ wcslen(
 KESYSAPI
 INT
 KEAPI
+strlen(
+	char *str
+	)
+{
+	int length;
+	for (length = 0;*str;str++,length++);
+	return length;
+}
+
+KESYSAPI
+INT
+KEAPI
 wcscmp(
 	PWSTR wstr,
 	PWSTR wstr2

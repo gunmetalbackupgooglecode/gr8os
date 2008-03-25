@@ -542,6 +542,10 @@ PCHAR KeBugCheckDescriptions[] = {
 	"IO_MULTIPLE_COMPLETE_REQUESTS",
 	"IO_NO_MORE_IRP_STACK_LOCATIONS",
 	"IO_IRP_COMPLETION_WITH_PENDING",
+	"HAL_FREEING_ALREADY_FREE_PAGES",
+	"HAL_FREEING_RESERVED_PAGES",
+	"HAL_FREEING_INVALID_PAGES",
+	"MEMORY_MANAGEMENT",
 	NULL
 };
 
@@ -575,6 +579,96 @@ static char *HeapGuardSecondArguments[] = {
 	NULL
 };
 
+char KiBugCheckMessage[1024];
+
+
+char*
+KEAPI
+KeGetSymName(
+	PVOID Base,
+	PVOID dwsym,
+	OUT ULONG *diff
+	)
+{
+    PIMAGE_DOS_HEADER dh = (PIMAGE_DOS_HEADER)Base;
+    PIMAGE_NT_HEADERS nh = (PIMAGE_NT_HEADERS)((ULONG)Base+dh->e_lfanew);
+    PIMAGE_OPTIONAL_HEADER oh = &nh->OptionalHeader;
+    PIMAGE_EXPORT_DIRECTORY ed = (PIMAGE_EXPORT_DIRECTORY)((ULONG)Base+oh->DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress);
+    char** Names = (char**)((ULONG)Base+ed->AddressOfNames);
+    PUSHORT Ords = (PUSHORT)((ULONG)Base+ed->AddressOfNameOrdinals);
+    PULONG Entries = (PULONG)((ULONG)Base+ed->AddressOfFunctions); 
+
+	UCHAR *p;
+
+	for (p = (UCHAR*)((ULONG)dwsym & 0xFFFFFFF0); ; p-= 0x10)
+	{
+		if (p[0] == 0x55 &&
+			p[1] == 0x8B &&
+			p[2] == 0xEC)
+		{
+			break;
+		}
+
+		if (p == Base)
+		{
+			p = (UCHAR*)dwsym; // diff=0
+			break;
+		}
+	}
+
+	*diff = (ULONG)dwsym - (ULONG)p;
+
+    for (ULONG i=0;i<ed->NumberOfNames;i++)
+    {
+		if ( ((ULONG)Base+(ULONG)Entries[Ords[i]]) == (ULONG)p )
+		{
+			return (char*)((ULONG)Base+Names[i]);
+		}
+    }
+    return "";
+}
+
+VOID
+KEAPI
+KeStackUnwind(
+	char *message,
+	PVOID ptr
+	)
+{
+	ULONG *_esp = (ULONG*) ptr;
+
+	sprintf(message, "Stack unwind information:\n");
+
+#define Base 0x80100000
+
+	bool first = true;
+	int syms = 0;
+
+	for (ULONG i=0; i<50 && syms<10; i++, _esp++)
+	{
+		if ((*_esp & 0xFFFF0000) == Base)
+		{
+			char *sym;
+			ULONG dwsym = *_esp;
+			ULONG diff = 0;
+
+			sym = KeGetSymName ((PVOID)Base, (PVOID)dwsym, &diff);
+
+			if (*sym)
+			{
+				sprintf (message + strlen(message), "%s%08x (%s+0x%x)", first ? "" : ", ", dwsym, sym, diff);
+			}
+			else
+			{
+				sprintf (message + strlen(message), "%s%08x (%08x+0x%x)", first ? "" : ", ", dwsym, dwsym-diff, diff);
+			}
+
+			first = false;
+			syms++;
+		}
+	}
+}
+
 KENORETURN
 KESYSAPI
 VOID
@@ -591,38 +685,72 @@ KeBugCheck(
 --*/
 {
 	PCHAR szCode = "no code";
+	void* _ebp;
+
+	__asm mov [_ebp], ebp;
 
 	if (StopCode < MAXIMUM_BUGCHECK)
 		szCode = KeBugCheckDescriptions[StopCode];
 
-	KiDebugPrint("\n\n *** STOP : [%08x] %s:  \n  %08x - %s\n",
-		StopCode,
-		szCode,
-		Argument1,
-		HeapFirstArguments[Argument1]
+	char *KiBugCheckDescriptions[4] = { "", "", "", "" };
+
+	switch (StopCode)
+	{
+	case EX_KERNEL_HEAP_FAILURE:
+
+		KiBugCheckDescriptions[0] = HeapFirstArguments[Argument1];	
+		KiBugCheckDescriptions[2] = "Pointer to the block failed";
+
+		switch (Argument1)
+		{
+		case HEAP_BLOCK_VALIDITY_CHECK_FAILED:
+			KiBugCheckDescriptions[1] = HeapValidationSecondArguments[Argument2];
+			break;
+
+		case HEAP_GUARD_FAILURE:
+			KiBugCheckDescriptions[1] = HeapGuardSecondArguments[Argument2];
+			break;
+		}
+
+		break;
+	}
+
+	sprintf(KiBugCheckMessage, 
+		"\n"
+		" Fatal system error occurred and gr8os has been shut down to prevent damage\n"
+		"  to your computer. This is a critical system fault. You should examine \n"
+		"  possible reasons for this. Operating system reported the following error:\n"
+		"\n"
+		" *** STOP : [%08x] %s:  \n"
+		"  %08x %s\n"
+		"  %08x %s\n"
+		"  %08x %s\n"
+		"  %08x %s\n"
+		"\n"
+		" If this is the first time you see this stop error screen, restart the system\n"
+		" If this screen appears again try to follow these steps:\n"
+		"  - Disable any newly installed hardware or system software.\n"
+		"  - Disable some BIOS options like caching or shadowing\n"
+		"  - Try to boot in the debugging mode and examine the system manually\n"
+		"\n"
+		,
+		StopCode, szCode,
+		Argument1, KiBugCheckDescriptions[0],
+		Argument2, KiBugCheckDescriptions[1],
+		Argument3, KiBugCheckDescriptions[2],
+		Argument4, KiBugCheckDescriptions[3]
 		);
 
-	if (Argument1 == HEAP_BLOCK_VALIDITY_CHECK_FAILED)
-	{
-		KiDebugPrint("  %08x - %s\n",
-			Argument2,
-			HeapValidationSecondArguments[Argument2]
-			);
-	}
-	else if (Argument1 == HEAP_GUARD_FAILURE)
-	{
-		KiDebugPrint("  %08x - %s\n",
-			Argument2,
-			HeapGuardSecondArguments[Argument2]
-			);
-	}
-	else
-	{
-		KiDebugPrint("  %08x\n", Argument2);
-	}
+	KeStackUnwind (KiBugCheckMessage + strlen(KiBugCheckMessage), _ebp);
 
-	KiDebugPrint ("  %08x\n  %08x\n\n", Argument3, Argument4);
+	KiDebugPrintRaw (KiBugCheckMessage);
 
+	__asm lea esi, [KiBugCheckMessage]
+	__asm mov ax, 2
+	__asm mov bl, 75	// white on the red.
+	__asm int 0x30
+
+	INT3
 
 	// Wake up kernel debugger and pass the control to it.
 	for( ;; )

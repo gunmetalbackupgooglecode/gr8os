@@ -16,7 +16,8 @@ KEAPI
 FdPerformRead(
 	OUT PVOID Buffer,
 	IN OUT PULONG BufferLength,
-	IN ULONG LbaSector
+	IN ULONG LbaSector,
+	IN BOOLEAN SynchronousOperation
 	);
 
 STATUS
@@ -24,10 +25,11 @@ KEAPI
 FdPerformWrite(
 	OUT PVOID Buffer,
 	IN OUT PULONG BufferLength,
-	IN ULONG LbaSector
+	IN ULONG LbaSector,
+	IN BOOLEAN SynchronousOperation
 	);
 
-VOID
+STATUS
 KEAPI
 FdInit(
 	);
@@ -51,15 +53,19 @@ FdInit(
 //   4-7    Enable motor (6-7 unused)
 //
 
-typedef struct FD_3F2
+typedef union FD_3F2
 {
-	UCHAR FdSelect : 1;
-	UCHAR Reserved : 1;
-	UCHAR ControllerEnalbed : 1;
-	UCHAR EnableIntsDma : 1;
-	UCHAR EnableMotor1 : 1;
-	UCHAR EnableMorot2 : 1;
-	UCHAR Reserved2 : 2;
+	UCHAR RawValue;
+	struct
+	{
+		UCHAR FdSelect : 1;
+		UCHAR Reserved : 1;
+		UCHAR ControllerEnabled : 1;
+		UCHAR EnableIntsDma : 1;
+		UCHAR EnableMotor1 : 1;
+		UCHAR EnableMorot2 : 1;
+		UCHAR Reserved2 : 2;
+	};
 } *PFD_3F2;
 
 
@@ -74,6 +80,7 @@ typedef struct FD_3F2
 //   5      0 - DMA used, 1 - DMA is not used
 //   6      Data flow direction (0 - FD<-CPU, 1 - FD->CPU)
 //   7      FD ready for i/o
+//
 
 #define FD_STATUS_FD0_BUSY	0x01
 #define FD_STATUS_FD1_BUSY	0x02
@@ -107,6 +114,8 @@ typedef struct FD_3F2
 //     7     Disk change bit
 //
 
+#define FDP_WRITE_FDC_CONTROL_REG(X) KiOutPort (FD_DCR,X)
+
 //
 // FD control registers
 //
@@ -128,6 +137,11 @@ typedef struct FD_ST0
 	// 11 - FD not ready
 	//
 } *PFD_ST0;
+
+#define FD_NORMAL_EXIT	0
+#define FD_ABORT		1
+#define FD_INVALID_CMD	2
+#define FD_NOT_READY	3
 
 // ST1
 typedef struct FD_ST1
@@ -171,13 +185,11 @@ typedef struct FD_ST3
 typedef struct FD_INT_STATE
 {
 	UCHAR FddIrqGot : 1;
-	UCHAR Reserved : 7;
+	UCHAR FddMediaChanged : 1;
+	UCHAR Reserved : 6;
 } *PFD_INT_STATE;
 
 extern FD_INT_STATE FdpIrqState;
-
-#define _enable() { __asm sti }
-#define _disable() { __asm cli }
 
 // BIOS Disk Parameter Table (DPT)
 
@@ -206,3 +218,52 @@ typedef struct FDBIOSPT
 } *PFDBIOSPT;
 
 extern PFDBIOSPT FdBiosDPT;
+
+typedef struct FD_MEDIA_TYPE {
+	ULONG NumberOfSectors;
+	UCHAR SectorsPerTrack;
+	ULONG NumberOfHeads;
+	ULONG NumberOfTracks;
+	ULONG Stretch;
+	UCHAR Gap1Size;
+	UCHAR DataRate;
+	UCHAR SteppingRate;
+	UCHAR Gap2Size;
+	char *FormatName;
+} *PFD_MEDIA_TYPE;
+
+#define MAX_REPLIES 7
+
+
+#define FD_OPERATION_READ		0xE6
+#define FD_OPERATION_READDEL	0x6C
+#define FD_OPERATION_WRITE		0xC5
+#define FD_OPERATION_WRITEDEL	0x49
+#define FD_OPERATION_READTRACK	0x62
+#define FD_OPERATION_SCANEQ		0x71
+#define FD_OPERATION_SCANBEQ	0x79
+#define FD_OPERATION_SCANAEQ	0x7D
+#define FD_OPERATION_FMTTRACK	0x4D
+#define FD_OPERATION_READINDEX	0x4B
+#define FD_OPERATION_INITIALIZE	0x07
+#define FD_OPERATION_READIRQSTE	0x08
+#define FD_OPERATION_QUERYPARMS	0x03
+#define FD_OPERATION_READFDCSTE	0x04
+#define FD_OPERATION_SEARCH		0x0F
+
+typedef union FD_OP2
+{
+	struct
+	{
+		UCHAR DS0 : 1;
+		UCHAR DS1 : 1;
+		UCHAR Head : 1;
+		UCHAR Reserved : 5;
+	};
+
+	UCHAR RawValue;
+} *PFD_OP2;
+
+#define FD_OP2_INITIALIZE		0x02
+
+#define FLOPPY_DMA 2

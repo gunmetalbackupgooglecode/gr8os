@@ -101,6 +101,7 @@ typedef struct IRP_STACK_LOCATION
 		//
 		struct
 		{
+			BOOLEAN OffsetSpecified;
 			LARGE_INTEGER Offset;
 		} ReadWrite;
 
@@ -157,6 +158,7 @@ typedef struct IRP_STACK_LOCATION
 #define IRP_FLAGS_DEALLOCATE_BUFFER		0x00000004
 #define IRP_FLAGS_NEITHER_IO			0x00000008
 #define IRP_FLAGS_INPUT_OPERATION		0x00000010
+#define IRP_FLAGS_SYNCHRONOUS_IO		0x00000020
 
 
 typedef struct FILE *PFILE;

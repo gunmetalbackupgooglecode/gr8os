@@ -59,7 +59,7 @@ typedef ULONG STATUS, *PSTATUS;
 
 #define STATUS_PENDING						((STATUS) 0x80000003)
 
-#define SUCCESS(Status) ((Status)>=0)
+#define SUCCESS(Status) ((LONG)(Status)>=0)
 
 
 #define IN
@@ -89,6 +89,9 @@ typedef  ULONG* va_list;
 #define va_end(va)			va = NULL;
 
 #define MAXLONG ((long)0xFFFFFFFF)
+
+#define LOBYTE(w) ((w)&0xFF)
+#define HIBYTE(w) (((w)>>8)&0xFF)
 
 #define INT3 { __asm _emit 0xEB __asm _emit 0xFE }
 
@@ -132,6 +135,8 @@ typedef struct COUNTED_BUFFER<PCHAR> ANSI_STRING, *PANSI_STRING;
 
 #define max(a,b) ( (a) > (b) ? (a) : (b) )
 #define min(a,b) ( (a) < (b) ? (a) : (b) )
+
+#define STATIC_ASSERT(x)  extern char __dummy[(x)?1:-1];
 
 //
 // Configuration
