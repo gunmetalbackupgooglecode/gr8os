@@ -170,6 +170,9 @@ typedef struct PROCESS
 
 	// Object table
 	OBJECT_TABLE ObjectTable;
+	
+	// Working set
+	PMMWORKING_SET WorkingSet;
 
 } *PPROCESS;
 

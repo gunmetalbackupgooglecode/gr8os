@@ -151,7 +151,7 @@ KiStallExecutionMilliseconds(
 	Suspends exeuction for the specified number of milliseconds.
 --*/
 {
-	ULONG Ticks = (Ms * HalBusClockFrequency);
+	ULONG Ticks = (Ms * HalBusClockFrequency)/2;
 	
 	HalpWriteApicConfig(APIC_INITCNT, -1);
 	
@@ -164,8 +164,16 @@ KiStallExecutionMilliseconds(
 	while ( (Initial-Current) < Ticks );
 }
 
-#define KiDebugPrintRaw
-#define KiDebugPrint
+VOID
+KEAPI
+KiStallExecutionHalfSecond(
+	)
+{
+	KiStallExecutionMilliseconds (1);
+}
+
+//#define KiDebugPrintRaw
+//#define KiDebugPrint
 
 KENORETURN
 VOID
@@ -315,48 +323,70 @@ KiInitSystem(
 	KernelStack -= PAGE_SIZE;
 
 	PMMPTE Pte = MiGetPteAddress (KernelStack);
-	Pte->PteType = PTE_TYPE_TRIMMED;
+	Pte->u1.e1.PteType = PTE_TYPE_TRIMMED;
 
 	KeInitializeEvent (&ev, SynchronizationEvent, FALSE);
 
-	/*
+	
+	PFILE File;
 	STATUS Status;
-	PVOID Object, Object2;
-	OBJECT_TYPE type;
-	type.ObjectCount=0;
-	UNICODE_STRING Name;
+	UNICODE_STRING FdName;
+	IO_STATUS_BLOCK IoStatus;
 
-	RtlInitUnicodeString (&Name, L"xenk");
+	RtlInitUnicodeString (&FdName, L"\\Device\\fdd0");
 
-	Status = ObCreateObject (&Object, 20, &type, &Name, 0);
-	KiDebugPrint("ObCreateObject: %08x, object=%08x\n", Status, Object);
-	Status = ObInsertObject (IoDeviceDirectory, Object);
-	KiDebugPrint("ObInsertObject: %08x\n", Status);
+	Status = IoCreateFile (&File, 0, &FdName, &IoStatus, 0, 0);
+	if (!SUCCESS(Status)) {
+		KeBugCheck (KE_INITIALIZATION_FAILED,
+					__LINE__,
+					Status,
+					0,
+					0
+					);
+	}
 
-	RtlInitUnicodeString (&Name, L"\\Device\\xenk");
-	Status = ObReferenceObjectByName (&Name, &type, KernelMode, 0, &Object2);
-	KiDebugPrint("ObReferenceObjectByName: %08x, object=%08x\n", Status, Object2);
+	PVOID Buffer = ExAllocateHeap (TRUE, 512);
 
+	KdPrint(("\nRead 1\n\n"));
 
-	KiDebugPrint("IoDeviceDirectory: %08x\n",IoDeviceDirectory);
+	Status = IoReadFile (File, Buffer, 512, NULL, &IoStatus);
+	if (!SUCCESS(Status)) {
+		KeBugCheck (KE_INITIALIZATION_FAILED,
+					__LINE__,
+					Status,
+					0,
+					0
+					);
+	}
 
+	KdPrint(("INIT: Buffer: %02x %02x %02x %02x\n",
+		((UCHAR*)Buffer)[0],
+		((UCHAR*)Buffer)[1],
+		((UCHAR*)Buffer)[2],
+		((UCHAR*)Buffer)[3]));
 
-	PVOID Directory;
-	RtlInitUnicodeString (&Name, L"\\Device");
+	KdPrint(("\nRead 2\n\n"));
 
-	Status = ObReferenceObjectByName(
-		&Name,
-		ObDirectoryObjectType,
-		KernelMode,
-		0, 
-		&Directory);
+	Status = IoReadFile (File, Buffer, 512, NULL, &IoStatus);
+	if (!SUCCESS(Status)) {
+		KeBugCheck (KE_INITIALIZATION_FAILED,
+					__LINE__,
+					Status,
+					0,
+					0
+					);
+	}
 
-	KiDebugPrint("ObReferenceObjectByName: %08x, object=%08x\n", Status, Directory);
+	KdPrint(("INIT: Buffer: %02x %02x %02x %02x\n",
+		((UCHAR*)Buffer)[0],
+		((UCHAR*)Buffer)[1],
+		((UCHAR*)Buffer)[2],
+		((UCHAR*)Buffer)[3]));
 
-	ObDereferenceObject (Directory);
-	ObDereferenceObject (Object2);
-	ObDereferenceObject (Object);
-	*/
+	KdPrint(("\nClose\n\n"));
+
+	ExFreeHeap (Buffer);
+	IoCloseFile (File);
 
 
 	// Create two additional threads

@@ -380,6 +380,9 @@ PspCreateThread(
 	// Add thread to process' thread list
 	InsertTailList (&OwningProcess->ThreadListHead, &Thread->ProcessThreadListEntry);
 
+	InitializeListHead (&SystemThread.IrpList);
+	ExInitializeMutex (&SystemThread.IrpListLock);
+
 	// Create kernel stack
 	PVOID Stack = ExAllocateHeap( FALSE, THREAD_INITIAL_STACK_SIZE );
 	*(ULONG*)&Stack += THREAD_INITIAL_STACK_SIZE - 12;
@@ -431,6 +434,7 @@ PspCreateProcess(
 	// Empty threads list head
 	InitializeListHead (&Process->ThreadListHead);
 
+	ExInitializeMutex (&InitialSystemProcess.ObjectTable.TableLock);
 	//
 	// Lock scheduler database, insert process into process list and unlock DB
 	//
@@ -478,6 +482,11 @@ PspInitSystem(
 
 	InitializeListHead (&PsReadyListHead);
 	InitializeListHead (&PsWaitListHead);
+
+	InitializeListHead (&SystemThread.IrpList);
+	ExInitializeMutex (&SystemThread.IrpListLock);
+
+	ExInitializeMutex (&InitialSystemProcess.ObjectTable.TableLock);
 
 	InsertTailList (&InitialSystemProcess.ThreadListHead, &SystemThread.ProcessThreadListEntry);
 	InsertTailList (&PsReadyListHead, &SystemThread.SchedulerListEntry);

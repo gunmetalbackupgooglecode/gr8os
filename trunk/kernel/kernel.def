@@ -28,6 +28,15 @@ EXPORTS
 	HalBusClockFrequency
 	HalRequestDma
 	HalFreeDma
+	HalAllocatePhysicalLowMegPages
+	HalFreePhysicalLowMegPages
+	HalInitializeDmaRequest
+	HalCompleteDmaRequest
+	HalEnableDma
+	HalDisableDma
+	HalClearDmaFf
+	HalSetDmaMode
+	
 	
 	;
 	; DBGKD
@@ -111,6 +120,8 @@ EXPORTS
 	;
 	
 	MmIsAddressValid
+	MmMapPhysicalPages
+	MmUnmapPhysicalPages = MiUnmapPhysicalPages
 		
 	
 	;

@@ -104,6 +104,9 @@ ExInitializeHeap(
 	Initial->Cookie = ExpHeapCookie;
 	ExpRecalculateChecksumBlock (Initial);
 
+	KdPrint(("Initial = %08x\n", Initial));
+	KdPrint(("&Initial->Data = %08x\n", &Initial->Data));
+
 	memset (&Initial->Data, FREED_PADDING, Initial->Size*EX_HEAP_ALIGN);
 }
 
