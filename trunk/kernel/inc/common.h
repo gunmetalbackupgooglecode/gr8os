@@ -176,6 +176,7 @@ extern "C"
 #include "hal.h"
 #include "kd.h"
 #include "ob.h"
+#include "cc.h"
 #include "io.h"
 
 // Built-in driver includes

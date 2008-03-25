@@ -430,6 +430,23 @@ KeSetEvent(
 KESYSAPI
 BOOLEAN
 KEAPI
+KePulseEvent(
+	IN PEVENT Event,
+	IN USHORT QuantumIncrement
+	)
+/*++
+	Set event to signaled state and immediately clear it
+	Returns old state of the event object.
+--*/
+{
+	BOOLEAN OldState = KeSetEvent (Event, QuantumIncrement);
+	KeClearEvent (Event);
+	return OldState;
+}
+
+KESYSAPI
+BOOLEAN
+KEAPI
 KeWaitForSingleObject(
 	IN PVOID Object,
 	IN BOOLEAN Alertable,

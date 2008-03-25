@@ -60,14 +60,15 @@ EXPORTS
 	KeAllocateGdtDescriptor
 	KeAssertionFailed
 	KeBugCheck
-	KeClearEvent
 	KeDispatchException
 	KeGdtEntry
 	KeIdtEntry
 	KeInitializeEvent
 	KeInsertQueueDpc
 	KeRemoveQueueDpc
+	KeClearEvent
 	KeSetEvent
+	KePulseEvent
 	KeStallExecution
 	KeWaitForSingleObject
 	KiDebugPrint
@@ -95,7 +96,17 @@ EXPORTS
 	IoWriteFile
 	IoDeviceIoControlFile
 	IoCompleteRequest
-		
+	
+	;
+	; Cc
+	;
+	
+	CcInitializeFileCaching
+	CcFreeCacheMap
+	CcCacheFileCluster
+	CcCacheReadFile
+	CcCacheWriteFile
+	CcPurgeCacheFile
 		
 	;
 	; Ob

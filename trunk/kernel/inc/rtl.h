@@ -509,3 +509,11 @@ typedef struct _IMAGE_BOUND_FORWARDER_REF {
 } IMAGE_BOUND_FORWARDER_REF, *PIMAGE_BOUND_FORWARDER_REF;
 
 #pragma pack()
+
+
+typedef struct _RTL_BITMAP {
+    ULONG SizeOfBitMap;                     // Number of bits in bit map
+    PULONG Buffer;                          // Pointer to the bit map itself
+} RTL_BITMAP;
+typedef RTL_BITMAP *PRTL_BITMAP;
+

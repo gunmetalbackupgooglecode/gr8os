@@ -192,6 +192,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\inc\cc.h"
+				>
+			</File>
+			<File
 				RelativePath=".\inc\common.h"
 				>
 			</File>
@@ -243,6 +247,10 @@
 				RelativePath=".\inc\rtl.h"
 				>
 			</File>
+			<File
+				RelativePath=".\inc\STRUCT.INC"
+				>
+			</File>
 		</Filter>
 		<Filter
 			Name="Resource Files"
@@ -255,6 +263,10 @@
 			Filter="cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx"
 			UniqueIdentifier="{4FC737F1-C7A5-4376-A066-2A32D752A2FF}"
 			>
+			<File
+				RelativePath=".\cc.cpp"
+				>
+			</File>
 			<File
 				RelativePath=".\ex.cpp"
 				>
