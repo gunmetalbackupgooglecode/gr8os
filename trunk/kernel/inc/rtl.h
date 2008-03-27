@@ -1,6 +1,15 @@
 #pragma once
 
 KESYSAPI
+char*
+KEAPI
+strchr(
+	char *str,
+	char chr
+	);
+
+
+KESYSAPI
 INT 
 _cdecl 
 sprintf(
@@ -37,6 +46,26 @@ wcslen(
 	);
 
 KESYSAPI
+ULONG
+KEAPI
+wcstomb(
+	char *mbs,
+	WCHAR *wcs,
+	ULONG count
+	);
+
+KESYSAPI
+INT 
+KEAPI
+strncmp(
+	char *s1,
+	char *s2,
+	ULONG count
+	);
+
+
+
+KESYSAPI
 INT
 KEAPI
 strlen(
@@ -59,6 +88,23 @@ wcsncpy(
 	PWSTR src,
 	INT count
 	);
+
+KESYSAPI
+VOID
+KEAPI
+wcscpy(
+	PWSTR dst,
+	PWSTR src
+	);
+
+KESYSAPI
+VOID
+KEAPI
+wcscat(
+	PWSTR dst,
+	PWSTR src
+	);
+
 
 KESYSAPI
 VOID

@@ -764,6 +764,64 @@ strlen(
 }
 
 KESYSAPI
+char*
+KEAPI
+strchr(
+	char *str,
+	char chr
+	)
+{
+	for (char *ch=str; *ch; ch++)
+		if (*ch == chr)
+			return ch;
+
+	return NULL;
+}
+
+KESYSAPI
+ULONG
+KEAPI
+wcstomb(
+	char *mbs,
+	WCHAR *wcs,
+	ULONG count
+	)
+{
+	if (count == -1)
+		count = wcslen(wcs);
+
+	ULONG i=0;
+
+	for (; i<count; i++)
+	{
+		mbs[i] = (char) wcs[i];
+	}
+
+	mbs[i] = 0;
+	return i;
+}
+
+KESYSAPI
+INT 
+KEAPI
+strncmp(
+	char *s1,
+	char *s2,
+	ULONG count
+	)
+{
+	for (ULONG i=0; i<count; i++)
+	{
+		char diff = s1[i] - s2[i];
+
+		if (diff)
+			return diff;
+	}
+
+	return 0;
+}
+
+KESYSAPI
 INT
 KEAPI
 wcscmp(
@@ -798,6 +856,28 @@ wcsncpy(
 	)
 {
 	for (int i=0;i<count && (dst[i] = src[i]);i++);
+}
+
+KESYSAPI
+VOID
+KEAPI
+wcscpy(
+	PWSTR dst,
+	PWSTR src
+	)
+{
+	wcsncpy (dst, src, wcslen(src)+1);
+}
+
+KESYSAPI
+VOID
+KEAPI
+wcscat(
+	PWSTR dst,
+	PWSTR src
+	)
+{
+	wcscpy (dst + wcslen(dst), src);
 }
 
 KESYSAPI
@@ -855,6 +935,17 @@ RtlDuplicateUnicodeString(
 	*DestinationString = *SourceString;
 	DestinationString->Buffer = (PWSTR) ExAllocateHeap (FALSE, SourceString->MaxLength);
 	memcpy (DestinationString->Buffer, SourceString->Buffer, SourceString->MaximumLength);
+}
+
+KESYSAPI
+VOID
+KEAPI
+RtlFreeUnicodeString(
+	IN PUNICODE_STRING UnicodeString
+	)
+{
+	ExFreeHeap (UnicodeString->Buffer);
+	UnicodeString->Length = UnicodeString->MaximumLength = 0;
 }
 
 void DumpMemory( DWORD base, ULONG length, DWORD DisplayBase )

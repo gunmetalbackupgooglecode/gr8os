@@ -8,8 +8,11 @@
 
 #include "common.h"
 
+#if CC_TRACE_CACHING
 #define CcPrint(x) KdPrint(x)
-//#define CcPrint(x)
+#else
+#define CcPrint(x)
+#endif
 
 KESYSAPI
 VOID

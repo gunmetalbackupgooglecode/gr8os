@@ -191,7 +191,13 @@ MmAccessFault(
 		}
 	}
 
-	INT3
+	KeBugCheck (KERNEL_MODE_EXCEPTION_NOT_HANDLED,
+				STATUS_ACCESS_VIOLATION,
+				(ULONG)VirtualAddress,
+				0,
+				0
+				);
+	
 	KiStopExecution( );
 }
 

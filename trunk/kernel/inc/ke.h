@@ -82,6 +82,14 @@ typedef struct LIST_ENTRY
 #define IsListEmpty(ListHead) \
     ((ListHead)->Flink == (ListHead))
 
+#define InterlockedOp(Lock, Operation) \
+	{									\
+		ExAcquireMutex (Lock);			\
+		Operation;						\
+		ExReleaseMutex (Lock);			\
+	}
+
+
 VOID
 FORCEINLINE
 RemoveEntryList(

@@ -8,6 +8,8 @@
 extern POBJECT_DIRECTORY IoDeviceDirectory;
 extern POBJECT_DIRECTORY IoDriverDirectory;
 
+#define SECTOR_SIZE 512
+
 
 //
 // Device Type
@@ -18,7 +20,7 @@ extern POBJECT_DIRECTORY IoDriverDirectory;
 #define DEVICE_TYPE_FS			0x00000003
 #define DEVICE_TYPE_KEYBOARD	0x00000004
 #define DEVICE_TYPE_VIDEO		0x00000005
-//#define DEVICE_TYPE_
+#define DEVICE_TYPE_DISK_FILE_SYSTEM	0x00000006
 
 #define DEVICE_FLAGS_BUFFERED_IO	0x00000001
 #define DEVICE_FLAGS_NEITHER_IO		0x00000002
@@ -26,6 +28,7 @@ extern POBJECT_DIRECTORY IoDriverDirectory;
 typedef struct DRIVER *PDRIVER;
 typedef struct IRP *PIRP;
 typedef struct DEVICE *PDEVICE;
+typedef struct VPB *PVPB;
 
 //
 // Device object
@@ -42,6 +45,17 @@ typedef struct DEVICE
 	ULONG Flags;			// Device object flags. See DEV_FLAGS_*
 	UCHAR StackSize;		// Device stack size
 	ULONG DeviceType;		// Device type. See DEVICE_TYPE_*
+
+	LIST_ENTRY IopInternalLinks;	// Points into IopFileSystemListHead - linked list of file systems.
+
+	PVPB Vpb;					// This points to the VPB
+
+	//
+	// DeviceObject (DEVICE_TYPE_DISK) points to VPB of this device.
+	// Vpb has two back links - back to disk device object and to the file system device object.
+	//
+	//  VPB exists when the file system is mounted.
+	//
 } *PDEVICE;
 
 //
@@ -65,10 +79,14 @@ typedef STATUS (KEAPI *PIRP_HANDLER)(PDEVICE DeviceObject, PIRP Irp);
 #define IRP_READ		1
 #define IRP_WRITE		2
 #define IRP_IOCTL		3
-#define IRP_QUERY_INFO	4
-#define IRP_SET_INFO	5	
-#define IRP_CLOSE		6
-#define MAX_IRP			7
+#define IRP_FSCTL		4
+#define IRP_QUERY_INFO	5
+#define IRP_SET_INFO	6	
+#define IRP_CLOSE		7
+#define MAX_IRP			8
+
+#define IRP_MN_MOUNT	1
+#define IRP_MN_DISMOUNT	2
 
 struct DRIVER
 {
@@ -92,7 +110,6 @@ typedef struct IRP_STACK_LOCATION
 
 		struct
 		{
-			UNICODE_STRING Path;
 			ULONG DesiredAccess  UNIMPLEMENTED;
 		} Create;
 
@@ -132,6 +149,15 @@ typedef struct IRP_STACK_LOCATION
 		{
 			ULONG InfoClass;
 		} QuerySetInfo;
+
+		//
+		// Arguments for IRP_MN_MOUNT
+		//
+
+		struct
+		{
+			PDEVICE DeviceObject;
+		} MountVolume;
 
 		//
 		// Other driver specified arguments
@@ -215,7 +241,7 @@ struct FILE
 			BOOLEAN Synchronize;
 		};
 	};
-	UNICODE_STRING FileName;
+	UNICODE_STRING RelativeFileName;
 	LARGE_INTEGER CurrentOffset;
 	STATUS FinalStatus;
 	EVENT Event;
@@ -319,6 +345,7 @@ STATUS
 KEAPI
 IoCreateDevice(
 	IN PDRIVER DriverObject,
+	IN ULONG DeviceExtensionSize,
 	IN PUNICODE_STRING DeviceName OPTIONAL,
 	IN ULONG DeviceType,
 	OUT PDEVICE *DeviceObject
@@ -428,4 +455,72 @@ VOID
 KEAPI
 IopDequeueThreadIrp(
 	IN PIRP Irp
+	);
+
+extern MUTEX IopFileSystemListLock;
+extern LIST_ENTRY IopFileSystemListHead;
+
+KESYSAPI
+VOID
+KEAPI
+IoRegisterFileSystem(
+	PDEVICE DeviceObject
+	);
+
+KESYSAPI
+VOID
+KEAPI
+IoUnregisterFileSystem(
+	PDEVICE DeviceObject
+	);
+
+extern POBJECT_TYPE IoVpbObjectType;
+
+#define VPB_MOUNTED		0x00000001
+#define VPB_LOCKED		0x00000002
+
+#define MAX_VOLUME_LABEL_LEN	128
+
+typedef struct VPB
+{
+	USHORT Flags;					// see VPB_*
+	USHORT VolumeLabelLength;		// in bytes
+	PDEVICE FsDeviceObject;			// file system CDO
+	PDEVICE PhysicalDeviceObject;	// PDO
+	ULONG SerialNumber;				// Volume serial number
+	// Volume label
+	WCHAR VolumeLabel [MAX_VOLUME_LABEL_LEN/sizeof(WCHAR)];
+} *PVPB;
+
+STATUS
+KEAPI
+IopCreateVpb(
+	PDEVICE DeviceObject
+	);
+
+KESYSAPI
+STATUS
+IoMountVolume(
+	PDEVICE RealDevice,
+	PDEVICE FsDevice
+	);
+
+KESYSAPI
+STATUS
+IoDismountVolume(
+	PDEVICE RealDevice
+	);
+
+KESYSAPI
+STATUS
+IoRequestDismount(
+	PDEVICE RealDevice,
+	PDEVICE FsDevice
+	);
+
+KESYSAPI
+STATUS
+IoRequestMount(
+	PDEVICE RealDevice,
+	PDEVICE FsDevice
 	);
