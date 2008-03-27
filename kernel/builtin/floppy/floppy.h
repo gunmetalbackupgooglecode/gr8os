@@ -38,7 +38,6 @@ FdInit(
 #define FD_SECTOR_SIZE	512
 #define FD_SECTOR_SHIFT	9
 
-
 #define FD_BASE 0x3f0
 //#define FD_STATUS_A	(FD_BASE + 0)	/* Status register A */
 //#define FD_STATUS_B	(FD_BASE + 1)	/* Status register B */

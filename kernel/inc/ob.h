@@ -202,6 +202,7 @@ typedef struct OBJECT_HEADER
 	ULONG ReferenceCount;
 	ULONG HandleCount;		// Always <= ReferenceCount
 	ULONG Flags;
+	MUTEX ObjectLock;
 
 #pragma warning(disable:4200)
 	UCHAR Body[0];
@@ -289,6 +290,20 @@ KESYSAPI
 VOID
 KEAPI
 ObReferenceObject(
+	PVOID Object
+	);
+
+KESYSAPI
+VOID
+KEAPI
+ObLockObject(
+	PVOID Object
+	);
+
+KESYSAPI
+VOID
+KEAPI
+ObUnlockObject(
 	PVOID Object
 	);
 

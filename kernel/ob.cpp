@@ -106,6 +106,8 @@ ObCreateObject(
 	InitializeListHead (&ObjectHeader->DirectoryList);
 	ObjectHeader->ParentDirectory = NULL;
 
+	ExInitializeMutex (&ObjectHeader->ObjectLock);
+
 	*Object = &ObjectHeader->Body;
 
 	memset (*Object, 0, ObjectSize);
@@ -263,7 +265,12 @@ ObReferenceObject(
 	ObInterlockedIncrement( refcount );
 
 #if OB_TRACE_REF_DEREF
-	KiDebugPrint("Object %08x referenced, new ref count %d\n", Object, OBJECT_TO_OBJECT_HEADER(Object)->ReferenceCount);
+	KiDebugPrint("Object %08x [%S] of type [%S] referenced, new ref count %d\n", 
+		Object, 
+		OBJECT_TO_OBJECT_HEADER(Object)->ObjectName.Buffer ? OBJECT_TO_OBJECT_HEADER(Object)->ObjectName.Buffer : L"",
+		OBJECT_TO_OBJECT_HEADER(Object)->ObjectType->ObjectTypeName.Buffer,
+		OBJECT_TO_OBJECT_HEADER(Object)->ReferenceCount
+		);
 #endif
 }
 
@@ -282,7 +289,11 @@ ObDereferenceObject(
 	ObInterlockedDecrement (&ObjectHeader->ReferenceCount);
 
 #if OB_TRACE_REF_DEREF
-	KiDebugPrint("Object %08x dereferenced, new ref count %d\n", Object, ObjectHeader->ReferenceCount);
+	KiDebugPrint("Object %08x [%S] of type [%S] dereferenced, new ref count %d\n", 
+		Object, 
+		OBJECT_TO_OBJECT_HEADER(Object)->ObjectName.Buffer ? OBJECT_TO_OBJECT_HEADER(Object)->ObjectName.Buffer : L"",
+		OBJECT_TO_OBJECT_HEADER(Object)->ObjectType->ObjectTypeName.Buffer,
+		ObjectHeader->ReferenceCount);
 #endif
 
 	if ( ObjectHeader->ReferenceCount == 0 && 
@@ -313,6 +324,15 @@ ObDereferenceObjectEx(
 	POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER (Object);
 	ULONG *refcount = &ObjectHeader->ReferenceCount;
 
+#if OB_TRACE_REF_DEREF
+	KiDebugPrint("Object %08x [%S] of type [%S] dereferenced by %d, new ref count %d\n", 
+		Object, 
+		OBJECT_TO_OBJECT_HEADER(Object)->ObjectName.Buffer ? OBJECT_TO_OBJECT_HEADER(Object)->ObjectName.Buffer : L"",
+		OBJECT_TO_OBJECT_HEADER(Object)->ObjectType->ObjectTypeName.Buffer,
+		Count,
+		ObjectHeader->ReferenceCount);
+#endif
+
 	ObInterlockedExchangeAdd (refcount, -2);
 }
 
@@ -328,6 +348,33 @@ ObMakeTemporaryObject(
 --*/
 {
 	OBJECT_TO_OBJECT_HEADER(Object)->Flags &= ~OBJ_PERMANENT;
+}
+
+KESYSAPI
+VOID
+KEAPI
+ObLockObject(
+	PVOID Object
+	)
+/*++
+	This function locks an object.
+	Caller can safely access the object
+--*/
+{
+	ExAcquireMutex ( &OBJECT_TO_OBJECT_HEADER(Object)->ObjectLock );
+}
+
+KESYSAPI
+VOID
+KEAPI
+ObUnlockObject(
+	PVOID Object
+	)
+/*++
+	This function unlocks the object after use
+--*/
+{
+	ExReleaseMutex ( &OBJECT_TO_OBJECT_HEADER(Object)->ObjectLock );
 }
 
 
@@ -373,7 +420,7 @@ ObpDeleteObjectInternal(
 	// Free object name
 	//
 
-	if (ObjectHeader->ObjectName.Buffer)
+	if (ObjectHeader->ObjectName.Buffer && ObjectHeader->ObjectName.Length)
 	{
 		ExFreeHeap (ObjectHeader->ObjectName.Buffer);
 	}
@@ -786,7 +833,30 @@ ObQueryObjectName(
 
 	if (ObjectHeader->ObjectName.Buffer)
 	{
-		RtlDuplicateUnicodeString (&ObjectHeader->ObjectName, ObjectName);
+		PWSTR ObjName = (PWSTR) ExAllocateHeap (TRUE, ObjectHeader->ObjectName.MaximumLength);
+		wcscpy (ObjName, ObjectHeader->ObjectName.Buffer);
+
+		ULONG CurrLen = ObjectHeader->ObjectName.Length;
+
+		for (POBJECT_DIRECTORY CurrDir = ObjectHeader->ParentDirectory; CurrDir != NULL; )
+		{
+			PWSTR TempName, OldName = ObjName;
+			ObjectHeader = OBJECT_TO_OBJECT_HEADER (CurrDir);
+
+			CurrLen += 4 + ObjectHeader->ObjectName.Length; // '\\' + length of parent dir. name + NULL
+
+			TempName = (PWSTR) ExAllocateHeap (TRUE, CurrLen);
+			wcscpy (TempName, ObjectHeader->ObjectName.Buffer);
+			wcscat (TempName, L"\\");
+			wcscat (TempName, OldName);
+			ObjName = TempName;
+
+			ExFreeHeap (OldName);
+
+			CurrDir = ObjectHeader->ParentDirectory;
+		}
+
+		RtlInitUnicodeString (ObjectName, ObjName);
 		return STATUS_SUCCESS;
 	}
 

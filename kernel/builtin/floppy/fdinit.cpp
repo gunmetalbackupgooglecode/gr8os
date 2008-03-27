@@ -150,6 +150,7 @@ FdDriverEntry(
 
 	Status = IoCreateDevice (
 		DriverObject,
+		0,
 		&FdDeviceName,
 		DEVICE_TYPE_DISK, 
 		&FdDeviceObject

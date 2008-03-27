@@ -16,6 +16,7 @@ POBJECT_DIRECTORY IoFileSystemDirectory;
 POBJECT_TYPE IoDeviceObjectType;
 POBJECT_TYPE IoDriverObjectType;
 POBJECT_TYPE IoFileObjectType;
+POBJECT_TYPE IoVpbObjectType;
 
 PMUTEX IoDatabaseLock;
 
@@ -78,8 +79,28 @@ IopDeleteFile(
 	KdPrint(("IopDeleteFile\n"));
 
 	ObDereferenceObject (FileObject->DeviceObject);
-	ExFreeHeap (FileObject->FileName.Buffer);
+	ExFreeHeap (FileObject->RelativeFileName.Buffer);
 }
+
+VOID
+KEAPI
+IopDeleteVpb(
+	IN POBJECT_HEADER Object
+	)
+/*++
+	See remarks to the PDELETE_OBJECT_ROUTINE typedef for the general explanations
+	 of the type of such routines.
+
+	This routine is called when the VPB object is being deleted.
+	We should dereference the corresponding devices
+--*/
+{
+	PVPB Vpb = OBJECT_HEADER_TO_OBJECT (Object, VPB);
+
+	ObDereferenceObject (Vpb->PhysicalDeviceObject);
+	ObDereferenceObject (Vpb->FsDeviceObject);
+}
+	
 
 VOID
 KEAPI
@@ -220,6 +241,33 @@ IoInitSystem(
 	}
 
 	//
+	// Create VPB object type
+	//
+
+	RtlInitUnicodeString (&TypeName, L"VPB");
+
+	Status = ObCreateObjectType (
+		&IoVpbObjectType, 
+		&TypeName,
+		NULL,
+		NULL,
+		NULL,
+		IopDeleteVpb,
+		NULL,
+		OB_OBJECT_OWNER_IO);
+
+	if (!SUCCESS(Status))
+	{
+		KeBugCheck (IO_INITIALIZATION_FAILED,
+					__LINE__,
+					Status,
+					0,
+					0
+					);
+	}
+
+
+	//
 	// Load FD driver
 	//
 
@@ -239,6 +287,13 @@ IoInitSystem(
 					);
 	}
 
+	//
+	// Init global FS list
+	//
+
+	ExInitializeMutex (&IopFileSystemListLock);
+	InitializeListHead (&IopFileSystemListHead);
+
 
 	//
 	// Load FS FAT driver
@@ -249,7 +304,14 @@ IoInitSystem(
 
 	RtlInitUnicodeString (&FatDriverName, L"\\FileSystem\\fat" );
 
-	Status = IopCreateDriverObject ( 0, 0, DRV_FLAGS_BUILTIN|DRV_FLAGS_CRITICAL, FsFatDriverEntry, &FatDriverName, &FatDriver );
+	Status = IopCreateDriverObject ( 
+		0, 
+		0, 
+		DRV_FLAGS_BUILTIN|DRV_FLAGS_CRITICAL, 
+		FsFatDriverEntry, 
+		&FatDriverName, 
+		&FatDriver 
+		);
 	if (!SUCCESS(Status))
 	{
 		KeBugCheck (IO_INITIALIZATION_FAILED,
@@ -259,6 +321,41 @@ IoInitSystem(
 					0
 					);
 	}
+	
+	/*
+	//
+	// Ref fdd0
+	//
+
+	UNICODE_STRING devname;
+
+	RtlInitUnicodeString (&devname, L"\\Device\\fdd0");
+
+	PDEVICE fdd0;
+
+	Status = ObReferenceObjectByName (&devname, IoDeviceObjectType, KernelMode, 0, (PVOID*) &fdd0);
+
+	if (!SUCCESS(Status))
+	{
+		KeBugCheck (IO_INITIALIZATION_FAILED,
+					__LINE__,
+					Status,
+					0,
+					0
+					);
+	}
+
+	PDEVICE attached = fdd0->AttachedDevice;
+
+	KdPrint(("fdd0: %08x,  AttachedDevice=%08x, Vpb=%08x, Vpb->RealDevice=%08x, Vpb->FsDevice=%08x, mounted=%d\n",
+		fdd0,
+		attached,
+		fdd0->Vpb,
+		fdd0->Vpb->PhysicalDeviceObject,
+		fdd0->Vpb->FsDeviceObject,
+		!!(fdd0->Vpb->Flags & VPB_MOUNTED)
+		));
+	*/
 }
 
 
@@ -466,7 +563,7 @@ IoCreateFile(
 	File->FsContext = NULL;
 	File->FsContext2 = NULL;
 	
-	RtlDuplicateUnicodeString( FileName, &File->FileName );
+//	RtlDuplicateUnicodeString( FileName, &File->FileName );
 
 	File->CurrentOffset.QuadPart = 0;
 	File->FinalStatus = STATUS_SUCCESS;
@@ -497,7 +594,34 @@ IoCreateFile(
 
 	Irp->FileObject = File;
 	Irp->CurrentStackLocation->DeviceObject = DeviceObject;
-	Irp->CurrentStackLocation->Parameters.Create.Path = *FileName;
+	
+	//Irp->CurrentStackLocation->Parameters.Create.Path = *FileName;
+
+	//
+	// Get relative file name, save it into FILE->RelativeFileName
+	//
+
+	UNICODE_STRING CorrespondingDeviceName;
+	Status = ObQueryObjectName (thisDeviceObject, &CorrespondingDeviceName);
+	if (!SUCCESS(Status))
+	{
+		ObpDeleteObjectInternal (File);
+		ObDereferenceObject (DeviceObject);
+		return Status;
+	}
+
+	PWSTR RelativeFileName = FileName->Buffer + wcslen(CorrespondingDeviceName.Buffer);
+	UNICODE_STRING relname;
+
+	RtlInitUnicodeString (&relname, RelativeFileName);
+	RtlDuplicateUnicodeString (&relname, &File->RelativeFileName);
+
+	ExFreeHeap (CorrespondingDeviceName.Buffer);
+
+	//
+	// Fill irpSl
+	//
+
 	Irp->CurrentStackLocation->Parameters.Create.DesiredAccess = DesiredAccess;
 
 	for (int i=1; i<Irp->StackSize; i++)
@@ -582,6 +706,9 @@ IoReadFile(
 	STATUS Status;
 	PIRP Irp;
 
+	if (FileObject->ReadAccess == 0)
+		return STATUS_ACCESS_DENIED;
+
 	Irp = IoBuildDeviceRequest (
 		FileObject->DeviceObject,
 		IRP_READ,
@@ -652,6 +779,9 @@ IoWriteFile(
 {
 	STATUS Status;
 	PIRP Irp;
+
+	if (FileObject->WriteAccess == 0)
+		return STATUS_ACCESS_DENIED;
 
 	Irp = IoBuildDeviceRequest (
 		FileObject->DeviceObject,
@@ -760,24 +890,31 @@ STATUS
 KEAPI
 IoCreateDevice(
 	IN PDRIVER DriverObject,
+	IN ULONG DeviceExtensionSize,
 	IN PUNICODE_STRING DeviceName OPTIONAL,
 	IN ULONG DeviceType,
 	OUT PDEVICE *DeviceObject
 	)
 {
 	STATUS Status;
+	PDEVICE Device;
 	UNICODE_STRING RelativeDeviceName;
+	PWSTR rel;
 	
-	PWSTR rel = wcsrchr(DeviceName->Buffer+1, L'\\');
-	RtlInitUnicodeString (&RelativeDeviceName, rel+1);
+	if (ARGUMENT_PRESENT(DeviceName))
+	{
+		rel = wcsrchr(DeviceName->Buffer+1, L'\\');
+		RtlInitUnicodeString (&RelativeDeviceName, rel+1);
+	}
 
 	Status = ObCreateObject(
-		(PVOID*)DeviceObject, 
-		sizeof(DEVICE),
+		(PVOID*)&Device, 
+		sizeof(DEVICE) + DeviceExtensionSize,
 		IoDeviceObjectType,
-		&RelativeDeviceName,
+		ARGUMENT_PRESENT(DeviceName) ? &RelativeDeviceName : NULL,
 		OB_OBJECT_OWNER_IO
 		);
+	
 	if (!SUCCESS(Status))
 		return Status;
 
@@ -803,24 +940,37 @@ IoCreateDevice(
 
 		if (!SUCCESS(Status))
 		{
-			ObpDeleteObjectInternal (*DeviceObject);
+			ObpDeleteObjectInternal (Device);
 			return Status;
 		}
 
-		Status = ObInsertObject (Directory, *DeviceObject);
+		Status = ObInsertObject (Directory, Device);
 
 		ObDereferenceObject (Directory);
 
 		if (!SUCCESS(Status))
 		{
-			ObpDeleteObjectInternal (*DeviceObject);
+			ObpDeleteObjectInternal (Device);
 			return Status;
 		}
 	}
 
-	(*DeviceObject)->DriverObject = DriverObject;
-	(*DeviceObject)->DeviceType = DeviceType;
-	(*DeviceObject)->StackSize = 1;
+	Device->DriverObject = DriverObject;
+	Device->DeviceType = DeviceType;
+	Device->StackSize = 1;
+	InitializeListHead (&Device->IopInternalLinks);
+
+	if (DeviceType == DEVICE_TYPE_DISK)
+	{
+		Status = IopCreateVpb (Device);
+		if (!SUCCESS(Status))
+		{
+			ObpDeleteObjectInternal (Device);
+			return Status;
+		}
+	}
+
+	*DeviceObject = Device;
 
 	ObReferenceObject (DriverObject);	// It will be dereferenced in device deletion routine
 
@@ -948,11 +1098,17 @@ IopCreateDriverObject(
 	PDRIVER Driver;
 	STATUS Status;
 
+	UNICODE_STRING RelativeDriverName;
+	PWSTR rel;
+	
+	rel = wcsrchr(DriverName->Buffer+1, L'\\');
+	RtlInitUnicodeString (&RelativeDriverName, rel+1);
+	
 	Status = ObCreateObject (
 		(PVOID*) &Driver,
 		sizeof(DRIVER),
 		IoDriverObjectType,
-		DriverName,
+		&RelativeDriverName,
 		OB_OBJECT_OWNER_IO
 		);
 
@@ -1112,3 +1268,216 @@ IoCompleteRequest(
 
 	ExFreeHeap (Irp);
 }
+
+
+MUTEX IopFileSystemListLock;
+LIST_ENTRY IopFileSystemListHead;
+
+
+KESYSAPI
+VOID
+KEAPI
+IoRegisterFileSystem(
+	PDEVICE DeviceObject
+	)
+/*++
+	Adds the file system control device to the global file system list
+	 and increments its reference count
+--*/
+{
+	ExAcquireMutex (&IopFileSystemListLock);
+
+	InsertTailList (&IopFileSystemListHead, &DeviceObject->IopInternalLinks);
+	ObReferenceObject (DeviceObject);
+
+	ExReleaseMutex (&IopFileSystemListLock);
+}
+
+
+KESYSAPI
+VOID
+KEAPI
+IoUnregisterFileSystem(
+	PDEVICE DeviceObject
+	)
+/*++
+	Remove the file system control device from the global file system list
+	 and decrement its reference count
+--*/
+{
+	ExAcquireMutex (&IopFileSystemListLock);
+
+	RemoveEntryList (&DeviceObject->IopInternalLinks);
+	ObDereferenceObject (DeviceObject);
+
+	ExReleaseMutex (&IopFileSystemListLock);
+}
+
+
+STATUS
+KEAPI
+IopCreateVpb(
+	PDEVICE DeviceObject
+	)
+/*++
+	Create volume parameter block
+--*/
+{
+	STATUS Status;
+	PVPB Vpb;
+
+	Status = ObCreateObject (
+		(PVOID*) &Vpb,
+		sizeof(VPB),
+		IoVpbObjectType,
+		NULL,
+		OB_OBJECT_OWNER_IO
+		);
+
+	if (!SUCCESS(Status))
+	{
+		return Status;
+	}
+
+	Vpb->PhysicalDeviceObject = DeviceObject;
+	DeviceObject->Vpb = Vpb;
+	
+	return STATUS_SUCCESS;
+}
+
+KESYSAPI
+STATUS
+IoMountVolume(
+	PDEVICE RealDevice,
+	PDEVICE FsDevice
+	)
+/*++
+	This function mounts real device object
+--*/
+{
+	PVPB Vpb = RealDevice->Vpb;
+	if (Vpb == NULL)
+	{
+		return STATUS_INVALID_PARAMETER;
+	}
+
+	//
+	// Save pointers
+	//
+
+	Vpb->FsDeviceObject = FsDevice;
+	FsDevice->Vpb = Vpb;
+
+	//
+	// Set mount flag
+	//
+
+	Vpb->Flags |= VPB_MOUNTED;
+
+	return STATUS_SUCCESS;
+}
+
+
+KESYSAPI
+STATUS
+IoRequestMount(
+	PDEVICE RealDevice,
+	PDEVICE FsDevice
+	)
+/*++
+	This function sends IRP_MN_MOUNT request to the file system driver
+--*/
+{
+	PIRP Irp;
+	IO_STATUS_BLOCK IoStatus;
+	STATUS Status;
+
+	Irp = IoBuildDeviceRequest (
+		FsDevice,
+		IRP_FSCTL,
+		&IoStatus,
+		KernelMode,
+		NULL,
+		NULL,
+		NULL
+		);
+
+	if (!Irp)
+	{
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+	Irp->MinorFunction = IRP_MN_MOUNT;
+
+	for (ULONG i=0; i<Irp->StackSize; i++)
+	{
+		Irp->IrpStackLocations[i].Parameters.MountVolume.DeviceObject = RealDevice;
+	}
+
+	Status = IoCallDriver (FsDevice, Irp);
+
+	return Status;
+}
+
+KESYSAPI
+STATUS
+IoDismountVolume(
+	PDEVICE RealDevice
+	)
+/*++
+	This function dismounts real device object
+--*/
+{
+	PVPB Vpb = RealDevice->Vpb;
+	if (Vpb == NULL)
+	{
+		return STATUS_INVALID_PARAMETER;
+	}
+
+	Vpb->FsDeviceObject = NULL;
+	Vpb->Flags &= ~VPB_MOUNTED;
+	return STATUS_SUCCESS;
+}
+
+
+KESYSAPI
+STATUS
+IoRequestDismount(
+	PDEVICE RealDevice,
+	PDEVICE FsDevice
+	)
+/*++
+	This function sends IRP_MN_DISMOUNT request to the file system driver
+--*/
+{
+	PIRP Irp;
+	IO_STATUS_BLOCK IoStatus;
+	STATUS Status;
+
+	Irp = IoBuildDeviceRequest (
+		FsDevice,
+		IRP_FSCTL,
+		&IoStatus,
+		KernelMode,
+		NULL,
+		NULL,
+		NULL
+		);
+
+	if (!Irp)
+	{
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+	Irp->MinorFunction = IRP_MN_DISMOUNT;
+
+	for (ULONG i=0; i<Irp->StackSize; i++)
+	{
+		Irp->IrpStackLocations[i].Parameters.MountVolume.DeviceObject = RealDevice;
+	}
+
+	Status = IoCallDriver (FsDevice, Irp);
+
+	return Status;
+}
+

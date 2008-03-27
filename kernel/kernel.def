@@ -96,6 +96,8 @@ EXPORTS
 	IoWriteFile
 	IoDeviceIoControlFile
 	IoCompleteRequest
+	IoRegisterFileSystem
+	IoUnregisterFileSystem
 	
 	;
 	; Cc
@@ -125,6 +127,8 @@ EXPORTS
 	ObOpenObjectByPointer
 	ObQueryObjectName
 	ObReferenceObjectByHandle
+	ObLockObject
+	ObUnlockObject
 	
 	;
 	; Mm
@@ -158,18 +162,24 @@ EXPORTS
 	; RTL
 	;
 	
+	RtlInitUnicodeString
+	RtlDuplicateUnicodeString
+	RtlFreeUnicodeString
 	memset
 	memcpy
 	memmove
 	sprintf
 	vsprintf
-	RtlDuplicateUnicodeString
-	RtlInitUnicodeString
 	wcscmp
 	wcslen
 	wcsncpy
 	wcssubstr
 	wcsrchr
 	strlen
+	strchr
+	strncmp
+	wcscat
+	wcscpy
+	wcstomb
 	
 	

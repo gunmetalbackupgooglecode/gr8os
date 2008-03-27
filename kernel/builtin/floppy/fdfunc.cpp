@@ -46,6 +46,13 @@ FD_MEDIA_TYPE FdpFloppyTypes[] = {
 // disk type until the next media change occurs
 FD_MEDIA_TYPE *FdpCurrentType;
 
+void LbaToChs (ULONG LbaSector, ULONG *Cylinder, ULONG *Head, ULONG *Sector)
+{
+	*Sector = ((LbaSector % FdpCurrentType->SectorsPerTrack) + 1);
+	*Head = ((LbaSector / FdpCurrentType->SectorsPerTrack) % FdpCurrentType->NumberOfHeads);
+	*Cylinder = ((LbaSector / FdpCurrentType->SectorsPerTrack) / FdpCurrentType->NumberOfHeads);
+}
+
 // FDC reply buffer
 UCHAR FdpReplyBuffer [MAX_REPLIES];
 #define ST0 (FdpReplyBuffer[0])
@@ -189,9 +196,14 @@ FdPerformRead(
 
 	KdPrint(("FdRead: controller prepared\n"));
 
-	ULONG Cylinder = LbaSector / (FdpCurrentType->NumberOfHeads * FdpCurrentType->NumberOfSectors);
-	ULONG Head = (LbaSector % (FdpCurrentType->NumberOfHeads * FdpCurrentType->NumberOfSectors)) / FdpCurrentType->NumberOfSectors;
-	ULONG Sector = (LbaSector % (FdpCurrentType->NumberOfHeads * FdpCurrentType->NumberOfSectors)) % FdpCurrentType->NumberOfSectors + 1;
+	ULONG Cylinder, Head, Sector;
+	LbaToChs (LbaSector, &Cylinder, &Head, &Sector);
+
+//	ULONG Cylinder = LbaSector / (FdpCurrentType->NumberOfHeads * FdpCurrentType->NumberOfSectors);
+//	ULONG Head = (LbaSector % (FdpCurrentType->NumberOfHeads * FdpCurrentType->NumberOfSectors)) / FdpCurrentType->NumberOfSectors;
+//	ULONG Sector = (LbaSector % (FdpCurrentType->NumberOfHeads * FdpCurrentType->NumberOfSectors)) % FdpCurrentType->NumberOfSectors + 1;
+
+	KdPrint(("FdRead: LBA=%d, C=%d, H=%d, S=%d\n", LbaSector, Cylinder, Head, Sector));
 
 	PDMA_REQUEST DmaReq;
 	STATUS Status;

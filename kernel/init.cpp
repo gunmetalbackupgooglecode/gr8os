@@ -327,15 +327,18 @@ KiInitSystem(
 
 	KeInitializeEvent (&ev, SynchronizationEvent, FALSE);
 
-	
+	//
+	// Test file reading
+	//
+
 	PFILE File;
 	STATUS Status;
 	UNICODE_STRING FdName;
 	IO_STATUS_BLOCK IoStatus;
 
-	RtlInitUnicodeString (&FdName, L"\\Device\\fdd0");
+	RtlInitUnicodeString (&FdName, L"\\Device\\fdd0\\message.txt");
 
-	Status = IoCreateFile (&File, 0, &FdName, &IoStatus, 0, 0);
+	Status = IoCreateFile (&File, FILE_READ_DATA, &FdName, &IoStatus, 0, 0);
 	if (!SUCCESS(Status)) {
 		KeBugCheck (KE_INITIALIZATION_FAILED,
 					__LINE__,
@@ -346,6 +349,9 @@ KiInitSystem(
 	}
 
 	PVOID Buffer = ExAllocateHeap (TRUE, 512);
+
+	PFSFATFCB fcb = (PFSFATFCB) File->FsContext;
+	KdPrint(("\nFile opened, fcb=%08x, filename=%s\n", fcb, fcb->DirEnt->Filename));
 
 	KdPrint(("\nRead 1\n\n"));
 
@@ -359,57 +365,14 @@ KiInitSystem(
 					);
 	}
 
-	KdPrint(("INIT: Buffer: %02x %02x %02x %02x\n",
-		((UCHAR*)Buffer)[0],
-		((UCHAR*)Buffer)[1],
-		((UCHAR*)Buffer)[2],
-		((UCHAR*)Buffer)[3]));
-
-	KdPrint(("\nRead 2\n\n"));
-
-	Status = IoReadFile (File, Buffer, 512, NULL, &IoStatus);
-	if (!SUCCESS(Status)) {
-		KeBugCheck (KE_INITIALIZATION_FAILED,
-					__LINE__,
-					Status,
-					0,
-					0
-					);
-	}
-
-	KdPrint(("INIT: Buffer: %02x %02x %02x %02x\n",
-		((UCHAR*)Buffer)[0],
-		((UCHAR*)Buffer)[1],
-		((UCHAR*)Buffer)[2],
-		((UCHAR*)Buffer)[3]));
-
-
-	KdPrint(("\nRead 3\n\n"));
-
-	LARGE_INTEGER offs = { 0, 0 };
-
-	Status = IoReadFile (File, Buffer, 512, &offs, &IoStatus);
-	if (!SUCCESS(Status)) {
-		KeBugCheck (KE_INITIALIZATION_FAILED,
-					__LINE__,
-					Status,
-					0,
-					0
-					);
-	}
-
-	KdPrint(("INIT: Buffer: %02x %02x %02x %02x\n",
-		((UCHAR*)Buffer)[0],
-		((UCHAR*)Buffer)[1],
-		((UCHAR*)Buffer)[2],
-		((UCHAR*)Buffer)[3]));
-
+	KdPrint(("INIT: Read=%d, Buffer: \n%s\n", IoStatus.Information, Buffer));
 
 	KdPrint(("\nClose\n\n"));
 
 	ExFreeHeap (Buffer);
 	IoCloseFile (File);
 
+	for(;;);
 
 	// Create two additional threads
 	PspCreateThread( &Thread1, &InitialSystemProcess, PsCounterThread, (PVOID)( 80*3 + 40 ) );

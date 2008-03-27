@@ -139,6 +139,7 @@ typedef struct COUNTED_BUFFER<PCHAR> ANSI_STRING, *PANSI_STRING;
 
 #define STATIC_ASSERT(x)  extern char __dummy[(x)?1:-1];
 
+
 //
 // Configuration
 //
@@ -156,12 +157,14 @@ typedef struct COUNTED_BUFFER<PCHAR> ANSI_STRING, *PANSI_STRING;
 #define KD_TRACE_LOW_LEVEL_IO	0
 
 // Dump packets
-#define TRACE_PACKETS			1
+#define TRACE_PACKETS			0
 
 // Dump head allocation/freeing atttempts
 #define EX_TRACE_HEAP			0
 
-#define OB_TRACE_REF_DEREF		1
+#define OB_TRACE_REF_DEREF		0
+
+#define CC_TRACE_CACHING		0
 
 
 extern "C"
