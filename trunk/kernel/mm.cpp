@@ -31,7 +31,7 @@ MiMapPhysicalPages(
 		MiWriteValidKernelPte (PointerPte);
 		PointerPte->u1.e1.PageFrameNumber = (PhysicalAddress >> PAGE_SHIFT) + i;
 
-		KdPrint(("MM: Mapped %08x [<-%08x] pte %08x\n", (ULONG)VirtualAddress + (i<<PAGE_SHIFT), PointerPte->u1.e1.PageFrameNumber<<PAGE_SHIFT, PointerPte));
+//		KdPrint(("MM: Mapped %08x [<-%08x] pte %08x\n", (ULONG)VirtualAddress + (i<<PAGE_SHIFT), PointerPte->u1.e1.PageFrameNumber<<PAGE_SHIFT, PointerPte));
 
 		MmInvalidateTlb (VirtualAddress);
 
@@ -113,7 +113,7 @@ MiUnmapPhysicalPages(
 	//KeZeroMemory( PointerPte, PageCount*sizeof(MMPTE) );
 	for (ULONG i=0; i<PageCount; i++)
 	{
-		KdPrint(("MM: Unmapping %08x [->%08x] pte %08x\n", (ULONG)VirtualAddress + (i<<PAGE_SHIFT), (PointerPte->u1.e1.PageFrameNumber)<<PAGE_SHIFT, PointerPte));
+//		KdPrint(("MM: Unmapping %08x [->%08x] pte %08x\n", (ULONG)VirtualAddress + (i<<PAGE_SHIFT), (PointerPte->u1.e1.PageFrameNumber)<<PAGE_SHIFT, PointerPte));
 		
 		PointerPte->RawValue = 0;
 
@@ -285,6 +285,17 @@ MiZeroPageThread(
 	}
 }
 
+LIST_ENTRY PsLoadedModuleList;
+MUTEX PsLoadedModuleListLock;
+
+LDR_MODULE MiKernelModule;
+
+PMMWORKING_SET MiSystemWorkingSet;
+
+PMMPPD MmZeroedPageListHead;
+PMMPPD MmFreePageListHead;
+PMMPPD MmModifiedPageListHead;
+PMMPPD MmStandbyPageListHead;
 
 VOID
 KEAPI
@@ -292,4 +303,91 @@ MmInitSystem(
 	)
 {
 	ExInitializeMutex (&MmPageDatabaseLock);
+
+	MiMapPhysicalPages (MM_PPD_START, MM_PPD_START_PHYS, (KiLoaderBlock.PhysicalMemoryPages * sizeof(MMPPD)) / PAGE_SIZE);
+
+	//
+	// Initialize our module
+	//
+
+	InitializeListHead (&PsLoadedModuleList);
+	ExInitializeMutex (&PsLoadedModuleListLock);
+
+	MiKernelModule.Base = (PVOID) MM_KERNEL_START;
+	RtlInitUnicodeString (&MiKernelModule.ModuleName, L"kernel.exe");
+
+	InterlockedOp (&PsLoadedModuleListLock, InsertTailList (&PsLoadedModuleList, &MiKernelModule.ListEntry));
+
+	PIMAGE_DOS_HEADER KrnlDosHdr = (PIMAGE_DOS_HEADER) MM_KERNEL_START;
+	PIMAGE_NT_HEADERS KrnlNtHdrs = (PIMAGE_NT_HEADERS) (MM_KERNEL_START + KrnlDosHdr->e_lfanew);
+
+	MiKernelModule.Size = KrnlNtHdrs->OptionalHeader.ImageBase;
+
+	//
+	// Fill MMPPDs appropriately
+	//
+
+	PMMPPD Ppd = (PMMPPD) MM_PPD_START;
+
+
+	// Describe first meg, PTEs, PPDs and heap.
+	ULONG InitialPageCount = 0x3000;
+
+	//
+	// Create system working set
+	//
+
+	MiSystemWorkingSet = (PMMWORKING_SET) ExAllocateHeap (FALSE, sizeof(MMWORKING_SET) + (InitialPageCount - 1)*sizeof(MMWORKING_SET_ENTRY));
+	MiSystemWorkingSet->TotalPageCount = InitialPageCount;
+	MiSystemWorkingSet->LockedPageCount = InitialPageCount;
+	MiSystemWorkingSet->OwnerMode = KernelMode;
+	MiSystemWorkingSet->Owner = &InitialSystemProcess;
+	
+	ULONG i;
+
+	for (i=0; i<InitialPageCount; i++)
+	{
+		Ppd[i].PageLocation = ActiveAndValid;
+		Ppd[i].BelongsToSystemWorkingSet = TRUE;
+		Ppd[i].ProcessorMode = KernelMode;
+
+		MiSystemWorkingSet->WsPages[i].LockedInWs = TRUE;
+		MiSystemWorkingSet->WsPages[i].PageDescriptor = &Ppd[i];
+	}
+
+	//
+	// All other pages describe as Zeroed pages.
+	//
+
+	MmZeroedPageListHead = &Ppd[i];
+
+	for (; i<KiLoaderBlock.PhysicalMemoryPages; i++)
+	{
+		Ppd[i].PageLocation = ZeroedPageList;
+
+		if (i == KiLoaderBlock.PhysicalMemoryPages-1)
+		{
+			Ppd[i].u1.NextFlink = NULL;
+		}
+		else
+		{
+			Ppd[i].u1.NextFlink = &Ppd[i+1];
+		}
+	}
 }
+
+
+KESYSAPI
+PHYSICAL_ADDRESS
+KEAPI
+MmAllocatePhysicalPages(
+	ULONG PageCount
+	);
+
+KESYSAPI
+VOID
+KEAPI
+MmFreePhysicalPages(
+	PHYSICAL_ADDRESS PhysicalAddress,
+	ULONG PageCount
+	);

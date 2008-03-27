@@ -6,7 +6,11 @@
 		00000000 - 000FFFFF    Loader, kernel, special system structures.
 		00180000 - 00FFFFFF    PTEs, PDEs
 		01000000 - 017FFFFF    PPDs
-		02000000 - 020FFFFF    Kernel heap
+		02000000 - 02FFFFFF    Kernel heap
+
+		//
+		// first 0x3000 pages are reserved for kernel (48 megabytes)
+		// 
 
 	Kernel virtual memory map
 
@@ -25,10 +29,11 @@
 
 #define MM_LOADER_START		0x80000000
 #define MM_KERNEL_START		0x80100000
+#define MM_KERNEL_START_PHYS		0x0000B000
 #define MM_KERNEL_HEAP		((PVOID)0x80200000)
 #define MM_KERNEL_HEAP_PHYS 0x02000000
 #define MM_PDE_START		0xC0000000
-#define MM_PPD_START		0xC8000000
+#define MM_PPD_START		((PVOID)0xC8000000)
 
 #define MM_PDE_START_PHYS	0x00180000
 #define MM_PPD_START_PHYS	0x01000000
@@ -261,12 +266,15 @@ typedef struct MMWORKING_SET_ENTRY
 // Variable-length structure
 typedef struct MMWORKING_SET
 {
-	ULONG PageCount;
+	ULONG TotalPageCount;
+	ULONG LockedPageCount;
 	PROCESSOR_MODE OwnerMode;
 	PPROCESS Owner;
 
-	PMMWORKING_SET_ENTRY WsPages[1];
+	MMWORKING_SET_ENTRY WsPages[1];
 } *PMMWORKING_SET;
+
+extern PMMWORKING_SET MiSystemWorkingSet;
 
 //
 // The following MMPPD structure is the 
@@ -289,7 +297,7 @@ enum PAGE_LOCATION
 	// not lists:
 	ActiveAndValid,
 	TransitionPage,
-	BadPage
+	ReservedOrBadPage
 };
 
 #pragma pack(1)
@@ -310,6 +318,8 @@ typedef struct MMPPD
 	} u1;
 
 	UCHAR PageLocation : 3;
+
+	// Only if PageLocation >= ActiveAndValid
 	UCHAR BelongsToSystemWorkingSet : 1;
 	UCHAR InPageError : 1;
 	UCHAR ReadInProgress : 1;
@@ -335,3 +345,20 @@ extern PMMPPD MmPpdDatabase;
 
 #pragma pack()
 
+
+typedef LARGE_INTEGER PHYSICAL_ADDRESS;
+
+KESYSAPI
+PHYSICAL_ADDRESS
+KEAPI
+MmAllocatePhysicalPages(
+	ULONG PageCount
+	);
+
+KESYSAPI
+VOID
+KEAPI
+MmFreePhysicalPages(
+	PHYSICAL_ADDRESS PhysicalAddress,
+	ULONG PageCount
+	);

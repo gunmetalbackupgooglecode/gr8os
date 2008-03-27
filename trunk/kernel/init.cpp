@@ -21,28 +21,6 @@
 
 THREAD Thread1, Thread2, Thread3;
 
-CHAR
-KiReadChar( 
-	ULONG Pos
-	)
-{
-	__asm mov eax, [Pos]
-	__asm shl eax, 1
-	__asm movzx eax, byte ptr gs:[eax]
-}
-
-VOID
-KiWriteChar(
-	ULONG Pos,
-	CHAR chr
-	)
-{
-	__asm mov eax, [Pos]
-	__asm shl eax, 1
-	__asm mov cl, [chr]
-	__asm mov byte ptr gs:[eax], cl
-}
-
 VOID KiIncChar(
 	ULONG Pos
 	)
@@ -75,7 +53,21 @@ PsCounterThread(
 	for( ;; )
 	{
 		KeStallExecution( 500000 );
-		
+
+		//
+		// Restore digits if someone wiped them
+		//
+
+		if (KiReadChar(Pos)<'0' || KiReadChar(Pos)>'9' ||
+			KiReadChar(Pos-1)<'0' || KiReadChar(Pos-1)>'9' ||
+			KiReadChar(Pos-2)<'0' || KiReadChar(Pos-2)>'9')
+		{
+			KiWriteChar( Pos, '0' );
+			KiWriteChar( Pos-1, '0' );
+			KiWriteChar( Pos-2, '0' );		
+		}
+
+
 		KiIncChar( Pos );
 
 		// This is stupid determining of the current thread.
@@ -175,6 +167,8 @@ KiStallExecutionHalfSecond(
 //#define KiDebugPrintRaw
 //#define KiDebugPrint
 
+LOADER_ARGUMENTS KiLoaderBlock;
+
 KENORETURN
 VOID
 KEAPI
@@ -182,8 +176,9 @@ KiInitSystem(
 	PLOADER_ARGUMENTS LdrArgs
 	)
 {
-	//ULONG PhysPages = LdrArgs->PhysicalMemoryPages;
+	KiLoaderBlock = *LdrArgs;
 
+	KiDebugPrint( "KERNEL: Got execution. Starting with %d megabytes of RAM on board\n", LdrArgs->PhysicalMemoryPages / 256);
 	KiDebugPrintRaw( "INIT: Initializing kernel\n" );
 
 	// Initialize executive
@@ -311,20 +306,6 @@ KiInitSystem(
 
 	KiDebugPrintRaw( "INIT: Initialization phase 0 completed, starting initialization phase 1\n"  );
 
-	//
-	// Correct kernel stack PTEs
-	//
-
-	ULONG KernelStack;
-
-	__asm mov [KernelStack], esp
-
-	KernelStack &= 0xFFFFF000;
-	KernelStack -= PAGE_SIZE;
-
-	PMMPTE Pte = MiGetPteAddress (KernelStack);
-	Pte->u1.e1.PteType = PTE_TYPE_TRIMMED;
-
 	KeInitializeEvent (&ev, SynchronizationEvent, FALSE);
 
 	//
@@ -365,14 +346,14 @@ KiInitSystem(
 					);
 	}
 
+	((UCHAR*)Buffer)[IoStatus.Information] = 0;
+
 	KdPrint(("INIT: Read=%d, Buffer: \n%s\n", IoStatus.Information, Buffer));
 
 	KdPrint(("\nClose\n\n"));
 
 	ExFreeHeap (Buffer);
 	IoCloseFile (File);
-
-	for(;;);
 
 	// Create two additional threads
 	PspCreateThread( &Thread1, &InitialSystemProcess, PsCounterThread, (PVOID)( 80*3 + 40 ) );

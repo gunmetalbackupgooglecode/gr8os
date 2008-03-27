@@ -139,6 +139,29 @@ typedef struct COUNTED_BUFFER<PCHAR> ANSI_STRING, *PANSI_STRING;
 
 #define STATIC_ASSERT(x)  extern char __dummy[(x)?1:-1];
 
+#define KGDT_R0_CODE 0x08
+#define KGDT_R0_DATA 0x10
+#define KGDT_VIDEO   0x18
+#define KGDT_TSS     0x20
+#define KGDT_PCB     0x28
+
+/*
+#pragma pack(2)
+template <class T>
+struct FAR_POINTER
+{
+	ULONG Segment;
+	T* Offset;
+};
+
+template <class T>
+FAR_POINTER<T> __inline RtlMakeFarPointer(USHORT Segment, T* Offset)
+{
+	FAR_POINTER<T> f = {Segment, Offset};
+	return f;
+}
+#pragma pack()
+*/
 
 //
 // Configuration

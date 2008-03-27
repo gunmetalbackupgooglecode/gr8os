@@ -23,7 +23,7 @@ irq0_handler:
 	and  [load_counter], 11b
 	movzx ecx, [load_counter]
 	mov  al, [arrows+ecx]
-	mov  byte [gs:2], al
+	mov  byte [gs:158], al
 	
     mov  al, 20h
     out  020h, al

@@ -549,8 +549,8 @@ memmove:
 	; +16 -> form
 	; +20 -> length
 	
-	mov  esi, [esp + 12]
-	mov  edi, [esp + 16]
+	mov  edi, [esp + 12]
+	mov  esi, [esp + 16]
 	mov  ecx, [esp + 20]
 
 	cmp  esi, edi
@@ -574,6 +574,72 @@ _2:
 	pop  esi
 	retn
 
+public memmove_far as '_memmove_far'
+;
+; memmove_far
+;
+;  Performs far memory moving
+;
+;   ESP+4   dst segment
+;   ESP+8   dst offset
+;   ESP+12  src segment
+;   ESP+16  src offset
+;   ESP+20  Length
+;
+memmove_far:
+	push esi
+	push edi
+	pushfd
+	push es
+	push ds
+	
+	mov  ax, [esp+24]
+	mov  es, ax
+	
+	mov  ax, [esp+32]
+	mov  ds, ax
+	
+	; Stack map
+	;
+	; ESP -> ds
+	; +4  -> es
+	; +8  -> efl
+	; +12 -> edi
+	; +16 -> esi
+	; +20 -> ret
+	; +24 -> toseg
+	; +28 -> to
+	; +32 -> fromseg
+	; +36 -> from
+	; +40 -> length
+	
+	mov  edi, [esp + 28]
+	mov  esi, [esp + 36]
+	mov  ecx, [esp + 40]
+
+	cmp  esi, edi
+	jbe  _3
+
+	cld
+	rep  movsb
+	jmp  _4
+
+_3:
+	std
+	add  esi, ecx
+	add  edi, ecx
+	dec  esi
+	dec  edi
+	rep  movsb
+
+_4:
+	pop  ds
+	pop  es
+	popfd
+	pop  edi
+	pop  esi
+	retn
+	
 	
 
 public KiOutChar as '_KiOutChar@12'

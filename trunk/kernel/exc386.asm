@@ -292,7 +292,8 @@ general_exception:
     invoke DbgPrintRaw, tempbuffer
     
     mov  esi, tempbuffer
-    xor  ax, ax
+    mov  ax, 2
+    mov  bl, 75
     int  30h
 
     halt

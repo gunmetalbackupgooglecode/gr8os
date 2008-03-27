@@ -10,6 +10,31 @@
 
 //PCB Pcb0;
 
+__declspec(naked)
+CHAR
+KEFASTAPI
+KiReadChar( 
+	ULONG Pos
+	)
+{
+	__asm shl ecx, 1
+	__asm movzx eax, byte ptr gs:[ecx]
+	__asm retn
+}
+
+__declspec(naked)
+VOID
+KEFASTAPI
+KiWriteChar(
+	ULONG Pos,
+	CHAR chr
+	)
+{
+	__asm shl ecx, 1
+	__asm mov byte ptr gs:[ecx], dl
+	__asm retn
+}
+
 KESYSAPI
 PDPC_QUEUE
 KEAPI

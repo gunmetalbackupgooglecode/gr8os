@@ -18,10 +18,12 @@
 ;
 ;  00000000 - 000FFFFF - Loader & kernel
 ;  00180000 - 00FFFFFF - PTEs
-;  01000000 - 017FFFFF - PPDs
+;  01000000 - 01BFFFFF - PPDs (12 byte each PPD, describes 4K of memory).
 ;
-;  24 mb
+;  28 megs
 ;
+
+SIZEOF_PPDS = 0xC00000
 
 ;
 ; PTE map
@@ -112,8 +114,9 @@ EnablePaging:
 
 	; Clear PPDs
 	;BUGBUG: Implement PPDs
+	;Fixed: PPD implementation moved to kernel
 	mov  edi, KE_PG_PPD_START
-	mov  ecx, 1024
+	mov  ecx, SIZEOF_PPDS shr 2
 	xor  eax, eax
 	rep  stosd
 
