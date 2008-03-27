@@ -27,7 +27,7 @@ ExInitSystem(
 	Initialize executive
 --*/
 {
-	ExpHeapSize = PAGE_SIZE * 16;
+	ExpHeapSize = 16*1024*1024;	// 16 megs
 
 	//
 	// Map heap physical pages
@@ -200,7 +200,8 @@ ExpCheckBlockValid(
 							ptr[i] );
 			}
 	}
-	else if(Block->BlockType == HEAP_BLOCK_FREE)
+	else if(Block->BlockType == HEAP_BLOCK_FREE
+		    && Block->Size < 65536)
 	{
 		UCHAR *ptr = (UCHAR*)&Block->Data;
 

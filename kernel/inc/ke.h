@@ -251,6 +251,38 @@ memmove(
 	IN ULONG Length
 	);
 
+KESYSAPI
+VOID
+_cdecl
+memset_far(
+	IN ULONG SegmentTo,
+	IN ULONG To,
+	IN UCHAR Byte,
+	IN ULONG Length
+	);
+
+KESYSAPI
+VOID
+_cdecl
+memcopy_far(
+	IN ULONG SegmentTo,
+	IN ULONG To,
+	IN ULONG SegmentFrom,
+	IN ULONG From,
+	IN ULONG Length
+	);
+
+KESYSAPI
+VOID
+_cdecl
+memmove_far(
+	IN ULONG SegmentTo,
+	IN ULONG To,
+	IN ULONG SegmentFrom,
+	IN ULONG From,
+	IN ULONG Length
+	);
+
 char* strncpy(char*, const char*, int);
 
 KESYSAPI
@@ -645,4 +677,17 @@ InterlockedCompareExchange(
 VOID
 KEAPI
 KiStallExecutionHalfSecond(
+	);
+
+CHAR
+KEFASTAPI
+KiReadChar( 
+	ULONG Pos
+	);
+
+VOID
+KEFASTAPI
+KiWriteChar(
+	ULONG Pos,
+	CHAR chr
 	);

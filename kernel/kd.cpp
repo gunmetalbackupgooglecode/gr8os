@@ -8,6 +8,116 @@
 
 #include "common.h"
 
+char KiDebugPrintBuffer[1024];
+//char *KiDebugPrintBuffer = 0;
+LOCK DebugPrintLock;
+
+
+
+ULONG KiScreenX = 0;
+ULONG KiScreenY = 0;
+
+ULONG KiXResolution = 80;
+ULONG KiYResolution = 25;
+
+BOOLEAN KiFirstPrint = TRUE;
+BOOLEAN KiUseBochsLogging  = FALSE;
+
+VOID
+KEAPI
+BochsPrint(
+	PCHAR String
+	)
+{
+	for( PCHAR sp=String; *sp; sp++ )
+	{
+		if( *sp == '\n' )
+			KiOutPort( BOCHS_LOGGER_PORT, '\r' );
+		KiOutPort( BOCHS_LOGGER_PORT, *sp );
+	}
+}
+
+KESYSAPI
+VOID
+KEAPI
+BochsPrintF(
+	PCHAR FormatString,
+	...
+	)
+{
+	va_list va;
+
+	va_start( va, FormatString );
+	vsprintf ( KiDebugPrintBuffer, FormatString, va );
+	BochsPrint (KiDebugPrintBuffer);
+}
+
+VOID
+KEAPI
+KiPutChar(
+	CHAR ch
+	)
+{
+	if (KiUseBochsLogging)
+	{
+		KiOutPort( BOCHS_LOGGER_PORT, ch );
+//		return;
+	}
+
+	if (ch == '\n')
+	{
+		KiScreenY++;
+	}
+	else if (ch == '\r')
+	{
+		KiScreenX = 0;
+	}
+	else
+	{
+		KiWriteChar (KiScreenY*KiXResolution + KiScreenX, ch);
+		KiScreenX ++;
+	}
+
+	if (KiScreenX == KiXResolution)
+	{
+		// End of line.
+
+		KiScreenY ++;
+		KiScreenX = 0;
+
+//		for (int i=0; i<KiXResolution; i++)
+//		{
+//			KiWriteChar ( KiXResolution*KiScreenY + i, ' ');
+//		}
+
+	}
+
+	if (KiScreenY == KiYResolution)
+	{
+		// Scroll
+
+		memmove_far (
+			KGDT_VIDEO, 0, 
+			KGDT_VIDEO, KiXResolution*2, 
+			KiXResolution*(KiYResolution-1)*2
+			);
+
+		for (ULONG i=0; i<KiXResolution; i++)
+		{
+			KiWriteChar ( KiXResolution*(KiYResolution-1) + i, ' ');
+		}
+
+		KiScreenY --;
+
+//		BochsPrintF("KiPutChar: line scrolled, X=%d, Y=%d, XRes=%d, YRes=%d\n",
+//			KiScreenX,
+//			KiScreenY,
+//			KiXResolution,
+//			KiYResolution
+//			);
+	}
+
+}
 
 KESYSAPI
 VOID
@@ -19,28 +129,22 @@ KiDebugPrintRaw(
 	Out debug string
 --*/
 {
-	if (KiInPort (BOCHS_LOGGER_PORT) == BOCHS_LOGGER_PORT)
+	if (KiFirstPrint)
 	{
-		for( PCHAR sp=String; *sp; sp++ )
+		if (KiInPort (BOCHS_LOGGER_PORT) == BOCHS_LOGGER_PORT)
 		{
-			if( *sp == '\n' )
-				KiOutPort( BOCHS_LOGGER_PORT, '\r' );
-			KiOutPort( BOCHS_LOGGER_PORT, *sp );
+			KiUseBochsLogging = TRUE;
 		}
+		KiFirstPrint = FALSE;
 	}
-	else
+
+	for( PCHAR sp=String; *sp; sp++ )
 	{
-		__asm push esi
-		__asm mov  esi, [String]
-		__asm xor  ax, ax
-		__asm int  0x30
-		__asm pop  esi
+		if( *sp == '\n' )
+			KiPutChar ('\r');
+		KiPutChar (*sp);
 	}
 }
-
-char KiDebugPrintBuffer[1024];
-//char *KiDebugPrintBuffer = 0;
-LOCK DebugPrintLock;
 
 KESYSAPI
 VOID

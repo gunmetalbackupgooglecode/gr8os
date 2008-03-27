@@ -180,6 +180,18 @@ extern LIST_ENTRY PsActiveProcessHead;
 
 extern PROCESS InitialSystemProcess;
 
+#pragma pack()
+
+typedef struct LDR_MODULE
+{
+	LIST_ENTRY ListEntry;
+	UNICODE_STRING ModuleName;
+	PVOID Base;
+	ULONG Size;
+} *PLDR_MODULE;
+
+extern LIST_ENTRY PsLoadedModuleList;
+extern MUTEX PsLoadedModuleListLock;
 
 KESYSAPI
 BOOLEAN
@@ -402,5 +414,3 @@ KEAPI
 PsGetCurrentProcess(
 	);
 
-
-#pragma pack()
