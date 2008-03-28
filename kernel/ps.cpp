@@ -5,6 +5,9 @@
 // ABSTRACT:
 //			Processes and Threads support.
 //
+// Fixes:
+//  28-Mar-2008   FindReadyThread fixed
+//
 
 #include "common.h"
 
@@ -122,14 +125,30 @@ FindReadyThread(
 
 	PspTraceContextSwitch (("In FindReadyThread [CURRENT=%08x]\n", Curr));
 	
-	do
+	while( (PLIST_ENTRY)Thread != &PsReadyListHead )
 	{
 
 #if DBG
 		if(Thread->State != THREAD_STATE_READY)
 		{
 			ASSERT (Thread->State == THREAD_STATE_READY);
-			KiDebugPrint ("PS: Thread->State = %d (%s)\n", Thread->State, /*ThreadStates[Thread->State]*/0);
+			KiDebugPrint (
+				"PS: Thread %08x:\n"
+				"Process = %08x\n"
+				"UniqueId = %d\n"
+				"WaitType = %d\n"
+				"NumberOfObjectsWaiting = %d\n"
+				"WaitBlockUsed = %08x\n"
+				"Thread->State = %d (%s)\n"
+				,
+				Thread,
+				Thread->OwningProcess,
+				Thread->UniqueId,
+				Thread->WaitType,
+				Thread->NumberOfObjectsWaiting,
+				Thread->WaitBlockUsed,
+				Thread->State, Thread->State < 4 ?  ThreadStates[Thread->State] : 0
+				);
 		}
 #endif
 
@@ -149,9 +168,37 @@ FindReadyThread(
 
 		Thread = (PTHREAD) Thread->SchedulerListEntry.Flink;
 	}
-	while( (PLIST_ENTRY)Thread != &PsReadyListHead );
-
+	
 	PspTraceContextSwitch (("FRT: No ready thread.\n\n"));
+
+	if (Curr->State != THREAD_STATE_READY)
+	{
+		KdPrint (("PS: No ready threads found, and execution cannot be returned to current thread.\n"));
+		KdPrint ((
+			"Current thread %08x:\n"
+			"Process = %08x\n"
+			"UniqueId = %d\n"
+			"WaitType = %d\n"
+			"NumberOfObjectsWaiting = %d\n"
+			"WaitBlockUsed = %08x\n"
+			"Thread->State = %d (%s)\n"
+			,
+			Curr,
+			Curr->OwningProcess,
+			Curr->UniqueId,
+			Curr->WaitType,
+			Curr->NumberOfObjectsWaiting,
+			Curr->WaitBlockUsed,
+			Curr->State, Curr->State < 4 ?  ThreadStates[Curr->State] : 0
+			));
+
+		KeBugCheck (PS_SCHEDULER_GENERAL_FAILURE,
+					PSP_NO_READY_THREADS,
+					__LINE__,
+					Curr->State,
+					0
+					);
+	}
 	
 	return Curr;
 }

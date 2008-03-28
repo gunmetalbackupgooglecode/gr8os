@@ -193,9 +193,17 @@ LARGE_INTEGER __inline RtlMakeLargeInteger(ULONG Low, ULONG High)
 // Dump head allocation/freeing atttempts
 #define EX_TRACE_HEAP			0
 
+// Trace object ref/deref
 #define OB_TRACE_REF_DEREF		0
 
+// Trace file caching
 #define CC_TRACE_CACHING		0
+
+// Trace operations with mutexes
+#define EX_TRACE_MUTEXES		0
+
+// Trace operations with memory descriptors
+#define MM_TRACE_MMDS			1
 
 
 extern "C"

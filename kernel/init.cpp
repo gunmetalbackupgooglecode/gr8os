@@ -168,6 +168,8 @@ KiStallExecutionHalfSecond(
 //#define KiDebugPrint
 
 LOADER_ARGUMENTS KiLoaderBlock;
+ULONG KiInitializationPhase = 0;
+
 
 KENORETURN
 VOID
@@ -287,6 +289,10 @@ KiInitSystem(
 
 	__asm sti;
 
+	KiInitializationPhase = 1;
+
+	KiDebugPrintRaw("INIT: Starting initialization phase 1\n");
+
 //	KiDebugPrint("Stalling execution...\n");
 //	KiStallExecutionMilliseconds (3);
 //	KiDebugPrint("OK\n");
@@ -304,16 +310,58 @@ KiInitSystem(
 	IoInitSystem( );
 	KiDebugPrintRaw( "IO: Passed initialization\n" );
 
-	KiDebugPrintRaw( "INIT: Initialization phase 0 completed, starting initialization phase 1\n"  );
+	KiDebugPrintRaw( "INIT: Initialization phase 1 completed\n"  );
 
 	KeInitializeEvent (&ev, SynchronizationEvent, FALSE);
 
+
+
+	/*PVOID HeapBuffer = ExAllocateHeap (TRUE, 10);
+	strncpy ((char*)HeapBuffer, "1234", 5);
+
+	PMMPTE Pte = MiGetPteAddress (HeapBuffer);
+
+	KdPrint(("\n\n"));
+	KdPrint (("Allocated buffer %08x : %s [phys page %08x]\n", HeapBuffer, HeapBuffer, Pte->u1.e1.PageFrameNumber));
+
+	PMMD Mmd = MmAllocateMmd (HeapBuffer, 10000);*/
+
+	PMMD Mmd;
+	STATUS Status;
+
+	Status = MmAllocatePhysicalPages (3, &Mmd);
+	if (!SUCCESS(Status))
+	{
+		KeBugCheck (KE_INITIALIZATION_FAILED, Status, __LINE__, 0, 0);
+	}
+
+	PVOID Mapped = MmMapLockedPages(Mmd, KernelMode);
+	strncpy ((char*)Mapped, "1234", 5);
+
+	KdPrint(("Allocated MMD at %08x [fl=%08x]\n", Mmd, Mmd->Flags));
+	
+//	MmBuildMmdForNonpagedSpace (Mmd);
+//	KdPrint(("Built mmd for nonpaged space\n"));
+
+///	PVOID Mapped = MmMapLockedPages (Mmd, KernelMode);
+	KdPrint(("Mapped at %08x\n", Mapped));
+
+	PMMPTE Pte = MiGetPteAddress (Mapped);
+	KdPrint(("mapped: %s  [phys page %08x]\n", Mapped, Pte->u1.e1.PageFrameNumber));
+
+	MmUnmapLockedPages (Mmd);
+	MmFreePhysicalPages (Mmd);
+	MmFreeMmd (Mmd);
+
+	MiDumpPageLists();
+
+#if 1
 	//
 	// Test file reading
 	//
 
 	PFILE File;
-	STATUS Status;
+	//STATUS Status;
 	UNICODE_STRING FdName;
 	IO_STATUS_BLOCK IoStatus;
 
@@ -354,6 +402,7 @@ KiInitSystem(
 
 	ExFreeHeap (Buffer);
 	IoCloseFile (File);
+#endif
 
 	// Create two additional threads
 	PspCreateThread( &Thread1, &InitialSystemProcess, PsCounterThread, (PVOID)( 80*3 + 40 ) );

@@ -362,10 +362,11 @@ typedef struct MMPPD
 	UCHAR ReadInProgress : 1;					// Read operation in progress
 	UCHAR WriteInProgress : 1;					// Write operation in progress
 	UCHAR Modified : 1;							// Page was modified
-	USHORT ReferenceCount;						// Reference count for the page. Increments with each mapping.
+	//USHORT ReferenceCount;						// Reference count for the page.
+	USHORT Reserved;
 	UCHAR KernelStack : 1;						// Page belongs to kernel stack
 	UCHAR ProcessorMode : 2;					// Owner's processor mode, who owns this page.
-	UCHAR Reserved : 5;							// Reserved for the future
+	UCHAR ShareCount : 5;						// Share count for the page. Increments with each mapping.
 
 	//
 	// Full struct size:  12 bytes
@@ -392,27 +393,11 @@ extern MUTEX MmPpdLock;
 // Calculates page frame number of PPD
 #define MmGetPpdPfn(Ppd) (((ULONG)(Ppd) - (ULONG)MmPpdDatabase)/sizeof(MMPPD))
 
-//
-// Remove MMPPD from linked list
-//
 
-#define MiUnlinkPpd(Ppd) {					\
-		PMMPPD Prev = Ppd->u2.PrevBlink;	\
-		PMMPPD Next = Ppd->u1.NextFlink;	\
-		Prev->u1.NextFlink = Next;			\
-		Next->u2.PrevBlink = Prev;			\
-	}
-	
-//
-// Insert MMPPD to linked list
-//
-
-#define MiLinkPpd(List,Ppd) {					\
-		Ppd->u1.NextFlink = List;				\
-		Ppd->u2.PrevBlink = NULL;				\
-		List = Ppd;								\
-	}
-		
+VOID
+KEAPI
+MiDumpPageLists(
+	);
 
 #pragma pack()
 
