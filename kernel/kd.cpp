@@ -37,7 +37,6 @@ BochsPrint(
 	}
 }
 
-KESYSAPI
 VOID
 KEAPI
 BochsPrintF(

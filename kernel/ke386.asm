@@ -10,6 +10,38 @@ public tempbuffer
 tempbuffer rb 512
 
 
+public InterlockedDecrement as '@InterlockedDecrement@4'
+;
+; KESYSAPI
+; VOID
+; KEFASTAPI
+; InterlockedDecrement(
+;	PLONG Long
+;	);
+;
+InterlockedDecrement:
+	xor  eax,eax
+	dec  eax
+	lock xadd [ecx], eax
+	retn
+
+
+public InterlockedIncrement as '@InterlockedIncrement@4'
+;
+; KESYSAPI
+; VOID
+; KEFASTAPI
+; InterlockedIncrement(
+;	PLONG Long
+;	);
+;
+InterlockedIncrement:
+	xor  eax,eax
+	inc  eax
+	lock xadd [ecx], eax
+	retn
+
+
 public InterlockedExchange as '@InterlockedExchange@8'
 ;
 ;KESYSAPI

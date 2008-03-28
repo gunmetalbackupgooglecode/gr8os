@@ -73,10 +73,10 @@ MmMapPhysicalPages(
 			{
 				ULONG VirtualAddress = StartVirtual;
 
-				for( ULONG j=i; j<PageCount; j++ )
+				for( ULONG j=i; j<i+PageCount; j++ )
 				{
 					MiWriteValidKernelPte (PointerPte);
-					PointerPte->u1.e1.PageFrameNumber = (PhysicalAddress >> PAGE_SHIFT) + j;
+					PointerPte->u1.e1.PageFrameNumber = (PhysicalAddress >> PAGE_SHIFT) + (j-i);
 
 					MmInvalidateTlb ((PVOID)VirtualAddress);
 
@@ -297,12 +297,22 @@ PMMPPD MmFreePageListHead;
 PMMPPD MmModifiedPageListHead;
 PMMPPD MmStandbyPageListHead;
 
+PMMPPD *MmPageLists[ActiveAndValid] = {
+	&MmZeroedPageListHead,
+	&MmFreePageListHead,
+	&MmModifiedPageListHead,
+	&MmStandbyPageListHead
+};
+
+PMMPPD MmPpdDatabase;
+
 VOID
 KEAPI
 MmInitSystem(
 	)
 {
 	ExInitializeMutex (&MmPageDatabaseLock);
+	ExInitializeMutex (&MmPpdLock);
 
 	MiMapPhysicalPages (MM_PPD_START, MM_PPD_START_PHYS, (KiLoaderBlock.PhysicalMemoryPages * sizeof(MMPPD)) / PAGE_SIZE);
 
@@ -327,7 +337,7 @@ MmInitSystem(
 	// Fill MMPPDs appropriately
 	//
 
-	PMMPPD Ppd = (PMMPPD) MM_PPD_START;
+	PMMPPD Ppd = MmPpdDatabase = (PMMPPD) MM_PPD_START;
 
 
 	// Describe first meg, PTEs, PPDs and heap.
@@ -337,11 +347,14 @@ MmInitSystem(
 	// Create system working set
 	//
 
+	ExInitializeMutex (&MiSystemWorkingSet->Lock);
 	MiSystemWorkingSet = (PMMWORKING_SET) ExAllocateHeap (FALSE, sizeof(MMWORKING_SET) + (InitialPageCount - 1)*sizeof(MMWORKING_SET_ENTRY));
 	MiSystemWorkingSet->TotalPageCount = InitialPageCount;
 	MiSystemWorkingSet->LockedPageCount = InitialPageCount;
 	MiSystemWorkingSet->OwnerMode = KernelMode;
 	MiSystemWorkingSet->Owner = &InitialSystemProcess;
+
+	InitialSystemProcess.WorkingSet = MiSystemWorkingSet;
 	
 	ULONG i;
 
@@ -353,6 +366,9 @@ MmInitSystem(
 
 		MiSystemWorkingSet->WsPages[i].LockedInWs = TRUE;
 		MiSystemWorkingSet->WsPages[i].PageDescriptor = &Ppd[i];
+
+		Ppd[i].u1.WsIndex = i;
+		Ppd[i].ReferenceCount = 1;
 	}
 
 	//
@@ -364,6 +380,7 @@ MmInitSystem(
 	for (; i<KiLoaderBlock.PhysicalMemoryPages; i++)
 	{
 		Ppd[i].PageLocation = ZeroedPageList;
+		Ppd[i].ReferenceCount = 0;
 
 		if (i == KiLoaderBlock.PhysicalMemoryPages-1)
 		{
@@ -377,17 +394,438 @@ MmInitSystem(
 }
 
 
+VOID
+KEAPI
+MiChangePageLocation(
+	PMMPPD Ppd,
+	UCHAR NewLocation
+	)
+/*++
+	This function changes page location and optionally
+	 moves it to the appripriate page list
+ --*/
+{
+	ASSERT (Ppd->PageLocation != NewLocation);
+
+	if (Ppd->PageLocation < ActiveAndValid)
+	{
+		MiUnlinkPpd (Ppd);
+	}
+	else
+	{
+//		Ppd->ReferenceCount --;
+	}
+
+	if (NewLocation < ActiveAndValid)
+	{
+		MiLinkPpd ( *MmPageLists[NewLocation], Ppd );
+	}
+	else
+	{
+//		Ppd->ReferenceCount ++;
+	}
+
+	Ppd->PageLocation = NewLocation;
+}
+
+MUTEX MmPpdLock;
+
 KESYSAPI
-PHYSICAL_ADDRESS
+STATUS
 KEAPI
 MmAllocatePhysicalPages(
-	ULONG PageCount
-	);
+	IN ULONG PageCount,
+	OUT PMMD *pMmd
+	)
+/*++
+	Allocate physical pages from zeroed or free page lists
+--*/
+{
+	STATUS Status;
+
+	if (PageCount > KiLoaderBlock.PhysicalMemoryPages)
+	{
+		//
+		// Can't allocate memory greater than physical memory size
+		//
+
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+	MI_LOCK_PPD();
+
+	//
+	// Try to allocate from free page list
+	//
+
+	PMMPPD Ppd = MmFreePageListHead;		// MMPPD iterator
+
+	// Array of allocated PFNs
+	ULONG *AllocatedPages = (ULONG*) ExAllocateHeap (TRUE, sizeof(ULONG)*PageCount);
+	bzero (AllocatedPages, sizeof(ULONG)*PageCount);
+
+	// Number of allocated pages
+	ULONG alloc = 0;
+
+	while (Ppd)
+	{
+		AllocatedPages[alloc] = MmGetPpdPfn (Ppd);
+
+		MiChangePageLocation (Ppd, ActiveAndValid);
+		
+		//
+		// MMPPD in unlinked from double-linked list, but it contains
+		//  valid pointers to previous and next entries
+		//
+
+		Ppd = Ppd->u1.NextFlink;	// This link is valid despite the PPD is already unlinked.
+		alloc ++;					// Increment number of allocated pages
+
+		if (alloc == PageCount)
+		{
+			//
+			// We have allocated adequate number of pages.
+			//
+
+			goto _finish;
+		}
+	}
+
+	if (alloc < PageCount)
+	{
+		//
+		// If free page list is too small to satisfy the allocation, try zeroed page list
+		//
+
+		Ppd = MmZeroedPageListHead;
+
+		while (Ppd)
+		{
+			AllocatedPages[alloc] = MmGetPpdPfn (Ppd);
+
+			MiChangePageLocation (Ppd, ActiveAndValid);
+			
+			//
+			// MMPPD in unlinked from double-linked list, but it contains
+			//  valid pointers to previous and next entries
+			//
+
+			Ppd = Ppd->u1.NextFlink;	// This link is valid despite the PPD is already unlinked.
+			alloc ++;					// Increment number of allocated pages
+
+			if (alloc == PageCount)
+			{
+				//
+				// We have allocated adequate number of pages.
+				//
+
+				goto _finish;
+			}
+		}
+	}
+
+_finish:
+
+	MI_UNLOCK_PPD();
+
+	if (alloc < PageCount)
+	{
+		//
+		// We failed to allocate adequate number of pages.
+		// Return all pages we have allocated and indicate that only
+		// the part of the request has been completed.
+		//
+
+		Status = STATUS_PARTIAL_COMPLETION;
+	}
+	else
+	{
+		//
+		// We have successfully allocated all pages.
+		//
+
+		Status = STATUS_SUCCESS;
+	}
+
+	//
+	// Allocate memory descriptor to describe all allocated pages
+	//
+
+	PMMD Mmd = MmAllocateMmd (NULL, alloc*PAGE_SIZE);
+
+	for (ULONG i=0; i<alloc; i++)
+	{
+		//
+		// Copy all PFNs
+		//
+
+		Mmd->PfnList[i] = AllocatedPages[i];
+	}
+
+	//
+	// Free temporary array
+	//
+
+	ExFreeHeap (AllocatedPages);
+
+	Mmd->Flags |= MDL_ALLOCATED;
+
+	// Return pointer to MMD
+	*pMmd = Mmd;
+
+	// Return status code
+	return Status;
+}
+
 
 KESYSAPI
 VOID
 KEAPI
 MmFreePhysicalPages(
-	PHYSICAL_ADDRESS PhysicalAddress,
-	ULONG PageCount
-	);
+	PMMD Mmd
+	)
+/*++
+	Free physical pages allocated by MmAllocatePhysicalPages
+--*/
+{
+	MI_LOCK_PPD();
+
+	for (ULONG i=0; i<Mmd->PageCount; i++)
+	{
+		PMMPPD Ppd = MmPfnPpd(Mmd->PfnList[i]);
+
+		MiChangePageLocation (Ppd, FreePageList);
+	}
+
+	MI_UNLOCK_PPD();
+
+	Mmd->Flags &= ~MDL_ALLOCATED;
+}
+
+
+KESYSAPI
+PMMD
+KEAPI
+MmAllocateMmd(
+	IN PVOID VirtualAddress,
+	IN ULONG Size
+	)
+/*++
+	Allocate a memory descriptor list and fill some fields
+--*/
+{
+	ULONG PageCount = ALIGN_UP(Size,PAGE_SIZE) / PAGE_SIZE;
+	PMMD Mmd = (PMMD) ExAllocateHeap (TRUE, sizeof(MMD) + (PageCount-1)*sizeof(ULONG));
+
+	Mmd->BaseVirtual = (PVOID) ALIGN_DOWN((ULONG)VirtualAddress, PAGE_SIZE);
+	Mmd->Offset = (ULONG)VirtualAddress % PAGE_SIZE;
+	Mmd->PageCount = PageCount;
+
+	return Mmd;
+}
+
+KESYSAPI
+VOID
+KEAPI
+MmBuildMmdForNonpagedSpace(
+	PMMD Mmd
+	)
+/*++
+	Fill memory descriptor with page frame numbers
+--*/
+{
+	PMMPTE PointerPte = MiGetPteAddress (Mmd->MappedVirtual);
+
+	for (ULONG i=0; i<Mmd->PageCount; i++)
+	{
+		Mmd->PfnList[i] = PointerPte->u1.e1.PageFrameNumber;
+
+		PointerPte = MiNextPte (PointerPte);
+	}
+}
+
+
+KESYSAPI
+VOID
+KEAPI
+MmFreeMmd(
+	PMMD Mmd
+	)
+/*++
+	Frees memory descriptor.
+	Auxillary, unmap, unlock and free pages if need.
+--*/
+{
+	//
+	// Unmap pages if they were mapped
+	//
+
+	if (Mmd->Flags & MDL_MAPPED)
+	{
+		MmUnmapLockedPages (Mmd);
+	}
+
+	//
+	// Unlock pages if they were locked
+	//
+
+	if (Mmd->Flags & MDL_LOCKED)
+	{
+		MmUnlockPages (Mmd);
+	}
+
+	//
+	// Free pages if they were allocated.
+	//
+
+	if (Mmd->Flags & MDL_ALLOCATED)
+	{
+		MmFreePhysicalPages (Mmd);
+	}
+
+	// Free MMD
+	ExFreeHeap (Mmd);
+}
+
+
+KESYSAPI
+VOID
+KEAPI
+MmLockPages(
+	IN PMMD Mmd
+	)
+/*++
+	Lock pages in the current process' working set and fill MMD->PfnList appropriately
+--*/
+{
+	PMMWORKING_SET WorkingSet = MmGetCurrentWorkingSet();
+
+	ULONG VirtualAddress = (ULONG) Mmd->BaseVirtual;
+
+	ExAcquireMutex (&WorkingSet->Lock);
+	ExAcquireMutex (&MmPageDatabaseLock);
+
+	for (ULONG i=0; i<Mmd->PageCount; i++)
+	{
+		PMMPTE PointerPte = MiGetPteAddress (VirtualAddress);
+
+		Mmd->PfnList[i] = PointerPte->u1.e1.PageFrameNumber;
+
+		ULONG WsIndex = MmPfnPpd (Mmd->PfnList[i])->u1.WsIndex;
+
+		WorkingSet->WsPages[WsIndex].LockedInWs = TRUE;
+	}
+
+	ExReleaseMutex (&MmPageDatabaseLock);
+	ExReleaseMutex (&WorkingSet->Lock);
+
+	Mmd->Flags |= MDL_LOCKED;
+}
+
+
+KESYSAPI
+VOID
+KEAPI
+MmUnlockPages(
+	IN PMMD Mmd
+	)
+/*++
+	Unlock pages in the current process' working set
+--*/
+{
+	PMMWORKING_SET WorkingSet = MmGetCurrentWorkingSet();
+
+	ExAcquireMutex (&WorkingSet->Lock);
+
+	for (ULONG i=0; i<Mmd->PageCount; i++)
+	{
+		ULONG WsIndex = MmPfnPpd (Mmd->PfnList[i])->u1.WsIndex;
+
+		WorkingSet->WsPages[WsIndex].LockedInWs = FALSE;
+	}
+
+	ExReleaseMutex (&WorkingSet->Lock);
+
+	Mmd->Flags &= ~MDL_LOCKED;
+}
+
+
+KESYSAPI
+PVOID
+KEAPI
+MmMapLockedPages(
+	IN PMMD Mmd,
+	IN PROCESSOR_MODE TargetMode
+	)
+/*++
+	Map locked pages to target address space
+--*/
+{
+	//
+	// Don't support other modes now..
+	//
+
+	ASSERT (TargetMode == KernelMode);
+	
+
+	ExAcquireMutex (&MmPageDatabaseLock);
+
+	ULONG StartVirtual = MM_CRITICAL_AREA;
+	PMMPTE PointerPte = MiGetPteAddress (StartVirtual);
+
+	for (ULONG i=0; i<MM_CRITICAL_AREA_PAGES; i++)
+	{
+		if ( *(ULONG*)PointerPte == 0 )
+		{
+			BOOLEAN Free = 1;
+
+			for ( ULONG j=i+1; j<i+Mmd->PageCount; j++ )
+			{
+				Free &= ( *(ULONG*)&PointerPte[j] == 0 );
+			}
+
+			if (Free)
+			{
+				ULONG VirtualAddress = StartVirtual;
+
+				for( ULONG j=i; j<i+Mmd->PageCount; j++ )
+				{
+					MiWriteValidKernelPte (PointerPte);
+					PointerPte->u1.e1.PageFrameNumber = Mmd->PfnList[(j-i)];
+
+					MmInvalidateTlb ((PVOID)VirtualAddress);
+
+					PointerPte = MiNextPte (PointerPte);
+					VirtualAddress += PAGE_SIZE;
+				}
+
+				ExReleaseMutex (&MmPageDatabaseLock);
+
+				Mmd->Flags |= MDL_MAPPED;
+				Mmd->MappedVirtual = (PVOID) StartVirtual;
+
+				return (PVOID)( StartVirtual + Mmd->Offset );
+			}
+
+			i += Mmd->PageCount - 1;
+		}
+	}
+
+	ExReleaseMutex (&MmPageDatabaseLock);
+	return NULL;
+}
+
+KESYSAPI
+VOID
+KEAPI
+MmUnmapLockedPages(
+	IN PMMD Mmd
+	)
+/*++
+	Unmap pages from the address space
+--*/
+{
+	MiUnmapPhysicalPages (Mmd->MappedVirtual, Mmd->PageCount);
+	Mmd->MappedVirtual = NULL;
+	Mmd->Flags &= ~MDL_MAPPED;
+}
