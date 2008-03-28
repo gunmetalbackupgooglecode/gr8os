@@ -412,7 +412,7 @@ HalInitSystem(
 
 	if (KiInPort(BOCHS_LOGGER_PORT) != BOCHS_LOGGER_PORT)
 	{
-		HalBusClockFrequency = HalQueryBusClockFreq();
+		//HalBusClockFrequency = HalQueryBusClockFreq();
 	}
 
 	KiDebugPrint("HAL: BusFreq=%08x (%d), s1=%08x\n", HalBusClockFrequency, HalBusClockFrequency, s1);

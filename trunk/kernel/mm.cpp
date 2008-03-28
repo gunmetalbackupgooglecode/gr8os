@@ -347,8 +347,9 @@ MmInitSystem(
 	// Create system working set
 	//
 
-	ExInitializeMutex (&MiSystemWorkingSet->Lock);
 	MiSystemWorkingSet = (PMMWORKING_SET) ExAllocateHeap (FALSE, sizeof(MMWORKING_SET) + (InitialPageCount - 1)*sizeof(MMWORKING_SET_ENTRY));
+
+	ExInitializeMutex (&MiSystemWorkingSet->Lock);
 	MiSystemWorkingSet->TotalPageCount = InitialPageCount;
 	MiSystemWorkingSet->LockedPageCount = InitialPageCount;
 	MiSystemWorkingSet->OwnerMode = KernelMode;
@@ -368,7 +369,7 @@ MmInitSystem(
 		MiSystemWorkingSet->WsPages[i].PageDescriptor = &Ppd[i];
 
 		Ppd[i].u1.WsIndex = i;
-		Ppd[i].ReferenceCount = 1;
+		Ppd[i].ShareCount = 1;
 	}
 
 	//
@@ -380,7 +381,12 @@ MmInitSystem(
 	for (; i<KiLoaderBlock.PhysicalMemoryPages; i++)
 	{
 		Ppd[i].PageLocation = ZeroedPageList;
-		Ppd[i].ReferenceCount = 0;
+		Ppd[i].ShareCount = 0;
+
+		if (i > InitialPageCount)
+		{
+			Ppd[i].u2.PrevBlink = &Ppd[i-1];
+		}
 
 		if (i == KiLoaderBlock.PhysicalMemoryPages-1)
 		{
@@ -391,6 +397,68 @@ MmInitSystem(
 			Ppd[i].u1.NextFlink = &Ppd[i+1];
 		}
 	}
+}
+
+VOID
+KEAPI
+MiUnlinkPpd(
+	PMMPPD Ppd
+	)
+{
+	ASSERT (Ppd->PageLocation < ActiveAndValid);
+
+	PMMPPD Prev = Ppd->u2.PrevBlink;
+	PMMPPD Next = Ppd->u1.NextFlink;
+
+	if (Prev == NULL)
+	{
+		//
+		// This page is the first.
+		// So, set the list head to point to the next page
+		//
+
+		*MmPageLists[Ppd->PageLocation] = Next;
+
+		if (Next)	// this condition is required because page can be the first and the last both.
+		{
+			Next->u2.PrevBlink = NULL;
+		}
+	}
+	
+	if (Next == NULL)
+	{
+		//
+		// This page is the last.
+		// Set previous page to be the last.
+		//
+
+		if (Prev)	// this condition is required because page can be the first and the last both.
+		{
+			Prev->u1.NextFlink = NULL;
+		}
+	}
+
+	if (Prev && Next)
+	{
+		Prev->u1.NextFlink = Next;
+		Next->u2.PrevBlink = Prev;
+	}
+}
+
+VOID
+KEAPI
+MiLinkPpd(
+	PMMPPD *List,
+	PMMPPD Ppd
+	)
+{
+	Ppd->u1.NextFlink = *List;
+	Ppd->u2.PrevBlink = NULL;
+	if (*List)
+	{
+		(*List)->u2.PrevBlink = Ppd;
+	}
+	*List = Ppd;
 }
 
 
@@ -411,21 +479,52 @@ MiChangePageLocation(
 	{
 		MiUnlinkPpd (Ppd);
 	}
-	else
-	{
-//		Ppd->ReferenceCount --;
-	}
 
 	if (NewLocation < ActiveAndValid)
 	{
-		MiLinkPpd ( *MmPageLists[NewLocation], Ppd );
-	}
-	else
-	{
-//		Ppd->ReferenceCount ++;
+		MiLinkPpd ( MmPageLists[NewLocation], Ppd );
 	}
 
 	Ppd->PageLocation = NewLocation;
+}
+
+
+PCHAR
+MiPageLocations[] = {
+	"ZeroedPageList",
+	"FreePageList",
+	"ModifiedPageList",
+	"StandbyPageList",
+	"ActiveAndValid",
+	"TransitionPage",
+	"ReservedOrBadPage"
+};
+
+VOID
+KEAPI
+MiDumpPageLists(
+	)
+{
+	MI_LOCK_PPD();
+
+	for (ULONG PageList = ZeroedPageList; PageList < ActiveAndValid; PageList ++)
+	{
+		KdPrint (("MM: Dumping page list %d [%s]\n", PageList, MiPageLocations[PageList]));
+
+		ULONG i = 0;
+
+		for (PMMPPD Ppd = *MmPageLists[PageList]; Ppd && i<15; Ppd = Ppd->u1.NextFlink, i++)
+		{
+			KdPrint(("MM: Ppd=%08x, PFN=%08x, Next=%08x, Prev=%08x\n",
+				Ppd,
+				MmGetPpdPfn(Ppd),
+				Ppd->u1.NextFlink,
+				Ppd->u2.PrevBlink
+				));
+		}
+	}
+
+	MI_UNLOCK_PPD();
 }
 
 MUTEX MmPpdLock;
@@ -462,10 +561,20 @@ MmAllocatePhysicalPages(
 
 	// Array of allocated PFNs
 	ULONG *AllocatedPages = (ULONG*) ExAllocateHeap (TRUE, sizeof(ULONG)*PageCount);
+	if (!AllocatedPages)
+	{
+		MI_UNLOCK_PPD();
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
 	bzero (AllocatedPages, sizeof(ULONG)*PageCount);
 
 	// Number of allocated pages
 	ULONG alloc = 0;
+
+#if MM_TRACE_MMDS
+	KdPrint(("MM: Allocating pages from free page list\n"));
+#endif
 
 	while (Ppd)
 	{
@@ -473,6 +582,10 @@ MmAllocatePhysicalPages(
 
 		MiChangePageLocation (Ppd, ActiveAndValid);
 		
+#if MM_TRACE_MMDS
+		KdPrint(("MM: Allocated page %08x\n", AllocatedPages[alloc]));
+#endif
+
 		//
 		// MMPPD in unlinked from double-linked list, but it contains
 		//  valid pointers to previous and next entries
@@ -497,6 +610,10 @@ MmAllocatePhysicalPages(
 		// If free page list is too small to satisfy the allocation, try zeroed page list
 		//
 
+#if MM_TRACE_MMDS
+		KdPrint(("MM: Allocating pages from zeroed page list\n"));
+#endif
+
 		Ppd = MmZeroedPageListHead;
 
 		while (Ppd)
@@ -505,6 +622,9 @@ MmAllocatePhysicalPages(
 
 			MiChangePageLocation (Ppd, ActiveAndValid);
 			
+#if MM_TRACE_MMDS
+			KdPrint(("MM: Allocated page %08x\n", AllocatedPages[alloc]));
+#endif
 			//
 			// MMPPD in unlinked from double-linked list, but it contains
 			//  valid pointers to previous and next entries
@@ -525,6 +645,10 @@ MmAllocatePhysicalPages(
 	}
 
 _finish:
+
+#if MM_TRACE_MMDS
+	KdPrint(("MM: Allocated %d pages\n", alloc));
+#endif
 
 	MI_UNLOCK_PPD();
 
@@ -590,10 +714,17 @@ MmFreePhysicalPages(
 {
 	MI_LOCK_PPD();
 
+#if MM_TRACE_MMDS
+	KdPrint(("MM: Freeing physical pages to free page list\n"));
+#endif
+
 	for (ULONG i=0; i<Mmd->PageCount; i++)
 	{
 		PMMPPD Ppd = MmPfnPpd(Mmd->PfnList[i]);
 
+#if MM_TRACE_MMDS
+		KdPrint(("MM: Freeing page %08x\n", Mmd->PfnList[i]));
+#endif
 		MiChangePageLocation (Ppd, FreePageList);
 	}
 
@@ -621,6 +752,15 @@ MmAllocateMmd(
 	Mmd->Offset = (ULONG)VirtualAddress % PAGE_SIZE;
 	Mmd->PageCount = PageCount;
 
+#if MM_TRACE_MMDS
+	KdPrint(("MMALLOCMMD: Passed VA=%08x, Mmd->BaseVirtual=%08x, Mmd->Offset=%08x, Mmd->PageCount=%08x\n",
+		VirtualAddress,
+		Mmd->BaseVirtual,
+		Mmd->Offset,
+		Mmd->PageCount
+		));
+#endif
+
 	return Mmd;
 }
 
@@ -634,11 +774,19 @@ MmBuildMmdForNonpagedSpace(
 	Fill memory descriptor with page frame numbers
 --*/
 {
-	PMMPTE PointerPte = MiGetPteAddress (Mmd->MappedVirtual);
+	PMMPTE PointerPte = MiGetPteAddress (Mmd->BaseVirtual);
+
+#if MM_TRACE_MMDS
+	KdPrint(("MM: Building MMD for nonpaged space..\n"));
+#endif
 
 	for (ULONG i=0; i<Mmd->PageCount; i++)
 	{
 		Mmd->PfnList[i] = PointerPte->u1.e1.PageFrameNumber;
+
+#if MM_TRACE_MMDS
+		KdPrint(("MM: For page %d, PFN=%08x\n", i, Mmd->PfnList[i]));
+#endif
 
 		PointerPte = MiNextPte (PointerPte);
 	}
@@ -773,6 +921,10 @@ MmMapLockedPages(
 	ULONG StartVirtual = MM_CRITICAL_AREA;
 	PMMPTE PointerPte = MiGetPteAddress (StartVirtual);
 
+#if MM_TRACE_MMDS
+	KdPrint(("MM: Maping locked pages.\n"));
+#endif
+
 	for (ULONG i=0; i<MM_CRITICAL_AREA_PAGES; i++)
 	{
 		if ( *(ULONG*)PointerPte == 0 )
@@ -792,6 +944,11 @@ MmMapLockedPages(
 				{
 					MiWriteValidKernelPte (PointerPte);
 					PointerPte->u1.e1.PageFrameNumber = Mmd->PfnList[(j-i)];
+
+#if MM_TRACE_MMDS
+					KdPrint(("MM: Mapping PFN %08x to VA %08x\n", Mmd->PfnList[j-i], VirtualAddress));
+#endif
+					MmPfnPpd(Mmd->PfnList[j-i])->ShareCount ++;
 
 					MmInvalidateTlb ((PVOID)VirtualAddress);
 
@@ -825,7 +982,19 @@ MmUnmapLockedPages(
 	Unmap pages from the address space
 --*/
 {
+	MI_LOCK_PPD();
+
 	MiUnmapPhysicalPages (Mmd->MappedVirtual, Mmd->PageCount);
+
+	for (ULONG i=0; i<Mmd->PageCount; i++)
+	{
+		PMMPPD Ppd = MmPfnPpd (Mmd->PfnList[i]);
+
+		Ppd->ShareCount --;
+	}
+
+	MI_UNLOCK_PPD();
+
 	Mmd->MappedVirtual = NULL;
 	Mmd->Flags &= ~MDL_MAPPED;
 }

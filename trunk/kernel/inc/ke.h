@@ -449,8 +449,9 @@ KeBugCheck(
 #define HAL_FREEING_RESERVED_PAGES		0x0000000F
 #define HAL_FREEING_INVALID_PAGES		0x00000010
 #define MEMORY_MANAGEMENT				0x00000011
+#define PS_SCHEDULER_GENERAL_FAILURE	0x00000012
 
-#define MAXIMUM_BUGCHECK				0x00000012
+#define MAXIMUM_BUGCHECK				0x00000013
 
 extern PCHAR KeBugCheckDescriptions[];
 
@@ -474,6 +475,7 @@ extern PCHAR KeBugCheckDescriptions[];
 #define HEAP_GUARD_NOT_GUARDED				2
 #define HEAP_GUARD_LEAK_DETECTED			3
 
+#define PSP_NO_READY_THREADS				1
 
 #pragma pack(1)
 
@@ -705,4 +707,6 @@ KEFASTAPI
 InterlockedIncrement(
 	PLONG Long
 );
+
+extern ULONG KiInitializationPhase;
 

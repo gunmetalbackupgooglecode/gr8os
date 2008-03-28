@@ -1148,7 +1148,7 @@ ExInitializeMutex(
 	Initialize mutex
 --*/
 {
-	KeInitializeEvent ((PEVENT)Mutex, SynchronizationEvent, FALSE);
+	KeInitializeEvent ((PEVENT)Mutex, SynchronizationEvent, TRUE);
 }
 
 
@@ -1162,16 +1162,27 @@ ExAcquireMutex(
 	Acquire lock with event
 --*/
 {
-	return;
 	BOOLEAN OldIrqState;
 	PTHREAD Thread;
 	PWAIT_BLOCK WaitBlock;
 	PSCHEDULER_HEADER Header;
 	CONTEXT_FRAME *ContextFrame;
 
+	if (KiInitializationPhase == 0)
+	{
+#if EX_TRACE_MUTEXES
+		KiDebugPrint("--> EX: Cannot acquire mutex %08x at initialization phase 0\n", Mutex);
+#endif
+		return;
+	}
+
 	OldIrqState = PspLockSchedulerDatabase ();
 	Thread = PsGetCurrentThread();
 	Header = (PSCHEDULER_HEADER) Mutex;
+
+#if EX_TRACE_MUTEXES
+	KiDebugPrint("--> EX: Acquiring mutex %08x, current free state = %d\n", Mutex, Header->SignaledState);
+#endif
 
 	if (Header->SignaledState)
 	{
@@ -1182,6 +1193,9 @@ ExAcquireMutex(
 		return;
 	}
 
+#if EX_TRACE_MUTEXES
+	KiDebugPrint("--> EX: Waiting for mutex %08x\n", Mutex);
+#endif
 
 	WaitBlock = &Thread->WaitBlocks[0];
 	WaitBlock->BackLink = Thread;
@@ -1242,6 +1256,10 @@ ExAcquireMutex(
 		add  esp, 12  ; cs,eip,efl
 	}
 
+#if EX_TRACE_MUTEXES
+	KiDebugPrint("--> EX: Wait satisfied for mutex %08x\n", Mutex);
+#endif
+
 	Mutex->Header.SignaledState = 0;
 	PspUnlockSchedulerDatabase ();
 	KeReleaseIrqState(OldIrqState);
@@ -1258,6 +1276,17 @@ ExReleaseMutex(
 	Release lock with event
 --*/
 {
-	return;
+	if (KiInitializationPhase == 0)
+	{
+#if EX_TRACE_MUTEXES
+		KiDebugPrint("--> EX: Cannot release mutex %08x at initialization phase 0\n", Mutex);
+#endif
+		return;
+	}
+
+#if EX_TRACE_MUTEXES
+	KiDebugPrint("--> EX: Releasing mutex %08x\n", Mutex);
+#endif
+
 	KeSetEvent ((PEVENT)Mutex, 0);
 }

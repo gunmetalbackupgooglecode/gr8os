@@ -18,7 +18,7 @@ POBJECT_TYPE IoDriverObjectType;
 POBJECT_TYPE IoFileObjectType;
 POBJECT_TYPE IoVpbObjectType;
 
-PMUTEX IoDatabaseLock;
+MUTEX IoDatabaseLock;
 
 STATUS
 KEAPI
@@ -110,6 +110,8 @@ IoInitSystem(
 	Initiaolize I/O subsystem
 --*/
 {
+	ExInitializeMutex (&IoDatabaseLock);
+
 	//
 	// Create 'Device' directory
 	//
@@ -1025,13 +1027,14 @@ IoAttachDevice(
 	Attach device to the target device stack
 --*/
 {
-	ExAcquireMutex (IoDatabaseLock);
+
+	ExAcquireMutex (&IoDatabaseLock);
 	
 	SourceDevice->NextDevice = TargetDevice;
 	SourceDevice->StackSize = TargetDevice->StackSize + 1;
 	TargetDevice->AttachedDevice = SourceDevice;
 	
-	ExReleaseMutex (IoDatabaseLock);
+	ExReleaseMutex (&IoDatabaseLock);
 }
 
 KESYSAPI
@@ -1044,13 +1047,13 @@ IoDetachDevice(
 	Detach device from the target device stack
 --*/
 {
-	ExAcquireMutex (IoDatabaseLock);
+	ExAcquireMutex (&IoDatabaseLock);
 	
 	PDEVICE AttachedDevice = TargetDevice->AttachedDevice;
 	TargetDevice->AttachedDevice = NULL;
 	AttachedDevice->NextDevice = NULL;
 
-	ExReleaseMutex (IoDatabaseLock);
+	ExReleaseMutex (&IoDatabaseLock);
 }
 
 KESYSAPI
