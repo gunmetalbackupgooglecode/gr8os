@@ -691,3 +691,18 @@ KiWriteChar(
 	ULONG Pos,
 	CHAR chr
 	);
+
+KESYSAPI
+VOID
+KEFASTAPI
+InterlockedDecrement(
+	PLONG Long
+);
+
+KESYSAPI
+VOID
+KEFASTAPI
+InterlockedIncrement(
+	PLONG Long
+);
+

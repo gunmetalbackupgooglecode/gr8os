@@ -46,7 +46,7 @@ typedef ULONG STATUS, *PSTATUS;
 #define STATUS_NOT_IMPLEMENTED				((STATUS) 0xF0000008)
 #define STATUS_REPEAT_NEEDED				((STATUS) 0xF0000009)
 #define STATUS_DEVICE_NOT_READY				((STATUS) 0xF000000A)
-#define STATUS_PARTIAL_READ					((STATUS) 0xF000000B)
+#define STATUS_PARTIAL_COMPLETION			((STATUS) 0xF000000B)
 #define STATUS_IN_USE						((STATUS) 0xF000000C)
 #define STATUS_INVALID_HANDLE				((STATUS) 0xF000000D)
 #define STATUS_INVALID_FUNCTION				((STATUS) 0xF000000E)
@@ -163,6 +163,14 @@ FAR_POINTER<T> __inline RtlMakeFarPointer(USHORT Segment, T* Offset)
 #pragma pack()
 */
 
+LARGE_INTEGER __inline RtlMakeLargeInteger(ULONG Low, ULONG High)
+{
+	LARGE_INTEGER ret = { Low, High };
+	return ret;
+}
+
+#define bzero(x,y) memset(x,0,y)
+
 //
 // Configuration
 //
@@ -197,8 +205,8 @@ extern "C"
 #include "rtl.h"
 #include "init.h"
 #include "ke.h"
-#include "mm.h"
 #include "ex.h"
+#include "mm.h"
 #include "ps.h"
 #include "hal.h"
 #include "kd.h"

@@ -138,7 +138,15 @@ EXPORTS
 	MmMapPhysicalPages
 	MmUnmapPhysicalPages = MiUnmapPhysicalPages
 	MmIsAddressValidEx
-		
+	MmAllocateMmd
+	MmAllocatePhysicalPages
+	MmBuildMmdForNonpagedSpace
+	MmFreeMmd
+	MmFreePhysicalPages
+	MmLockPages
+	MmMapLockedPages
+	MmUnlockPages
+	MmUnmapLockedPages
 	
 	;
 	; Processes

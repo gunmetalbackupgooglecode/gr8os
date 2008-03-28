@@ -187,7 +187,7 @@ HalReadComPort(
 
 			*DataSize = (ULONG)datapos - (ULONG)Data;
 
-			return STATUS_PARTIAL_READ;
+			return STATUS_PARTIAL_COMPLETION;
 		}
 
 //		KiDebugPrint ("HalReadComPort: got byte %02x\n", *datapos);
@@ -203,7 +203,7 @@ HalReadComPort(
 			if (Iterations == 400)
 			{
 				*DataSize = (ULONG)datapos - (ULONG)Data;
-				return STATUS_PARTIAL_READ;
+				return STATUS_PARTIAL_COMPLETION;
 			}
 		}
 

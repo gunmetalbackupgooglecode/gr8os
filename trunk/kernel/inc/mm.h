@@ -259,13 +259,17 @@ typedef struct MMPPD *PMMPPD;
 typedef struct MMWORKING_SET_ENTRY
 {
 	PMMPPD PageDescriptor;
-	BOOLEAN LockedInWs;
-	UCHAR Reserved[3];
+
+	ULONG LockedInWs : 1;
+	ULONG Reserved : 31;
 } *PMMWORKING_SET_ENTRY;
+
+struct MUTEX;
 
 // Variable-length structure
 typedef struct MMWORKING_SET
 {
+	MUTEX Lock;
 	ULONG TotalPageCount;
 	ULONG LockedPageCount;
 	PROCESSOR_MODE OwnerMode;
@@ -304,61 +308,200 @@ enum PAGE_LOCATION
 
 typedef struct MMPPD
 {
-	//
-	// Back pointer to the MMPTE
-	//
-	PMMPTE PointerPte;
+	union
+	{
+		//
+		// Next PPD in list
+		//
+		PMMPPD NextFlink;		// If PageLocation < ActiveAndValid
+
+		//
+		// Index in the process' working set
+		//
+		ULONG WsIndex;			// If PageLocation == ActiveAndValid
+
+		//
+		// Event object for the transition page
+		//
+		PEVENT Event;			// If PageLocation == TransitionPage
+
+		//
+		// If some error occurred.
+		//
+		STATUS ErrorStatus;		// If InPageError==1
+	} u1;
 
 	union
 	{
-		PMMPPD NextFlink;		// If PageLocation < ActiveAndValid
-		ULONG WsIndex;			// If PageLocation == ActiveAndValid
-		PEVENT Event;			// If PageLocation == TransitionPage
-		STATUS ErrorStatus;		// If InPageError==1
-	} u1;
+		//
+		// Back pointer to the MMPTE
+		//
+		PMMPTE PointerPte;		// If PageLocation >= ActiveAndValid
+
+		//
+		// Back link to previous PPD in list
+		//
+		PMMPPD PrevBlink;		// If PageLocation < ActiveAndValid
+	} u2;
+
+
+	//
+	// Also we can treat first two DWORDs as the LIST_ENTRY when PageLocation < ActiveAndValid :
+	//
+	//  ((PLIST_ENTRY)PointerPpd)
+	//
+	//  Notice, that this list is NOT circular, last Flink is NULL and first Blink is NULL
+	//
+
 
 	UCHAR PageLocation : 3;
 
 	// Only if PageLocation >= ActiveAndValid
-	UCHAR BelongsToSystemWorkingSet : 1;
-	UCHAR InPageError : 1;
-	UCHAR ReadInProgress : 1;
-	UCHAR WriteInProgress : 1;
-	UCHAR Modified : 1;
-	USHORT ReferenceCount;
-	UCHAR KernelStack : 1;
-	UCHAR ProcessorMode : 2;
-	UCHAR Reserved : 5;
+	UCHAR BelongsToSystemWorkingSet : 1;		// Page belongs to system working set
+	UCHAR InPageError : 1;						// Error occurred during I/O operation
+	UCHAR ReadInProgress : 1;					// Read operation in progress
+	UCHAR WriteInProgress : 1;					// Write operation in progress
+	UCHAR Modified : 1;							// Page was modified
+	USHORT ReferenceCount;						// Reference count for the page. Increments with each mapping.
+	UCHAR KernelStack : 1;						// Page belongs to kernel stack
+	UCHAR ProcessorMode : 2;					// Owner's processor mode, who owns this page.
+	UCHAR Reserved : 5;							// Reserved for the future
 
 	//
-	// The whole size:  12 bytes
+	// Full struct size:  12 bytes
 	//
+
 } *PMMPPD;
 
 extern PMMPPD MmPpdDatabase;
 
+extern MUTEX MmPpdLock;
+
+#define MI_LOCK_PPD() ExAcquireMutex (&MmPpdLock);
+#define MI_UNLOCK_PPD() ExReleaseMutex (&MmPpdLock);
+
 // Retrieves PPD for the specified physical address
 #define MmPpdEntry(PhysicalAddress) (&MmPpdDatabase[((ULONG)PhysicalAddress) >> PAGE_SHIFT])
+
+// Retrieves PPD for the specified page frame number
+#define MmPfnPpd(PFN) (&MmPpdDatabase[PFN])
 
 // Retrieves PPD for the specified virtual address
 #define MmPpdForVirtual(VirtualAddress) MmPpdEntry( MiGetPteAddress(VirtualAddress)->PageFrameNumber )
 
+// Calculates page frame number of PPD
+#define MmGetPpdPfn(Ppd) (((ULONG)(Ppd) - (ULONG)MmPpdDatabase)/sizeof(MMPPD))
+
+//
+// Remove MMPPD from linked list
+//
+
+#define MiUnlinkPpd(Ppd) {					\
+		PMMPPD Prev = Ppd->u2.PrevBlink;	\
+		PMMPPD Next = Ppd->u1.NextFlink;	\
+		Prev->u1.NextFlink = Next;			\
+		Next->u2.PrevBlink = Prev;			\
+	}
+	
+//
+// Insert MMPPD to linked list
+//
+
+#define MiLinkPpd(List,Ppd) {					\
+		Ppd->u1.NextFlink = List;				\
+		Ppd->u2.PrevBlink = NULL;				\
+		List = Ppd;								\
+	}
+		
+
 #pragma pack()
 
 
-typedef LARGE_INTEGER PHYSICAL_ADDRESS;
+//
+// Memory Descriptor
+//
+
+#define MDL_ALLOCATED	0x00000001
+#define MDL_LOCKED		0x00000002
+#define MDL_MAPPED		0x00000004
+
+typedef struct MMD
+{
+	ULONG Flags;
+	ULONG PageCount;
+
+	PVOID BaseVirtual;
+	PVOID MappedVirtual;
+	ULONG Offset;
+	
+	ULONG PfnList[1];
+} *PMMD;
 
 KESYSAPI
-PHYSICAL_ADDRESS
+PMMD
+KEAPI
+MmAllocateMmd(
+	IN PVOID VirtualAddress,
+	IN ULONG Size
+	);
+
+KESYSAPI
+VOID
+KEAPI
+MmFreeMmd(
+	PMMD Mmd
+	);
+
+KESYSAPI
+VOID
+KEAPI
+MmBuildMmdForNonpagedSpace(
+	PMMD Mmd
+	);
+
+
+KESYSAPI
+STATUS
 KEAPI
 MmAllocatePhysicalPages(
-	ULONG PageCount
+	IN ULONG PageCount,
+	OUT PMMD *Mmd
 	);
 
 KESYSAPI
 VOID
 KEAPI
 MmFreePhysicalPages(
-	PHYSICAL_ADDRESS PhysicalAddress,
-	ULONG PageCount
+	IN PMMD Mmd
+	);
+
+#define MmGetCurrentWorkingSet() (PsGetCurrentProcess()->WorkingSet)
+
+KESYSAPI
+VOID
+KEAPI
+MmLockPages(
+	IN PMMD Mmd
+	);
+
+KESYSAPI
+VOID
+KEAPI
+MmUnlockPages(
+	IN PMMD Mmd
+	);
+
+KESYSAPI
+PVOID
+KEAPI
+MmMapLockedPages(
+	IN PMMD Mmd,
+	IN PROCESSOR_MODE TargetMode
+	);
+
+KESYSAPI
+VOID
+KEAPI
+MmUnmapLockedPages(
+	IN PMMD Mmd
 	);
