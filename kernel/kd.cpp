@@ -95,11 +95,18 @@ KiPutChar(
 	{
 		// Scroll
 
+		/*
 		memmove_far (
 			KGDT_VIDEO, 0, 
 			KGDT_VIDEO, KiXResolution*2, 
 			KiXResolution*(KiYResolution-1)*2
 			);
+		*/
+
+		for( ULONG i=0; i<KiXResolution*(KiYResolution-1); i++ )
+		{
+			KiWriteChar(i, KiReadChar (i + KiXResolution));
+		}
 
 		for (ULONG i=0; i<KiXResolution; i++)
 		{

@@ -427,8 +427,8 @@ PspCreateThread(
 	// Add thread to process' thread list
 	InsertTailList (&OwningProcess->ThreadListHead, &Thread->ProcessThreadListEntry);
 
-	InitializeListHead (&SystemThread.IrpList);
-	ExInitializeMutex (&SystemThread.IrpListLock);
+	InitializeListHead (&Thread->IrpList);
+	ExInitializeMutex (&Thread->IrpListLock);
 
 	// Create kernel stack
 	PVOID Stack = ExAllocateHeap( FALSE, THREAD_INITIAL_STACK_SIZE );

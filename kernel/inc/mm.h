@@ -24,7 +24,9 @@
 		D0000000 - DFFFFFFF    \
 		E0000000 - EFFFFFFF    / Heap for drivers
 		F0000000 - FFEFFFFF    Drivers
-		FFF00000 - FFFFFFFF    Kernel critical area
+		FFF00000 - FFFFDFFF    Kernel critical area
+		FFFFE000 - FFFFEFFF    Hyperspace
+		FFFFF000 - FFFFFFFF	   Reserved
 */
 
 #define MM_LOADER_START		0x80000000
@@ -39,8 +41,10 @@
 #define MM_PPD_START_PHYS	0x01000000
 
 #define MM_CRITICAL_AREA	0xFFF00000
-#define MM_CRITICAL_AREA_PAGES 256
+#define MM_CRITICAL_AREA_PAGES 254
 
+#define MM_HYPERSPACE_START ((PVOID)0xFFFFE000)
+#define MM_HYPERSPACE_PAGES 1
 
 #define MM_DPC_LIST			((PVOID)0x80000000)
 #define MM_DPCLIST_PHYS		0x00000000
@@ -156,6 +160,13 @@ MiUnmapPhysicalPages(
 	PVOID VirtualAddress,
 	ULONG PageCount
 	);
+
+VOID
+KEAPI
+MiMapPageToHyperSpace(
+	ULONG Pfn
+	);
+
 
 #define MmUnmapPhysicalPages MiUnmapPhysicalPages
 
