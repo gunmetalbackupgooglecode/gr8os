@@ -128,6 +128,115 @@ sehandler:
 	}
 }
 
+
+VOID
+KEAPI
+KiDemoThread(
+	PVOID Argument
+	)
+{
+	KdPrint(("In KiDemoThread\n"));
+
+	//KeInitializeEvent (&ev, SynchronizationEvent, FALSE);
+
+
+	/*PVOID HeapBuffer = ExAllocateHeap (TRUE, 10);
+	strncpy ((char*)HeapBuffer, "1234", 5);
+
+	PMMPTE Pte = MiGetPteAddress (HeapBuffer);
+
+	KdPrint(("\n\n"));
+	KdPrint (("Allocated buffer %08x : %s [phys page %08x]\n", HeapBuffer, HeapBuffer, Pte->u1.e1.PageFrameNumber));
+
+	PMMD Mmd = MmAllocateMmd (HeapBuffer, 10000);*/
+
+	PMMD Mmd;
+	STATUS Status;
+
+	Status = MmAllocatePhysicalPages (3, &Mmd);
+	if (!SUCCESS(Status))
+	{
+		KeBugCheck (KE_INITIALIZATION_FAILED, Status, __LINE__, 0, 0);
+	}
+
+	PVOID Mapped = MmMapLockedPages(Mmd, KernelMode);
+	strncpy ((char*)Mapped, "1234", 5);
+
+	KdPrint(("Allocated MMD at %08x [fl=%08x]\n", Mmd, Mmd->Flags));
+	
+//	MmBuildMmdForNonpagedSpace (Mmd);
+//	KdPrint(("Built mmd for nonpaged space\n"));
+
+///	PVOID Mapped = MmMapLockedPages (Mmd, KernelMode);
+	KdPrint(("Mapped at %08x\n", Mapped));
+
+	PMMPTE Pte = MiGetPteAddress (Mapped);
+	KdPrint(("mapped: %s  [phys page %08x]\n", Mapped, Pte->u1.e1.PageFrameNumber));
+
+	MmUnlockPages (Mmd);
+
+	KdPrint(("Pages unlocked from working set\n"));
+
+	MmUnmapLockedPages (Mmd);
+	MmFreePhysicalPages (Mmd);
+	MmFreeMmd (Mmd);
+
+	MiDumpPageLists();
+
+#if 1
+	//
+	// Test file reading
+	//
+
+	PFILE File;
+	//STATUS Status;
+	UNICODE_STRING FdName;
+	IO_STATUS_BLOCK IoStatus;
+
+	RtlInitUnicodeString (&FdName, L"\\Device\\fdd0\\message.txt");
+
+	Status = IoCreateFile (&File, FILE_READ_DATA, &FdName, &IoStatus, 0, 0);
+	if (!SUCCESS(Status)) {
+		KeBugCheck (KE_INITIALIZATION_FAILED,
+					__LINE__,
+					Status,
+					0,
+					0
+					);
+	}
+
+	PVOID Buffer = ExAllocateHeap (TRUE, 512);
+
+	PFSFATFCB fcb = (PFSFATFCB) File->FsContext;
+	KdPrint(("\nFile opened, fcb=%08x, filename=%s\n", fcb, fcb->DirEnt->Filename));
+
+	KdPrint(("\nRead 1\n\n"));
+
+	Status = IoReadFile (File, Buffer, 512, NULL, &IoStatus);
+	if (!SUCCESS(Status)) {
+		KeBugCheck (KE_INITIALIZATION_FAILED,
+					__LINE__,
+					Status,
+					0,
+					0
+					);
+	}
+
+	((UCHAR*)Buffer)[IoStatus.Information] = 0;
+
+	KdPrint(("INIT: Read=%d, Buffer: \n%s\n", IoStatus.Information, Buffer));
+
+	KdPrint(("\nClose\n\n"));
+
+	ExFreeHeap (Buffer);
+	IoCloseFile (File);
+#endif
+
+	// Fall through counter thread code.
+	PsCounterThread( (PVOID)( 80*5 + 35 ) );
+}
+
+
 KEVAR  TSS32 SpecialDFTss;
 KEVAR  TSS32 SpecialSFTss;
 
@@ -312,111 +421,16 @@ KiInitSystem(
 
 	KiDebugPrintRaw( "INIT: Initialization phase 1 completed\n"  );
 
-	KeInitializeEvent (&ev, SynchronizationEvent, FALSE);
-
-
-
-	/*PVOID HeapBuffer = ExAllocateHeap (TRUE, 10);
-	strncpy ((char*)HeapBuffer, "1234", 5);
-
-	PMMPTE Pte = MiGetPteAddress (HeapBuffer);
-
-	KdPrint(("\n\n"));
-	KdPrint (("Allocated buffer %08x : %s [phys page %08x]\n", HeapBuffer, HeapBuffer, Pte->u1.e1.PageFrameNumber));
-
-	PMMD Mmd = MmAllocateMmd (HeapBuffer, 10000);*/
-
-	PMMD Mmd;
-	STATUS Status;
-
-	Status = MmAllocatePhysicalPages (3, &Mmd);
-	if (!SUCCESS(Status))
-	{
-		KeBugCheck (KE_INITIALIZATION_FAILED, Status, __LINE__, 0, 0);
-	}
-
-	PVOID Mapped = MmMapLockedPages(Mmd, KernelMode);
-	strncpy ((char*)Mapped, "1234", 5);
-
-	KdPrint(("Allocated MMD at %08x [fl=%08x]\n", Mmd, Mmd->Flags));
-	
-//	MmBuildMmdForNonpagedSpace (Mmd);
-//	KdPrint(("Built mmd for nonpaged space\n"));
-
-///	PVOID Mapped = MmMapLockedPages (Mmd, KernelMode);
-	KdPrint(("Mapped at %08x\n", Mapped));
-
-	PMMPTE Pte = MiGetPteAddress (Mapped);
-	KdPrint(("mapped: %s  [phys page %08x]\n", Mapped, Pte->u1.e1.PageFrameNumber));
-
-	MmUnmapLockedPages (Mmd);
-	MmFreePhysicalPages (Mmd);
-	MmFreeMmd (Mmd);
-
-	MiDumpPageLists();
-
-#if 1
-	//
-	// Test file reading
-	//
-
-	PFILE File;
-	//STATUS Status;
-	UNICODE_STRING FdName;
-	IO_STATUS_BLOCK IoStatus;
-
-	RtlInitUnicodeString (&FdName, L"\\Device\\fdd0\\message.txt");
-
-	Status = IoCreateFile (&File, FILE_READ_DATA, &FdName, &IoStatus, 0, 0);
-	if (!SUCCESS(Status)) {
-		KeBugCheck (KE_INITIALIZATION_FAILED,
-					__LINE__,
-					Status,
-					0,
-					0
-					);
-	}
-
-	PVOID Buffer = ExAllocateHeap (TRUE, 512);
-
-	PFSFATFCB fcb = (PFSFATFCB) File->FsContext;
-	KdPrint(("\nFile opened, fcb=%08x, filename=%s\n", fcb, fcb->DirEnt->Filename));
-
-	KdPrint(("\nRead 1\n\n"));
-
-	Status = IoReadFile (File, Buffer, 512, NULL, &IoStatus);
-	if (!SUCCESS(Status)) {
-		KeBugCheck (KE_INITIALIZATION_FAILED,
-					__LINE__,
-					Status,
-					0,
-					0
-					);
-	}
-
-	((UCHAR*)Buffer)[IoStatus.Information] = 0;
-
-	KdPrint(("INIT: Read=%d, Buffer: \n%s\n", IoStatus.Information, Buffer));
-
-	KdPrint(("\nClose\n\n"));
-
-	ExFreeHeap (Buffer);
-	IoCloseFile (File);
-#endif
 
 	// Create two additional threads
+	KeInitializeEvent (&ev, SynchronizationEvent, 0);
 	PspCreateThread( &Thread1, &InitialSystemProcess, PsCounterThread, (PVOID)( 80*3 + 40 ) );
 	PspCreateThread( &Thread2, &InitialSystemProcess, PsCounterThread, (PVOID)( 80*4 + 45 ) );
+	PspCreateThread( &Thread3, &InitialSystemProcess, KiDemoThread, NULL );
 
-	KiDebugPrint ("PS: SystemThread=%08x, Thread1=%08x, Thread2=%08x\n", &SystemThread, &Thread1, &Thread2);
+	KiDebugPrint ("PS: SystemThread=%08x, Thread1=%08x, Thread2=%08x, Thread3=%08x\n", &SystemThread, &Thread1, &Thread2, &Thread3);
 
 	KiDebugPrintRaw( "INIT: Initialization completed.\n\n" );
 
-	// Demo code for thread execution's delaying.
-	PsDelayThreadExecution( 3 );
-
-	// Fall through counter thread code.
-	PsCounterThread( (PVOID)( 80*5 + 35 ) );
-
-	//MiZeroPageThread( );
+	MiZeroPageThread( );
 }

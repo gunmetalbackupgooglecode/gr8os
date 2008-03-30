@@ -123,6 +123,22 @@ MiUnmapPhysicalPages(
 	}
 }
 
+VOID
+KEAPI
+MiMapPageToHyperSpace(
+	ULONG Pfn
+	)
+/*++
+	Maps page to hyperspace
+--*/
+{
+	PMMPTE PointerPte = MiGetPteAddress (MM_HYPERSPACE_START);
+
+	MiWriteValidKernelPte (PointerPte);
+	PointerPte->u1.e1.PageFrameNumber = Pfn;
+}
+
+
 char MmDebugBuffer[1024];
 
 VOID
@@ -275,16 +291,6 @@ MmIsAddressValidEx(
 }
 
 
-VOID
-KEAPI
-MiZeroPageThread(
-	)
-{
-	for(;;)
-	{
-	}
-}
-
 LIST_ENTRY PsLoadedModuleList;
 MUTEX PsLoadedModuleListLock;
 
@@ -370,6 +376,30 @@ MmInitSystem(
 
 		Ppd[i].u1.WsIndex = i;
 		Ppd[i].ShareCount = 1;
+	}
+
+	ULONG VirtualAddresses[][2] = {
+		{ 0x80000000, 0x80FFFFFF },
+		{ 0xC0000000, 0xCFFFFFFF }
+	};
+
+	for ( int i=0; i<2; i++ )
+	{
+		KdPrint(("MI: Initializing range 0x%08x - 0x%08x\n", VirtualAddresses[i][0], VirtualAddresses[i][1]));
+
+		for (ULONG VirtualAddress = VirtualAddresses[i][0]; VirtualAddress < VirtualAddresses[i][1]; VirtualAddress += PAGE_SIZE)
+		{
+			PMMPTE Pte = MiGetPteAddress (VirtualAddress);
+
+			if (Pte->u1.e1.Valid)
+			{
+				PMMPPD Ppd = MmPfnPpd (Pte->u1.e1.PageFrameNumber);
+
+				ASSERT (Ppd->PageLocation == ActiveAndValid);
+
+				Ppd->u2.PointerPte = Pte;
+			}
+		}
 	}
 
 	//
@@ -484,6 +514,11 @@ MiChangePageLocation(
 	{
 		MiLinkPpd ( MmPageLists[NewLocation], Ppd );
 	}
+	else
+	{
+		Ppd->u1.WsIndex = 0;
+		Ppd->u2.PointerPte = NULL;
+	}
 
 	Ppd->PageLocation = NewLocation;
 }
@@ -580,18 +615,15 @@ MmAllocatePhysicalPages(
 	{
 		AllocatedPages[alloc] = MmGetPpdPfn (Ppd);
 
+		PMMPPD Next = Ppd->u1.NextFlink;
+
 		MiChangePageLocation (Ppd, ActiveAndValid);
 		
 #if MM_TRACE_MMDS
 		KdPrint(("MM: Allocated page %08x\n", AllocatedPages[alloc]));
 #endif
 
-		//
-		// MMPPD in unlinked from double-linked list, but it contains
-		//  valid pointers to previous and next entries
-		//
-
-		Ppd = Ppd->u1.NextFlink;	// This link is valid despite the PPD is already unlinked.
+		Ppd = Next;	
 		alloc ++;					// Increment number of allocated pages
 
 		if (alloc == PageCount)
@@ -619,6 +651,8 @@ MmAllocatePhysicalPages(
 		while (Ppd)
 		{
 			AllocatedPages[alloc] = MmGetPpdPfn (Ppd);
+	
+			PMMPPD Next = Ppd->u1.NextFlink;
 
 			MiChangePageLocation (Ppd, ActiveAndValid);
 			
@@ -630,7 +664,7 @@ MmAllocatePhysicalPages(
 			//  valid pointers to previous and next entries
 			//
 
-			Ppd = Ppd->u1.NextFlink;	// This link is valid despite the PPD is already unlinked.
+			Ppd = Next;
 			alloc ++;					// Increment number of allocated pages
 
 			if (alloc == PageCount)
@@ -748,6 +782,8 @@ MmAllocateMmd(
 	ULONG PageCount = ALIGN_UP(Size,PAGE_SIZE) / PAGE_SIZE;
 	PMMD Mmd = (PMMD) ExAllocateHeap (TRUE, sizeof(MMD) + (PageCount-1)*sizeof(ULONG));
 
+	bzero (Mmd, sizeof(MMD) + (PageCount-1)*sizeof(ULONG));
+
 	Mmd->BaseVirtual = (PVOID) ALIGN_DOWN((ULONG)VirtualAddress, PAGE_SIZE);
 	Mmd->Offset = (ULONG)VirtualAddress % PAGE_SIZE;
 	Mmd->PageCount = PageCount;
@@ -861,6 +897,10 @@ MmLockPages(
 
 		ULONG WsIndex = MmPfnPpd (Mmd->PfnList[i])->u1.WsIndex;
 
+#if MM_TRACE_MMDS
+		KdPrint(("MM: Locking PFN %08x in WsIndex=%08x\n", Mmd->PfnList[i], WsIndex));
+#endif
+
 		WorkingSet->WsPages[WsIndex].LockedInWs = TRUE;
 	}
 
@@ -888,6 +928,12 @@ MmUnlockPages(
 	for (ULONG i=0; i<Mmd->PageCount; i++)
 	{
 		ULONG WsIndex = MmPfnPpd (Mmd->PfnList[i])->u1.WsIndex;
+
+#if MM_TRACE_MMDS
+		KdPrint(("MM: Unlocking PFN %08x in WsIndex=%08x\n", Mmd->PfnList[i], WsIndex));
+#endif
+
+		KdPrint(("&WorkingSet->WsPages[WsIndex] = %08x\n", &WorkingSet->WsPages[WsIndex]));
 
 		WorkingSet->WsPages[WsIndex].LockedInWs = FALSE;
 	}
@@ -997,4 +1043,44 @@ MmUnmapLockedPages(
 
 	Mmd->MappedVirtual = NULL;
 	Mmd->Flags &= ~MDL_MAPPED;
+}
+
+VOID
+KEAPI
+MiZeroPageThread(
+	)
+{
+	PVOID VirtualAddress = MM_HYPERSPACE_START;
+
+	for(;;)
+	{
+		;
+		/*
+		PsDelayThreadExecution (10);
+
+		KdPrint(("MiZeroPageThread waked up\n"));
+
+		MI_LOCK_PPD();
+
+		PMMPPD Ppd = MmFreePageListHead;
+		while (Ppd)
+		{
+			PMMPPD Next = Ppd->u1.NextFlink;
+
+			KdPrint(("Zeroing page %08x [PPD=%08, NEXT=%08x]\n", MmGetPpdPfn(Ppd), Ppd, Next));
+
+			MiMapPageToHyperSpace (MmGetPpdPfn(Ppd));
+
+			memset (VirtualAddress, 0, PAGE_SIZE);
+
+			MiChangePageLocation (Ppd, ZeroedPageList);
+		
+			Ppd = Next;
+		}
+
+		MI_UNLOCK_PPD();
+
+		KdPrint(("MiZeroPageThread sleeping..\n"));
+		*/
+	}
 }

@@ -1199,6 +1199,11 @@ ExAcquireMutex(
 
 	WaitBlock = &Thread->WaitBlocks[0];
 	WaitBlock->BackLink = Thread;
+
+//	KiDebugPrint("EX: Header->WaitListHead->Blink=%08x, Flink=%08x\n",
+//		Header->WaitListHead.Blink,
+//		Header->WaitListHead.Flink);
+
 	InsertTailList (&Header->WaitListHead, &WaitBlock->WaitListEntry);
 	
 	Thread->WaitBlockUsed = WaitBlock;
