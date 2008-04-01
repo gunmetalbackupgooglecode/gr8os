@@ -289,8 +289,6 @@ typedef struct _DBGKD_COMMAND_STRING {
     ULONG64 Reserved2[7];
 } DBGKD_COMMAND_STRING, *PDBGKD_COMMAND_STRING;
 
-typedef EXCEPTION_RECORD *PEXCEPTION_RECORD;
-
 typedef struct _EXCEPTION_RECORD32 {
     ULONG ExceptionCode;
     ULONG ExceptionFlags;

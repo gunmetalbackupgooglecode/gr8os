@@ -15,13 +15,182 @@
 //
 
 POBJECT_DIRECTORY ObRootObjectDirectory;
+POBJECT_DIRECTORY ObGlobalObjectDirectory;
+POBJECT_DIRECTORY ObDrvGlobalObjectDirectory;
 
 
 //
 // Directory object type
 //
-
 POBJECT_TYPE ObDirectoryObjectType;
+
+//
+// Symbolic link type
+//
+POBJECT_TYPE ObSymbolicLinkObjectType;
+
+
+
+STATUS
+KEAPI
+ObpParseSymbolicLink(
+	IN POBJECT_HEADER Object,
+	IN PUNICODE_STRING FullObjectPath,
+	IN PUNICODE_STRING RemainingPath,
+	IN PVOID ParseContext,
+	OUT PUNICODE_STRING ReparsePath
+	)
+/*++
+	Parse symbolic link
+--*/
+{
+	POBJECT_SYMBOLIC_LINK Symlink = OBJECT_HEADER_TO_OBJECT (Object, OBJECT_SYMBOLIC_LINK);
+
+	if ((ULONG)ParseContext != 1)
+	{
+		KdPrint(("ObpParseSymbolicLink: FullPath[%S], RemainingPath[%S]\n", FullObjectPath->Buffer,
+			RemainingPath->Buffer));
+
+		ReparsePath->Length = Symlink->Target.Length + RemainingPath->Length;
+		ReparsePath->MaximumLength = ReparsePath->Length + 2;
+		ReparsePath->Buffer = (PWSTR) ExAllocateHeap (TRUE, ReparsePath->MaximumLength);
+		if (!ReparsePath->Buffer)
+			return STATUS_INSUFFICIENT_RESOURCES;
+
+		wcscpy (ReparsePath->Buffer, Symlink->Target.Buffer);
+		wcscat (ReparsePath->Buffer, RemainingPath->Buffer);
+
+		return STATUS_REPARSE;
+	}
+	else
+	{
+		//
+		// If ParseContext==1, caller wants to retrieve pointer to the symbolic link,
+		//  not to the its object.
+		//
+
+		return STATUS_SUCCESS;
+	}
+}
+
+VOID
+KEAPI
+ObpDeleteSymbolicLink(
+	IN POBJECT_HEADER Object
+	)
+/*++
+	Called when symbolic link is being deleted
+--*/
+{
+	POBJECT_SYMBOLIC_LINK Symlink = OBJECT_HEADER_TO_OBJECT (Object, OBJECT_SYMBOLIC_LINK);
+
+	RtlFreeUnicodeString (&Symlink->Target);
+	ObDereferenceObject (OBJECT_HEADER_TO_OBJECT(Symlink->TargetObject,VOID));
+}
+
+
+KESYSAPI
+STATUS
+KEAPI
+ObCreateSymbolicLink(
+	PUNICODE_STRING SymlinkName,
+	PUNICODE_STRING TargetPath
+	)
+/*++
+	Create new symbolic link with SymlinkName, which will point to TargetPath
+--*/
+{
+	STATUS Status;
+	POBJECT_SYMBOLIC_LINK Symlink;
+	UNICODE_STRING RelativeLinkName;
+	PWSTR rel;
+	PVOID Object;
+
+	Status = ObReferenceObjectByName (
+		TargetPath,
+		NULL,
+		KernelMode,
+		0,
+		0,
+		&Object
+		);
+
+	if (!SUCCESS(Status))
+		return Status;
+	
+	rel = wcsrchr(SymlinkName->Buffer+1, L'\\');
+	if (!rel)
+	{
+		rel = SymlinkName->Buffer;
+	}
+	RtlInitUnicodeString (&RelativeLinkName, rel+1);
+
+	Status = ObCreateObject(
+		(PVOID*)&Symlink, 
+		sizeof(OBJECT_SYMBOLIC_LINK),
+		ObSymbolicLinkObjectType,
+		&RelativeLinkName,
+		OB_OBJECT_OWNER_IO
+		);
+	
+	if (!SUCCESS(Status))
+	{
+		ObDereferenceObject (Object);
+		return Status;
+	}
+
+	POBJECT_DIRECTORY Directory;
+	if (rel != SymlinkName->Buffer)
+	{
+		WCHAR *wDirectoryName = (WCHAR*) ExAllocateHeap(TRUE, 
+			(ULONG)rel-(ULONG)SymlinkName->Buffer+2);
+		wcssubstr (SymlinkName->Buffer, 0, ((ULONG)rel-(ULONG)SymlinkName->Buffer)/2, wDirectoryName);
+
+		UNICODE_STRING DirectoryName;
+		RtlInitUnicodeString (&DirectoryName, wDirectoryName);
+
+		Status = ObReferenceObjectByName (
+			&DirectoryName,
+			ObDirectoryObjectType,
+			KernelMode,
+			0,
+			0,
+			(PVOID*) &Directory
+			);
+
+		ExFreeHeap (wDirectoryName);
+	}
+	else
+	{
+		ObReferenceObject (ObRootObjectDirectory);
+		Directory = ObRootObjectDirectory;
+		Status = STATUS_SUCCESS;
+	}
+
+	if (!SUCCESS(Status))
+	{
+		ObpDeleteObjectInternal (Symlink);
+		ObDereferenceObject (Object);
+		return Status;
+	}
+
+	RtlDuplicateUnicodeString( TargetPath, &Symlink->Target );
+	Symlink->TargetObject = OBJECT_TO_OBJECT_HEADER(Object);
+
+	Status = ObInsertObject (Directory, Symlink);
+
+	ObDereferenceObject (Directory);
+
+	if (!SUCCESS(Status))
+	{
+		ObpDeleteObjectInternal (Symlink);
+		ObDereferenceObject (Object);
+		return Status;
+	}
+
+	return STATUS_SUCCESS;
+}
+
 
 KESYSAPI
 STATUS
@@ -249,6 +418,55 @@ ObInitSystem(
 	HandleTable = (POBJECT_HANDLE) ExAllocateHeap (TRUE, sizeof(OBJECT_HANDLE)*OB_MAX_HANDLES);
 	memset (HandleTable, 0, sizeof(OBJECT_HANDLE)*OB_MAX_HANDLES);
 #endif
+
+	//
+	// Create symbolic link object type
+	//
+
+	RtlInitUnicodeString (&Name, L"Symbolic Link");
+
+	Status = ObCreateObjectType (
+		&ObSymbolicLinkObjectType,
+		&Name,
+		NULL,
+		ObpParseSymbolicLink,
+		NULL,
+		ObpDeleteSymbolicLink,
+		NULL,
+		OB_OBJECT_OWNER_OB
+		);
+
+	if (!SUCCESS(Status))
+	{
+		KeBugCheck (OB_INITIALIZATION_FAILED,
+					__LINE__,
+					Status,
+					0,
+					0);
+	}
+
+	//
+	// Create symlinks \Global and \DrvGlobal
+	//
+
+	RtlInitUnicodeString (&Name, L"Global");
+
+	Status = ObCreateDirectory (
+		&ObGlobalObjectDirectory, 
+		&Name,
+		OB_OBJECT_OWNER_OB,
+		ObRootObjectDirectory
+		);
+
+	RtlInitUnicodeString (&Name, L"DrvGlobal");
+
+	Status = ObCreateDirectory (
+		&ObDrvGlobalObjectDirectory, 
+		&Name,
+		OB_OBJECT_OWNER_OB,
+		ObRootObjectDirectory
+		);
+
 }
 
 KESYSAPI
@@ -486,6 +704,7 @@ ObDeleteObject(
 		NULL,
 		KernelMode,
 		0,
+		(PVOID)1,		// If this is a symbolic link, don't resolve it.
 		&Object
 		);
 
@@ -569,6 +788,7 @@ ObReferenceObjectByName(
 	IN POBJECT_TYPE ObjectType	OPTIONAL,
 	IN PROCESSOR_MODE RequestorMode,
 	IN ULONG DesiredAccess UNIMPLEMENTED,
+	IN PVOID ParseContext OPTIONAL,
 	OUT PVOID* Object
 	)
 /*++
@@ -576,12 +796,19 @@ ObReferenceObjectByName(
 --*/
 {
 	PWSTR wc=ObjectName->Buffer, prevslash;
-	POBJECT_DIRECTORY CurrentDirectory = ObRootObjectDirectory;
+	POBJECT_DIRECTORY CurrentDirectory;
 	STATUS Status;
 	POBJECT_HEADER ObjectHeader;
 	UNICODE_STRING ReparsePath = {0};
 
+	PWSTR ParseBuffer = ObjectName->Buffer;
+	ULONG ParseLength = ObjectName->Length;
+
+	UNICODE_STRING ParsePath;
+
 reparse:
+
+	CurrentDirectory = ObRootObjectDirectory;
 
 	if (*wc != L'\\')
 	{
@@ -599,9 +826,9 @@ reparse:
 
 	ObPrint(("OBREF: Starting search for '%S'\n", prevslash));
 
-	for (;((ULONG)wc-(ULONG)ObjectName->Buffer)<=ObjectName->Length; wc++)
+	for (;; wc++)
 	{
-		if (*wc == L'\\')
+		if (*wc == L'\\' || (((ULONG)wc-(ULONG)ParseBuffer)>=ParseLength))
 		{
 			PWSTR TempName = (PWSTR) ExAllocateHeap (TRUE, ((ULONG)wc-(ULONG)prevslash));
 			
@@ -630,6 +857,8 @@ reparse:
 				return Status;
 			}
 
+			ExFreeHeap (TempName);
+
 			//
 			// Call object type parse routine
 			//
@@ -640,7 +869,8 @@ reparse:
 				UNICODE_STRING RemainingPath;
 				STATUS Status;
 
-				RtlInitUnicodeString (&RemainingPath, wc+1);
+				RtlInitUnicodeString (&RemainingPath, wc);
+				RtlInitUnicodeString (&ParsePath, ParseBuffer);
 
 				//
 				// Check if this is not a first reparsing.
@@ -652,8 +882,9 @@ reparse:
 
 				Status = (ObjectHeader->ObjectType->ParseRoutine) (
 					ObjectHeader,
-					ObjectName,
+					&ParsePath,
 					&RemainingPath,
+					ParseContext,
 					&ReparsePath
 					);
 
@@ -668,8 +899,6 @@ reparse:
 
 				if (!SUCCESS(Status))
 				{
-					ExFreeHeap (TempName);
-
 					//
 					// WARN: If ParseRoutine returns error status code it SHOULD NOT touch
 					//  the ReparsePath unicode string.
@@ -684,6 +913,9 @@ reparse:
 				if (Status == STATUS_REPARSE)
 				{
 					wc = ReparsePath.Buffer;
+					ParseBuffer = wc;
+					ParseLength = ReparsePath.Length;
+
 					goto reparse;
 				}
 				else
@@ -697,8 +929,7 @@ reparse:
 					// We should stop here.
 					//
 
-					ExFreeHeap (TempName);
-					
+				
 					if (ReparsePath.Buffer)
 						ExFreeHeap (ReparsePath.Buffer);
 
@@ -707,24 +938,34 @@ reparse:
 			}
 
 			//
+			// Last name
+			//
+			if (((ULONG)wc-(ULONG)ParseBuffer)>=ParseLength)
+			{
+				if (ReparsePath.Buffer)
+					ExFreeHeap (ReparsePath.Buffer);
+
+				goto finish;
+			}
+
+			//
 			// This should be a directory object
 			//
 			if (ObjectHeader->ObjectType != ObDirectoryObjectType)
 			{
-				ExFreeHeap (TempName);
-
 				if (ReparsePath.Buffer)
 					ExFreeHeap (ReparsePath.Buffer);
 
 				return STATUS_NOT_FOUND;
 			}
 
-			ExFreeHeap (TempName);
 			CurrentDirectory = (POBJECT_DIRECTORY) &ObjectHeader->Body;
 
 			prevslash = wc;
 		}
 	}
+
+finish:
 
 	//
 	// Free reparse buffer
@@ -732,24 +973,6 @@ reparse:
 
 	if (ReparsePath.Buffer)
 		ExFreeHeap (ReparsePath.Buffer);
-
-	//
-	// CurrentDirectory points to the last directory in the path, where the destination object should be.
-	// prevslash+1 points to relative object name.
-	// Just search it there.
-	//
-
-	ObPrint(("OBREF: Final search for part '%S'\n", prevslash+1));
-
-	ObjectHeader = NULL;
-	Status = ObpFindObjectInDirectory (CurrentDirectory, prevslash+1, &ObjectHeader);
-
-	if (!SUCCESS(Status))
-	{
-		return Status;
-	}
-
-finish:
 
 	//
 	// Perform the checks
@@ -794,11 +1017,20 @@ ObpDumpDirectory(
 		if (obj->ObjectType != ObDirectoryObjectType)
 		{
 			for (int i=0; i<Indent+3; i++ ) KdPrint((" "));
-			KdPrint(("%S [%S] Refs=%d Handles=%d\n", 
+			KdPrint(("%S [%S] Refs=%d Handles=%d ", 
 				obj->ObjectName.Buffer,
 				obj->ObjectType->ObjectTypeName.Buffer,
 				obj->ReferenceCount,
 				obj->HandleCount ));
+
+			if (obj->ObjectType == ObSymbolicLinkObjectType)
+			{
+				POBJECT_SYMBOLIC_LINK symlink = OBJECT_HEADER_TO_OBJECT (obj, OBJECT_SYMBOLIC_LINK);
+
+				KdPrint(("Target=[%S]", symlink->Target.Buffer));
+			}
+
+			KdPrint(("\n"));
 		}
 		else
 		{
@@ -807,6 +1039,8 @@ ObpDumpDirectory(
 
 		obj = CONTAINING_RECORD (obj->DirectoryList.Flink, OBJECT_HEADER, DirectoryList);
 	}
+
+	KdPrint(("\n"));
 
 	ExReleaseMutex (&Directory->DirectoryLock);
 }
@@ -911,6 +1145,7 @@ ObOpenObjectByName(
 	IN POBJECT_TYPE ObjectType	OPTIONAL,
 	IN PROCESSOR_MODE RequestorMode,
 	IN ULONG DesiredAccess UNIMPLEMENTED,
+	IN PVOID ParseContext OPTIONAL,
 	OUT PHANDLE ObjectHandle
 	)
 /*++
@@ -925,6 +1160,7 @@ ObOpenObjectByName(
 		ObjectType,
 		RequestorMode,
 		DesiredAccess,
+		ParseContext,
 		&Object
 		);
 

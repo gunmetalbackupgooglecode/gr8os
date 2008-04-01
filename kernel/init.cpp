@@ -5,6 +5,13 @@
 // ABSTRACT:
 //			Initializes the kernel
 //
+//
+//	All characters and events in this show, even those
+//   based on real people, are entirely fictional.
+//	All celebrity voices are impresonated (poorly). The
+//	 following OS contains coarse language and due to 
+//	its content it should not be viewed by anyone.
+//
 
 
 #include "common.h"
@@ -84,28 +91,6 @@ PsCounterThread(
 			KeSetEvent (&ev, 0);
 		}
 
-		if( Argument == (PVOID)( 80*3 + 40 ) && KiReadChar(Pos) == '9' )
-		{
-			__asm
-			{
-				push sehandler
-				push dword ptr fs:[0]
-				mov  fs:[0], esp
-
-				xor ebx,ebx
-				div ebx
-
-sehandler:
-			}
-
-			KiDebugPrint ("THRD: In exception handler\n");
-
-			__asm
-			{
-				mov  eax, EXCEPTION_CONTINUE_SEARCH
-				retn 8
-			}
-		}
 
 		if( KiReadChar (Pos) == ':' )
 		{
@@ -128,6 +113,18 @@ sehandler:
 	}
 }
 
+void _f()
+{
+	__try
+	{
+		ULONG r = 0;
+		ULONG b = 9/r;
+	}
+	__finally
+	{
+		KiDebugPrint("_f internal finally block\n");
+	}
+}
 
 VOID
 KEAPI
@@ -193,7 +190,8 @@ KiDemoThread(
 	UNICODE_STRING FdName;
 	IO_STATUS_BLOCK IoStatus;
 
-	RtlInitUnicodeString (&FdName, L"\\Device\\fdd0\\message.txt");
+	//RtlInitUnicodeString (&FdName, L"\\SystemRoot\\message.txt");
+	RtlInitUnicodeString (&FdName, L"\\Global\\A:\\message.txt");
 
 	Status = IoCreateFile (&File, FILE_READ_DATA, &FdName, &IoStatus, 0, 0);
 	if (!SUCCESS(Status)) {
@@ -232,6 +230,57 @@ KiDemoThread(
 	IoCloseFile (File);
 #endif
 
+	ULONG *Dummy = (ULONG*) ExAllocateHeap (0, sizeof(LONG));
+
+	PMMPTE PointerPte = MiGetPteAddress (Dummy);
+	PointerPte->u1.e1.Accessed = 0;
+	PointerPte->u1.e1.Dirty = 0;
+
+	KdPrint(("Dummy = %08x\n", *Dummy));
+	KdPrint(("Pte: A=%d, D=%d\n", PointerPte->u1.e1.Accessed, PointerPte->u1.e1.Dirty));
+	*Dummy = 4;
+	KdPrint(("Dummy = %08x\n", *Dummy));
+	KdPrint(("Pte: A=%d, D=%d\n", PointerPte->u1.e1.Accessed, PointerPte->u1.e1.Dirty));
+
+	ExFreeHeap (Dummy);
+
+	__try
+	{
+		__try
+		{
+			__try
+			{
+				__try
+				{
+					__try
+					{
+						_f();
+					}
+					__finally
+					{
+						KiDebugPrint(("__finally block 1\n"));
+					}
+				}
+				__finally
+				{
+					KiDebugPrint(("__finally block 2\n"));
+				}
+			}
+			__except (EXCEPTION_EXECUTE_HANDLER)
+			{
+				KiDebugPrint("In exception handler [code %08x]\n", GetExceptionCode());
+			}
+		}
+		__except (EXCEPTION_EXECUTE_HANDLER)
+		{
+			KiDebugPrint("Exception handler that is neved called\n");
+		}
+	}
+	__finally
+	{
+		KiDebugPrint("Last finally block\n");
+	}
+
 	// Fall through counter thread code.
 	PsCounterThread( (PVOID)( 80*5 + 35 ) );
 }
@@ -253,7 +302,7 @@ KiStallExecutionMilliseconds(
 --*/
 {
 	ULONG Ticks = (Ms * HalBusClockFrequency)/2;
-	
+
 	HalpWriteApicConfig(APIC_INITCNT, -1);
 	
 	ULONG Initial, Current;
@@ -420,6 +469,8 @@ KiInitSystem(
 	KiDebugPrintRaw( "IO: Passed initialization\n" );
 
 	KiDebugPrintRaw( "INIT: Initialization phase 1 completed\n"  );
+
+	ObpDumpDirectory (ObRootObjectDirectory,0);
 
 
 	// Create two additional threads

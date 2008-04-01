@@ -188,7 +188,7 @@ LARGE_INTEGER __inline RtlMakeLargeInteger(ULONG Low, ULONG High)
 #define KD_TRACE_LOW_LEVEL_IO	0
 
 // Dump packets
-#define TRACE_PACKETS			0
+#define TRACE_PACKETS			1
 
 // Dump head allocation/freeing atttempts
 #define EX_TRACE_HEAP			0
@@ -204,6 +204,9 @@ LARGE_INTEGER __inline RtlMakeLargeInteger(ULONG Low, ULONG High)
 
 // Trace operations with memory descriptors
 #define MM_TRACE_MMDS			1
+
+// Trace exception unwind
+#define KI_TRACE_EXCEPTION_UNWIND 0
 
 
 extern "C"

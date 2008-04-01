@@ -20,12 +20,62 @@ POBJECT_TYPE IoVpbObjectType;
 
 MUTEX IoDatabaseLock;
 
+
+ULONG IopMountedDrivesMask;
+
+KESYSAPI
+STATUS
+KEAPI
+IoAllocateMountDriveLetter(
+	OUT PCHAR DriveLetter
+	)
+/*++
+	Allocate mount drive letter.
+	Letters are not distingushed in contrast to Windows, where A: or B: always means floppy.
+--*/
+{
+	//
+	// No need to lock/unlock this object, because two volumes cannot be being mounted at the same time
+	//
+
+	for (int i=0; i<26; i++)
+	{
+		if ( ( (1<<i) & IopMountedDrivesMask ) == 0 )
+		{
+			IopMountedDrivesMask |= (1<<i);
+
+			*DriveLetter = 'A' + i;
+			return STATUS_SUCCESS;
+		}
+	}
+
+	return STATUS_INSUFFICIENT_RESOURCES;
+}
+
+KESYSAPI
+VOID
+KEAPI
+IoFreeMountedDriveLetter(
+	IN CHAR DriveLetter
+	)
+/*++
+	Free drive letter of mounted volume during its dismounting.
+--*/
+{
+	DriveLetter = UPCASE (DriveLetter);
+	ASSERT (DriveLetter >= 'A' && DriveLetter <= 'Z');
+
+	IopMountedDrivesMask &= ~ ( 1 << (DriveLetter - 'A') );
+}
+
+
 STATUS
 KEAPI
 IopParseDevice(
 	IN POBJECT_HEADER Object,
 	IN PUNICODE_STRING FullObjectPath,
 	IN PUNICODE_STRING RemainingPath,
+	IN PVOID ParseContext,
 	OUT PUNICODE_STRING ReparsePath
 	)
 /*++
@@ -36,7 +86,16 @@ IopParseDevice(
 	The rest of the path goes to the IRP_CREATE later
 --*/
 {
-	KdPrint(("IopParseDevice\n"));
+	KdPrint(("IopParseDevice: FullPath[%S], RemainingPath[%S]\n", FullObjectPath->Buffer,
+		RemainingPath->Buffer));
+
+	if (ARGUMENT_PRESENT(ParseContext) && ((ULONG)ParseContext & 0xFFFF0000))
+	{
+		PIO_PARSE_DEVICE_PACKET ParsePacket = (PIO_PARSE_DEVICE_PACKET) ParseContext;
+
+		RtlDuplicateUnicodeString (RemainingPath, &ParsePacket->RemainingPath);
+	}
+
 	return STATUS_FINISH_PARSING;
 }
 
@@ -323,6 +382,11 @@ IoInitSystem(
 					0
 					);
 	}
+
+	//
+	// Also, FSD FAT driver should have created symlink \SystemRoot
+	//
+
 	
 	/*
 	//
@@ -528,6 +592,7 @@ IoCreateFile(
 	PFILE File;
 	PDEVICE thisDeviceObject, DeviceObject;
 	STATUS Status;
+	IO_PARSE_DEVICE_PACKET ParsePacket;
 
 	Status = ObCreateObject (
 		(PVOID*) &File,
@@ -547,6 +612,7 @@ IoCreateFile(
 		IoDeviceObjectType,
 		KernelMode,
 		DesiredAccess,
+		&ParsePacket,						// Parse context for IopParseDevice
 		(PVOID*) &thisDeviceObject
 		);
 
@@ -597,28 +663,11 @@ IoCreateFile(
 	Irp->FileObject = File;
 	Irp->CurrentStackLocation->DeviceObject = DeviceObject;
 	
-	//Irp->CurrentStackLocation->Parameters.Create.Path = *FileName;
-
 	//
-	// Get relative file name, save it into FILE->RelativeFileName
+	// Get relative file name (from parse packet), save it into FILE->RelativeFileName
 	//
 
-	UNICODE_STRING CorrespondingDeviceName;
-	Status = ObQueryObjectName (thisDeviceObject, &CorrespondingDeviceName);
-	if (!SUCCESS(Status))
-	{
-		ObpDeleteObjectInternal (File);
-		ObDereferenceObject (DeviceObject);
-		return Status;
-	}
-
-	PWSTR RelativeFileName = FileName->Buffer + wcslen(CorrespondingDeviceName.Buffer);
-	UNICODE_STRING relname;
-
-	RtlInitUnicodeString (&relname, RelativeFileName);
-	RtlDuplicateUnicodeString (&relname, &File->RelativeFileName);
-
-	ExFreeHeap (CorrespondingDeviceName.Buffer);
+	File->RelativeFileName = ParsePacket.RemainingPath;
 
 	//
 	// Fill irpSl
@@ -906,6 +955,10 @@ IoCreateDevice(
 	if (ARGUMENT_PRESENT(DeviceName))
 	{
 		rel = wcsrchr(DeviceName->Buffer+1, L'\\');
+		if (!rel)
+		{
+			rel = DeviceName->Buffer;
+		}
 		RtlInitUnicodeString (&RelativeDeviceName, rel+1);
 	}
 
@@ -922,23 +975,34 @@ IoCreateDevice(
 
 	if (ARGUMENT_PRESENT(DeviceName))
 	{
-		WCHAR *wDirectoryName = (WCHAR*) ExAllocateHeap(TRUE, 
-			(ULONG)rel-(ULONG)DeviceName->Buffer+2);
-		wcssubstr (DeviceName->Buffer, 0, ((ULONG)rel-(ULONG)DeviceName->Buffer)/2, wDirectoryName);
-
 		POBJECT_DIRECTORY Directory;
-		UNICODE_STRING DirectoryName;
-		RtlInitUnicodeString (&DirectoryName, wDirectoryName);
 
-		Status = ObReferenceObjectByName (
-			&DirectoryName,
-			ObDirectoryObjectType,
-			KernelMode,
-			0,
-			(PVOID*) &Directory
-			);
+		if (rel != DeviceName->Buffer)
+		{
+			WCHAR *wDirectoryName = (WCHAR*) ExAllocateHeap(TRUE, 
+				(ULONG)rel-(ULONG)DeviceName->Buffer+2);
+			wcssubstr (DeviceName->Buffer, 0, ((ULONG)rel-(ULONG)DeviceName->Buffer)/2, wDirectoryName);
 
-		ExFreeHeap (wDirectoryName);
+			UNICODE_STRING DirectoryName;
+			RtlInitUnicodeString (&DirectoryName, wDirectoryName);
+
+			Status = ObReferenceObjectByName (
+				&DirectoryName,
+				ObDirectoryObjectType,
+				KernelMode,
+				0,
+				0,
+				(PVOID*) &Directory
+				);
+
+			ExFreeHeap (wDirectoryName);
+		}
+		else
+		{
+			ObReferenceObject (ObRootObjectDirectory);
+			Directory = ObRootObjectDirectory;
+			Status = STATUS_SUCCESS;
+		}
 
 		if (!SUCCESS(Status))
 		{
@@ -1350,6 +1414,7 @@ IopCreateVpb(
 
 KESYSAPI
 STATUS
+KEAPI
 IoMountVolume(
 	PDEVICE RealDevice,
 	PDEVICE FsDevice
@@ -1383,6 +1448,7 @@ IoMountVolume(
 
 KESYSAPI
 STATUS
+KEAPI
 IoRequestMount(
 	PDEVICE RealDevice,
 	PDEVICE FsDevice
@@ -1424,6 +1490,7 @@ IoRequestMount(
 
 KESYSAPI
 STATUS
+KEAPI
 IoDismountVolume(
 	PDEVICE RealDevice
 	)
@@ -1445,6 +1512,7 @@ IoDismountVolume(
 
 KESYSAPI
 STATUS
+KEAPI
 IoRequestDismount(
 	PDEVICE RealDevice,
 	PDEVICE FsDevice

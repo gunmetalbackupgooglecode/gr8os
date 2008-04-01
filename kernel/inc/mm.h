@@ -137,6 +137,16 @@ STATIC_ASSERT (sizeof(MMPTE) == 4);
 // Owner, Write, Valid
 #define MiWriteValidKernelPte(PTE) (*(ULONG*)(PTE)) = 7
 
+#define MiWriteTrimmedPte(PTE) { \
+	(PTE)->u1.e1.Valid = 0; \
+	(PTE)->u1.e1.PteType = PTE_TYPE_TRIMMED; \
+}
+
+#define MiWritePagedoutPte(PTE) { \
+	(PTE)->u1.e1.Valid = 0; \
+	(PTE)->u1.e1.PteType = PTE_TYPE_PAGEDOUT; \
+}
+
 #define MiNextPte(PTE) (PMMPTE)((ULONG_PTR)PTE+4)
 
 VOID
@@ -147,9 +157,20 @@ MiMapPhysicalPages(
 	ULONG PageCount
 	);
 
+KESYSAPI
 PVOID
 KEAPI
 MmMapPhysicalPages(
+	ULONG PhysicalAddress,
+	ULONG PageCount
+	);
+
+KESYSAPI
+PVOID
+KEAPI
+MmMapPhysicalPagesInRange(
+	PVOID VirtualAddressStart,
+	PVOID VirtualAddressEnd,
 	ULONG PhysicalAddress,
 	ULONG PageCount
 	);
@@ -256,7 +277,7 @@ typedef struct MMPAGING_FILE
 	BOOLEAN BootPartition;
 } *PMMPAGING_FILE;
 
-extern PMMPAGING_FILE MmPagingFile[MAX_PAGE_FILES];
+extern MMPAGING_FILE MmPagingFile[MAX_PAGE_FILES];
 
 
 //
@@ -271,8 +292,9 @@ typedef struct MMWORKING_SET_ENTRY
 {
 	PMMPPD PageDescriptor;
 
-	ULONG LockedInWs : 1;
-	ULONG Reserved : 31;
+	ULONG Present : 1;			// = 0 if entry is not used
+	ULONG LockedInWs : 1;		// = 1 if page is locked
+	ULONG Reserved : 30;
 } *PMMWORKING_SET_ENTRY;
 
 struct MUTEX;
@@ -286,10 +308,12 @@ typedef struct MMWORKING_SET
 	PROCESSOR_MODE OwnerMode;
 	PPROCESS Owner;
 
-	MMWORKING_SET_ENTRY WsPages[1];
+	PMMWORKING_SET_ENTRY WsPages;
 } *PMMWORKING_SET;
 
 extern PMMWORKING_SET MiSystemWorkingSet;
+
+#define MM_WORKING_SET_INCREMENT	100
 
 //
 // The following MMPPD structure is the 
@@ -500,4 +524,12 @@ VOID
 KEAPI
 MmUnmapLockedPages(
 	IN PMMD Mmd
+	);
+
+
+KESYSAPI
+STATUS
+KEAPI
+MmLoadSystemImage(
+	PUNICODE_STRING ImagePath
 	);

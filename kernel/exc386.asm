@@ -148,19 +148,32 @@ extrn cursor
 extrn '_sprintf' as sprintf
 extrn tempbuffer
 extrn '_KiDebugPrintRaw@4' as DbgPrintRaw
-extrn '_KeDispatchException@28' as KeDispatchException
+extrn '_KeDispatchException@8' as KeDispatchException
 
 exDE_handler:
+	sti
+	
     KiMakeContextFrame
     
-    push esp
-    push 0
-    push 0
-    push 0
-    push 0
-    push 0
-    push EXCEPTION_DIVISION_BY_ZERO
-    call KeDispatchException
+    mov eax, esp	; PCONTEXT_FRAME
+    
+    push 0							; parameters[3]
+    push 0							; parameters[2]
+    push 0							; parameters[1]
+    push 0							; parameters[0]
+    push 0							; number parameters
+    push [eax + CONTEXT.Eip]		; exception address
+    push 0							; exception arguments
+    push 0							; flags
+    push EXCEPTION_DIVISION_BY_ZERO ; exception code
+    
+    mov  ecx, esp	; PEXCEPTION_ARGUMENTS
+    
+    push eax
+    push ecx
+    call KeDispatchException	; KeDispatchException (ExceptionArguments, ContextFrame)
+    
+    add esp, 36
     
     KiRestoreContextFrame
     iretd

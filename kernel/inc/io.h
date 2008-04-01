@@ -285,6 +285,11 @@ IoCallDriver(
 #define IoGetCurrentIrpStackLocation(Irp) ((Irp)->CurrentStackLocation)
 #define IoGetNextIrpStackLocation(Irp) (++(Irp)->CurrentStackLocation)
 
+typedef struct IO_PARSE_DEVICE_PACKET
+{
+	UNICODE_STRING RemainingPath;
+} *PIO_PARSE_DEVICE_PACKET;
+
 KESYSAPI
 STATUS
 KEAPI
@@ -500,6 +505,7 @@ IopCreateVpb(
 
 KESYSAPI
 STATUS
+KEAPI
 IoMountVolume(
 	PDEVICE RealDevice,
 	PDEVICE FsDevice
@@ -507,12 +513,14 @@ IoMountVolume(
 
 KESYSAPI
 STATUS
+KEAPI
 IoDismountVolume(
 	PDEVICE RealDevice
 	);
 
 KESYSAPI
 STATUS
+KEAPI
 IoRequestDismount(
 	PDEVICE RealDevice,
 	PDEVICE FsDevice
@@ -520,7 +528,25 @@ IoRequestDismount(
 
 KESYSAPI
 STATUS
+KEAPI
 IoRequestMount(
 	PDEVICE RealDevice,
 	PDEVICE FsDevice
+	);
+
+
+extern ULONG IopMountedDrivesMask;
+
+KESYSAPI
+STATUS
+KEAPI
+IoAllocateMountDriveLetter(
+	OUT PCHAR DriveLetter
+	);
+
+KESYSAPI
+VOID
+KEAPI
+IoFreeMountedDriveLetter(
+	IN CHAR DriveLetter
 	);

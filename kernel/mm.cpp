@@ -42,6 +42,7 @@ MiMapPhysicalPages(
 	ExReleaseMutex (&MmPageDatabaseLock);
 }
 
+KESYSAPI
 PVOID
 KEAPI
 MmMapPhysicalPages(
@@ -59,6 +60,65 @@ MmMapPhysicalPages(
 	PMMPTE PointerPte = MiGetPteAddress (StartVirtual);
 
 	for (ULONG i=0; i<MM_CRITICAL_AREA_PAGES; i++)
+	{
+		if ( *(ULONG*)PointerPte == 0 )
+		{
+			BOOLEAN Free = 1;
+
+			for ( ULONG j=i+1; j<i+PageCount; j++ )
+			{
+				Free &= ( *(ULONG*)&PointerPte[j] == 0 );
+			}
+
+			if (Free)
+			{
+				ULONG VirtualAddress = StartVirtual;
+
+				for( ULONG j=i; j<i+PageCount; j++ )
+				{
+					MiWriteValidKernelPte (PointerPte);
+					PointerPte->u1.e1.PageFrameNumber = (PhysicalAddress >> PAGE_SHIFT) + (j-i);
+
+					MmInvalidateTlb ((PVOID)VirtualAddress);
+
+					PointerPte = MiNextPte (PointerPte);
+					VirtualAddress += PAGE_SIZE;
+				}
+
+				ExReleaseMutex (&MmPageDatabaseLock);
+				return (PVOID)StartVirtual;
+			}
+
+			i += PageCount - 1;
+		}
+	}
+
+	ExReleaseMutex (&MmPageDatabaseLock);
+	return NULL;
+}
+
+
+KESYSAPI
+PVOID
+KEAPI
+MmMapPhysicalPagesInRange(
+	PVOID VirtualAddressStart,
+	PVOID VirtualAddressEnd,
+	ULONG PhysicalAddress,
+	ULONG PageCount
+	)
+/*++
+	Try to map physical pages within the specified virtual address range
+--*/
+{
+	ExAcquireMutex (&MmPageDatabaseLock);
+
+	ULONG StartVirtual = (ULONG) ALIGN_DOWN((ULONG)VirtualAddressStart,PAGE_SIZE);
+	ULONG EndVirtual = (ULONG)ALIGN_UP((ULONG)VirtualAddressEnd,PAGE_SIZE);
+
+	PMMPTE PointerPte = MiGetPteAddress (StartVirtual);
+
+	for (ULONG i=0; i<(EndVirtual-StartVirtual); i++)
 	{
 		if ( *(ULONG*)PointerPte == 0 )
 		{
@@ -210,7 +270,7 @@ MmAccessFault(
 	KeBugCheck (KERNEL_MODE_EXCEPTION_NOT_HANDLED,
 				STATUS_ACCESS_VIOLATION,
 				(ULONG)VirtualAddress,
-				0,
+				(ULONG)FaultingAddress,
 				0
 				);
 	
@@ -353,7 +413,11 @@ MmInitSystem(
 	// Create system working set
 	//
 
-	MiSystemWorkingSet = (PMMWORKING_SET) ExAllocateHeap (FALSE, sizeof(MMWORKING_SET) + (InitialPageCount - 1)*sizeof(MMWORKING_SET_ENTRY));
+	MiSystemWorkingSet = (PMMWORKING_SET) ExAllocateHeap (FALSE, sizeof(MMWORKING_SET));
+	bzero (MiSystemWorkingSet, sizeof(MMWORKING_SET));
+
+	MiSystemWorkingSet->WsPages = (PMMWORKING_SET_ENTRY) ExAllocateHeap (FALSE, InitialPageCount*sizeof(MMWORKING_SET_ENTRY));
+	bzero (MiSystemWorkingSet->WsPages, sizeof(MMWORKING_SET_ENTRY)*InitialPageCount);
 
 	ExInitializeMutex (&MiSystemWorkingSet->Lock);
 	MiSystemWorkingSet->TotalPageCount = InitialPageCount;
@@ -362,6 +426,8 @@ MmInitSystem(
 	MiSystemWorkingSet->Owner = &InitialSystemProcess;
 
 	InitialSystemProcess.WorkingSet = MiSystemWorkingSet;
+
+	KiDebugPrint("MmInitSystem: initial process' working set %08x\n", MiSystemWorkingSet);
 	
 	ULONG i;
 
@@ -371,6 +437,7 @@ MmInitSystem(
 		Ppd[i].BelongsToSystemWorkingSet = TRUE;
 		Ppd[i].ProcessorMode = KernelMode;
 
+		MiSystemWorkingSet->WsPages[i].Present = TRUE;
 		MiSystemWorkingSet->WsPages[i].LockedInWs = TRUE;
 		MiSystemWorkingSet->WsPages[i].PageDescriptor = &Ppd[i];
 
@@ -944,6 +1011,69 @@ MmUnlockPages(
 }
 
 
+ULONG
+KEAPI
+MiAddPageToWorkingSet(
+	PMMPPD Ppd
+	)
+/*++
+	Add page to current process' working set.
+	Return value: working set index of the new page
+	Environment: working set mutex held
+--*/
+{
+	PMMWORKING_SET WorkingSet = MmGetCurrentWorkingSet();
+
+	do
+	{
+		for (ULONG i=0; i<WorkingSet->TotalPageCount; i++)
+		{
+			if (WorkingSet->WsPages[i].Present == 0)
+			{
+				WorkingSet->WsPages[i].Present = TRUE;
+				WorkingSet->WsPages[i].PageDescriptor = Ppd;
+				WorkingSet->WsPages[i].LockedInWs = TRUE;
+				return i;
+			}
+		}
+
+		WorkingSet->TotalPageCount += MM_WORKING_SET_INCREMENT;
+		WorkingSet->WsPages= (PMMWORKING_SET_ENTRY) ExReallocHeap (
+			WorkingSet->WsPages, 
+			sizeof(MMWORKING_SET_ENTRY)*(WorkingSet->TotalPageCount)
+			);
+
+		if (WorkingSet == NULL)
+		{
+			return -1;
+		}
+
+		bzero (&WorkingSet->WsPages[WorkingSet->TotalPageCount-MM_WORKING_SET_INCREMENT], sizeof(MMWORKING_SET_ENTRY)*MM_WORKING_SET_INCREMENT);
+
+		// Continue the loop, so for() loop will be executed again. So, because we've allocated additional space for WS,
+		//  there will be Present==0 entries.
+	}
+	while (TRUE);
+}
+
+VOID
+KEAPI
+MiRemovePageFromWorkingSet(
+	PMMPPD Ppd
+	)
+/*++
+	Add page to current process' working set.
+	Return value: working set index of the new page
+	Environment: working set mutex held
+--*/
+{
+	PMMWORKING_SET WorkingSet = MmGetCurrentWorkingSet();
+
+	ASSERT (Ppd->PageLocation == ActiveAndValid);
+
+	WorkingSet->WsPages[Ppd->u1.WsIndex].Present = FALSE;
+}
+
 KESYSAPI
 PVOID
 KEAPI
@@ -994,7 +1124,33 @@ MmMapLockedPages(
 #if MM_TRACE_MMDS
 					KdPrint(("MM: Mapping PFN %08x to VA %08x\n", Mmd->PfnList[j-i], VirtualAddress));
 #endif
-					MmPfnPpd(Mmd->PfnList[j-i])->ShareCount ++;
+
+					MI_LOCK_PPD();
+
+					PMMPPD Ppd = MmPfnPpd(Mmd->PfnList[j-i]);
+					Ppd->ShareCount ++;
+
+					if (Ppd->ShareCount == 1)
+					{
+						//
+						// If this is the first mapping, fill out some fiedls
+						//
+
+						Ppd->u2.PointerPte = PointerPte;
+						Ppd->u1.WsIndex = MiAddPageToWorkingSet (Ppd);
+
+						if (Ppd->u1.WsIndex == -1)
+						{
+							KeBugCheck (MEMORY_MANAGEMENT,
+										__LINE__,
+										(ULONG)Ppd,
+										0,
+										0
+										);
+						}
+					}
+
+					MI_UNLOCK_PPD();
 
 					MmInvalidateTlb ((PVOID)VirtualAddress);
 
@@ -1037,6 +1193,14 @@ MmUnmapLockedPages(
 		PMMPPD Ppd = MmPfnPpd (Mmd->PfnList[i]);
 
 		Ppd->ShareCount --;
+		if (Ppd->ShareCount == 0)
+		{
+			//
+			// Page is not used anymore. Remove from working set
+			//
+
+			MiRemovePageFromWorkingSet (Ppd);
+		}
 	}
 
 	MI_UNLOCK_PPD();
@@ -1044,6 +1208,92 @@ MmUnmapLockedPages(
 	Mmd->MappedVirtual = NULL;
 	Mmd->Flags &= ~MDL_MAPPED;
 }
+
+#if 0
+VOID
+KEAPI
+MiSwapPageFromPhysicalMemory(
+	PMMPPD Ppd,
+	PMMPTE PointerPte
+	)
+/*++
+	Swap nonmodified page from the physical memory to pagefile
+--*/
+{
+	//
+	//BUGBUG: Handle file mapping correctly
+	//
+
+	MiWritePagedoutPte (PointerPte);
+
+	for (ULONG pf=0; pf<MAX_PAGE_FILES; pf++)
+	{
+		if (MmPagingFiles[pf].Size)
+		{
+		}
+	}
+
+
+
+	//PointerPte->u1.e1.PageFrameNumber = 
+}
+
+ULONG
+KEAPI
+MiTrimWorkingSet (
+	PMMWORKING_SET WorkingSet,
+	BOOLEAN ForceGetFreePages
+	)
+/*++
+	This function trims the working set, moving pages to standby or modified lists.
+	Also, some pages can be swapped out if ForceGetFreePages==1
+	Environment: working set lock held.
+	Return Value:
+		if (ForceGetFreePages==1) - number of retrieved free pages
+		if (ForceGetFreePages==0) - number of trimmed pages
+--*/
+{
+	ULONG TrimmedPages = 0;
+	ULONG FreedPages = 0;
+
+	for (ULONG i=0; i<WorkingSet->TotalPageCount; i++)
+	{
+		if (WorkingSet->WsPages[i].LockedInWs == 0 &&
+			WorkingSet->WsPages[i].Present == 1)
+		{
+			PMMPPD Ppd = WorkingSet->WsPages[i].PageDescriptor;
+			PMMPTE PointerPte = Ppd->u2.PointerPte;
+
+			if (PointerPte->u1.e1.Dirty || Ppd->Modified)
+			{
+				Ppd->Modified = 1;
+				MiChangePageLocation (Ppd, ModifiedPageList);
+
+				MiWriteTrimmedPte (PointerPte);
+			}
+			else
+			{
+				MiChangePageLocation (Ppd, StandbyPageList);
+
+				if (ForceGetFreePages)
+				{
+					MiSwapPageFromPhysicalMemory (Ppd, PointerPte);
+				}
+				else
+				{
+					MiWriteTrimmedPte (PointerPte);
+				}
+			}
+
+			TrimmedPages ++;
+		}
+	}
+
+	return ForceGetFreePages ? FreedPages : TrimmedPages;
+}
+
+#endif
+
 
 VOID
 KEAPI
@@ -1054,11 +1304,15 @@ MiZeroPageThread(
 
 	for(;;)
 	{
-		;
-		/*
-		PsDelayThreadExecution (10);
+		PsDelayThreadExecution (100);
 
-		KdPrint(("MiZeroPageThread waked up\n"));
+#if DBG
+		BOOLEAN SomethingWasZeroed = FALSE;
+		if (MmFreePageListHead)
+		{
+			KdPrint(("MiZeroPageThread waked up\n"));
+		}
+#endif
 
 		MI_LOCK_PPD();
 
@@ -1070,17 +1324,35 @@ MiZeroPageThread(
 			KdPrint(("Zeroing page %08x [PPD=%08, NEXT=%08x]\n", MmGetPpdPfn(Ppd), Ppd, Next));
 
 			MiMapPageToHyperSpace (MmGetPpdPfn(Ppd));
-
 			memset (VirtualAddress, 0, PAGE_SIZE);
 
 			MiChangePageLocation (Ppd, ZeroedPageList);
-		
 			Ppd = Next;
+
+			SomethingWasZeroed = 1;
 		}
 
 		MI_UNLOCK_PPD();
 
-		KdPrint(("MiZeroPageThread sleeping..\n"));
-		*/
+#if DBG
+		if (SomethingWasZeroed)
+		{
+			KdPrint(("MiZeroPageThread sleeping..\n"));
+		}
+#endif
 	}
+}
+
+
+KESYSAPI
+STATUS
+KEAPI
+MmLoadSystemImage(
+	PUNICODE_STRING ImagePath
+	)
+/*++
+	Attempt to load system image into the memory.
+--*/
+{
+	return STATUS_NOT_IMPLEMENTED;
 }
