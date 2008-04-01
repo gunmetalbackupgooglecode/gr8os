@@ -70,6 +70,7 @@ STATUS
 	IN POBJECT_HEADER Object,
 	IN PUNICODE_STRING FullObjectPath,
 	IN PUNICODE_STRING RemainingPath,
+	IN PVOID ParseContext OPTIONAL,
 	OUT PUNICODE_STRING ReparsePath
 	);
 /*++
@@ -367,6 +368,7 @@ ObReferenceObjectByName(
 	IN POBJECT_TYPE ObjectType	OPTIONAL,
 	IN PROCESSOR_MODE RequestorMode,
 	IN ULONG DesiredAccess UNIMPLEMENTED,
+	IN PVOID ParseContext OPTIONAL,
 	OUT PVOID* Object
 	);
 
@@ -432,6 +434,7 @@ ObOpenObjectByName(
 	IN POBJECT_TYPE ObjectType	OPTIONAL,
 	IN PROCESSOR_MODE RequestorMode,
 	IN ULONG DesiredAccess UNIMPLEMENTED,
+	IN PVOID ParseContext OPTIONAL,
 	OUT PHANDLE ObjectHandle
 	);
 
@@ -463,3 +466,35 @@ ObReferenceObjectByHandle(
 	);
 
 
+extern POBJECT_TYPE ObSymbolicLinkObjectType;
+
+STATUS
+KEAPI
+ObpParseSymbolicLink(
+	IN POBJECT_HEADER Object,
+	IN PUNICODE_STRING FullObjectPath,
+	IN PUNICODE_STRING RemainingPath,
+	OUT PUNICODE_STRING ReparsePath
+	);
+
+VOID
+KEAPI
+ObpDeleteSymbolicLink(
+	IN POBJECT_HEADER Object
+	);
+
+KESYSAPI
+STATUS
+KEAPI
+ObCreateSymbolicLink(
+	PUNICODE_STRING SymlinkName,
+	PUNICODE_STRING TargetPath
+	);
+
+#if DBG
+VOID 
+ObpDumpDirectory(
+	POBJECT_DIRECTORY,
+	int
+	);
+#endif

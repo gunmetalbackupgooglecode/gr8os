@@ -80,7 +80,7 @@ typedef struct THREAD
 	ULONG ExitCode;
 
 	// Exceptions handler list
-	EXCEPTION_RECORD *ExceptionList;
+	EXCEPTION_FRAME *ExceptionList;
 
 	// Current processing exception
 	EXCEPTION_ARGUMENTS *CurrentException;

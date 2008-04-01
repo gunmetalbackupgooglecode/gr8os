@@ -346,6 +346,13 @@ KeClearEvent(
 	Event->Header.SignaledState = FALSE;
 }
 
+static
+char *ThreadStates[] = {
+	"Ready",
+	"Running",
+	"Wait",
+	"Terminated"
+};
 
 BOOLEAN
 KEAPI
@@ -374,6 +381,31 @@ KiSetEvent(
 			// Remove terminated threads from wait list
 			//
 
+			//ASSERT (Thread->State == THREAD_STATE_WAIT);
+			if (0)//!(Thread->State == THREAD_STATE_WAIT))
+			{
+				INT3
+				KiDebugPrint (
+					"PS: Thread %08x:\n"
+					"Process = %08x\n"
+					"UniqueId = %d\n"
+					"WaitType = %d\n"
+					"NumberOfObjectsWaiting = %d\n"
+					"WaitBlockUsed = %08x\n"
+					"Thread->State = %d (%s)\n"
+					,
+					Thread,
+					Thread->OwningProcess,
+					Thread->UniqueId,
+					Thread->WaitType,
+					Thread->NumberOfObjectsWaiting,
+					Thread->WaitBlockUsed,
+					Thread->State, Thread->State < 4 ?  ThreadStates[Thread->State] : 0
+					);
+				//INT3
+			}
+
+			/*
 			if( Thread->State == THREAD_STATE_TERMINATED )
 			{
 				PWAIT_BLOCK WaitBlockBeingRemoved = WaitBlock;
@@ -393,6 +425,7 @@ KiSetEvent(
 
 				continue;
 			}
+			*/
 
 
 			//
@@ -560,6 +593,11 @@ KeWaitForSingleObject(
 		add  esp, 16  ; segment regs
 		add  esp, 12  ; cs,eip,efl
 	}
+
+	RemoveEntryList (&WaitBlock->WaitListEntry);
+	Thread->WaitBlockUsed = NULL;
+	Thread->WaitType = 0;
+	Thread->NumberOfObjectsWaiting = 0;
 
 	PspUnlockSchedulerDatabase ();
 	KeReleaseIrqState(OldIrqState);

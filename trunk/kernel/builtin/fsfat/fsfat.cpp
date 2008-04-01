@@ -339,6 +339,46 @@ FsFatFsControl(
 					break;
 				}
 
+				MountedDeviceObject->Vcb.DriveLetter = 0;
+
+				Status = IoAllocateMountDriveLetter (&MountedDeviceObject->Vcb.DriveLetter);
+
+				if (SUCCESS(Status))
+				{
+					UNICODE_STRING LinkName;
+					UNICODE_STRING DeviceName;
+
+					RtlInitUnicodeString (&LinkName, L"\\Global\\ :");
+					LinkName.Buffer[8] = MountedDeviceObject->Vcb.DriveLetter;
+
+					Status = ObQueryObjectName (RealDevice, &DeviceName);
+
+					if (SUCCESS(Status))
+					{
+						Status = ObCreateSymbolicLink (&LinkName, &DeviceName);
+
+						if (!SUCCESS(Status))
+						{
+							KdPrint(("FSFAT: ObCreateSymbolicLink failed for %S->%S with status %08x\n", LinkName.Buffer, DeviceName.Buffer, Status));
+						}
+						else
+						{
+							KdPrint(("FSFAT: Symbolic link created: %S -> %S\n", LinkName.Buffer, DeviceName.Buffer));
+						}
+
+						RtlFreeUnicodeString( &DeviceName );
+					}
+					else
+					{
+						KdPrint(("FSFAT: ObQueryObjectName failed for %08x with status %08x\n", DeviceObject, Status));
+					}
+				}
+				else
+				{
+					KdPrint(("FSFAT: IoAllocateMountDriveLetter failed with status %08x\n", Status));
+				}
+
+
 				//
 				// Now MountedDeviceObject - new fs device, that will be attached to PDO
 				//
@@ -408,6 +448,22 @@ FsFatFsControl(
 				IoDetachDevice (RealDevice);
 
 				//
+				// Delete mounted drive letter
+				//
+
+				if( MountedDeviceObject->Vcb.DriveLetter )
+				{
+					UNICODE_STRING LinkName;
+
+					RtlInitUnicodeString (&LinkName, L"\\Global\\ :");
+					LinkName.Buffer[8] = MountedDeviceObject->Vcb.DriveLetter;
+
+					IoFreeMountedDriveLetter (MountedDeviceObject->Vcb.DriveLetter);
+					ObDeleteObject (&LinkName);
+				}
+
+
+				//
 				// Delete this unnamed object
 				//
 
@@ -418,6 +474,7 @@ FsFatFsControl(
 				//
 
 				Status = IoDismountVolume (RealDevice);
+
 			}
 
 			break;
@@ -950,6 +1007,7 @@ FsFatDriverEntry (
 		IoDeviceObjectType,
 		KernelMode,
 		0,
+		0,
 		(PVOID*) &Fdd0
 		);
 
@@ -966,6 +1024,23 @@ FsFatDriverEntry (
 	if (!SUCCESS(Status))
 	{
 		KdPrint (("FSFAT: Failed to mount fdd0 : Status=%08x\n", Status));
+		IoDeleteDevice (&FsDeviceName);
+		return Status;
+	}
+
+	//
+	// Create \SystemRoot symlink
+	//
+
+	UNICODE_STRING SymlinkName;
+	
+	RtlInitUnicodeString (&SymlinkName, L"\\SystemRoot");
+
+	Status = ObCreateSymbolicLink (&SymlinkName, &DeviceName);
+	if (!SUCCESS(Status))
+	{
+		KdPrint (("FSFAT: Failed to create symlink \\SystemRoot : Status=%08x\n", Status));
+		IoRequestDismount ( Fdd0, FsDeviceObject );
 		IoDeleteDevice (&FsDeviceName);
 		return Status;
 	}

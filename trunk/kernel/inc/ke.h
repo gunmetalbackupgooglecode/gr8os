@@ -15,9 +15,19 @@ struct THREAD;
 typedef struct EXCEPTION_ARGUMENTS
 {
 	ULONG  ExceptionCode;
+	ULONG  Flags;			// see EH_*
+	EXCEPTION_ARGUMENTS* ExceptionArguments;
+	ULONG  ExceptionAddress;
 	ULONG  NumberParameters;
 	ULONG  Parameters[EXCEPTION_MAXIMUM_PARAMETERS];
 } *PEXCEPTION_ARGUMENTS;
+
+#define EH_NONCONTINUABLE	1
+#define EH_UNWINDING		2
+#define EH_EXIT_UNWIND		4
+#define EH_STACK_INVALID	8
+#define EH_NESTED_CALL		16
+#define EH_CONTINUING		32
 
 enum EXCEPTION_RESOLUTION
 {
@@ -26,41 +36,146 @@ enum EXCEPTION_RESOLUTION
 	ExceptionContinueSearch = 2
 };
 
-#define EXCEPTION_CONTINUE_SEARCH 2
-#define EXCEPTION_CONTINUE_EXECUTION 0
+#define EXCEPTION_CONTINUE_EXECUTION	0
+#define EXCEPTION_EXECUTE_HANDLER		1
+#define EXCEPTION_CONTINUE_SEARCH		2
+//#define EXCEPTION_NESTED_EXCEPTION		3
+#define EXCEPTION_COLLIDED_UNWIND		4
 
 typedef struct CONTEXT_FRAME *PCONTEXT_FRAME;
+typedef struct EXCEPTION_FRAME *PEXCEPTION_FRAME;
 
-typedef UCHAR (KEAPI *EXCEPTION_HANDLER)(PEXCEPTION_ARGUMENTS, PCONTEXT_FRAME);
-
-typedef struct EXCEPTION_RECORD
+typedef struct EXCEPTION_POINTERS
 {
-	EXCEPTION_RECORD *Next;
+	PEXCEPTION_ARGUMENTS ExceptionArguments;
+	PCONTEXT_FRAME ContextFrame;
+} PEXCEPTION_POINTERS;
+
+typedef UCHAR (_cdecl *EXCEPTION_HANDLER)(
+	IN PEXCEPTION_ARGUMENTS ExceptionArguments,
+	IN PEXCEPTION_FRAME EstablisherFrame,
+	IN PCONTEXT_FRAME CallerContext,
+	IN PVOID Reserved
+	);
+
+typedef UCHAR (KEAPI *VCPP_FILTER)(
+	);
+
+typedef UCHAR (KEAPI *VCPP_HANDLER)(
+	);
+
+typedef struct SCOPE_TABLE
+{
+	ULONG PreviousTryLevel;
+	VCPP_FILTER Filter;
+	VCPP_HANDLER Handler;
+} *PSCOPE_TABLE;
+
+typedef struct EXCEPTION_FRAME
+{
+	EXCEPTION_FRAME *Next;
 	EXCEPTION_HANDLER Handler;
-} *PEXCEPTION_RECORD;
+	PSCOPE_TABLE ScopeTable;
+	int trylevel;
+	ULONG _ebp;
+	PEXCEPTION_POINTERS xPointers;
+} *PEXCEPTION_FRAME;
+
+#define TRYLEVEL_NONE		((ULONG)-1)
+
+UCHAR
+_cdecl
+_except_handler3(
+	IN PEXCEPTION_ARGUMENTS ExceptionArguments,
+	IN PEXCEPTION_FRAME EstablisherFrame,
+	IN PCONTEXT_FRAME CallerContext,
+	IN PVOID Reserved
+	);
+
+#define GetExceptionCode            _exception_code
+#define exception_code              _exception_code
+#define GetExceptionInformation     (EXCEPTION_POINTERS *)_exception_info
+#define exception_info              (EXCEPTION_POINTERS *)_exception_info
+
+unsigned long __cdecl _exception_code(void);
+void *        __cdecl _exception_info(void);
 
 #define EXCEPTION_ACCESS_VIOLATION	0xC0000005
 #define EXCEPTION_BREAKPOINT		0x80000003
 #define EXCEPTION_SINGLE_STEP		0x80000004
 #define EXCEPTION_DIVISION_BY_ZERO	0xC0000094
 #define EXCEPTION_INVALID_RESULUTION 0xC00000FF
+#define STATUS_INVALID_DISPOSITION 0xC0000026
+#define STATUS_UNWIND 0xC0000027
+#define STATUS_INVALID_UNWIND_TARGET 0xC0000029
+
+KESYSAPI
+VOID
+KEAPI
+KeContinue(
+	PCONTEXT_FRAME ContextFrame
+	);
 
 KESYSAPI
 VOID
 KEAPI
 KeDispatchException(
-	ULONG ExceptionCode,
-	ULONG NumberParameters,
-	ULONG Parameter1,
-	ULONG Parameter2,
-	ULONG Parameter3,
-	ULONG Parameter4,
+	PEXCEPTION_ARGUMENTS Args,
 	CONTEXT_FRAME *ContextFrame
 	);
 
+KESYSAPI
+VOID
+KEAPI
+KeCaptureContext(
+	PCONTEXT_FRAME ContextFrame
+	);
+
+KESYSAPI
+VOID
+KEAPI
+KeRaiseStatus(
+	STATUS Status
+	);
+
+KESYSAPI
+VOID
+KEAPI
+KeRaiseException(
+	PEXCEPTION_ARGUMENTS ExceptionArguments
+	);
+
+VOID
+_cdecl
+_local_unwind2(
+	IN PEXCEPTION_FRAME RegistrationFrame,
+	IN int TryLevelPassed
+	);
+
+VOID
+KEAPI
+RtlUnwind(
+	PEXCEPTION_FRAME RegistrationFrame,
+	PEXCEPTION_ARGUMENTS Args
+	);
+
+VOID
+_cdecl
+_global_unwind2(
+	IN PEXCEPTION_FRAME RegistrationFrame
+	);
+
+#define KI_CHECK_IF() { \
+	ULONG efl;			\
+	{ __asm pushfd	}	\
+	{ __asm pop  [efl] }\
+	ASSERT (efl & 0x200); \
+	}
+
+
 typedef struct PCB
 {
-	PEXCEPTION_RECORD ExceptionList;
+	PEXCEPTION_FRAME ExceptionList;
 	PEXCEPTION_ARGUMENTS CurrentException;
 	THREAD* CurrentThread;
 	USHORT  QuantumLeft;

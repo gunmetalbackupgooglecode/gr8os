@@ -710,3 +710,85 @@ MmInvalidateTlb:
 	invlpg [eax]
 	retn 4
 
+
+public KeCaptureContext as '_KeCaptureContext@4'
+
+; @implemented
+;
+; KeCaptureContext
+;
+;  Captures current context for exception handling
+;   esp+4  pointer to the context frame to be filled
+;
+KeCaptureContext:
+	push eax
+	mov  eax, [esp+8]
+	
+	mov  [eax + CONTEXT.Ecx], ecx
+	pop  ecx
+	mov  [eax + CONTEXT.Eax], ecx
+	mov  [eax + CONTEXT.Edx], edx
+	mov  [eax + CONTEXT.Ebx], ebx
+	
+	lea  ecx, [esp+4]
+	mov  [eax + CONTEXT.Esp], ecx
+	
+	mov  [eax + CONTEXT.Ebp], ebp
+	mov  [eax + CONTEXT.Esi], esi
+	mov  [eax + CONTEXT.Edi], edi
+	
+	push ds
+	pop  [eax + CONTEXT.Ds]
+	
+	push es
+	pop  [eax + CONTEXT.Es]
+	
+	push gs
+	pop  [eax + CONTEXT.Gs]
+	
+	push fs
+	pop  [eax + CONTEXT.Fs]
+	
+	mov  ecx, [esp]
+	mov  [eax + CONTEXT.Eip], ecx
+	
+	push cs
+	pop  [eax + CONTEXT.Cs]
+	
+	pushfd
+	pop  [eax + CONTEXT.Eflags]
+	
+	retn 4
+	
+
+;public KeContinue as '_KeContinue@4'
+;
+;KESYSAPI
+;VOID
+;KEAPI
+;KeContinue(
+;	PCONTEXT_FRAME ContextFrame
+;	);
+;
+KeContinue:
+	KiMakeContextFrame
+	
+	mov  esi, [esp+4]
+	mov  edi, esp
+	cld
+	mov  ecx, sizeof.CONTEXT
+	rep  movsb
+
+	KiRestoreContextFrame
+	iretd	
+	
+
+;public _local_unwind2 as '__local_unwind2'
+;
+;_local_unwind2:
+;	; esp+4   RegistrationFrame
+;	; esp+8   trylevel
+;	push  ebp
+;	push  [esp+4]
+;	push  dword -2
+;	push 

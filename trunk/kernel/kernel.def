@@ -61,6 +61,13 @@ EXPORTS
 	KeAssertionFailed
 	KeBugCheck
 	KeDispatchException
+	_except_handler3
+	;KeContinue
+	_global_unwind2
+	_local_unwind2
+	RtlUnwind
+	KeRaiseStatus
+	KeRaiseException
 	KeGdtEntry
 	KeIdtEntry
 	KeInitializeEvent
@@ -98,6 +105,12 @@ EXPORTS
 	IoCompleteRequest
 	IoRegisterFileSystem
 	IoUnregisterFileSystem
+	IoAllocateMountDriveLetter
+	IoFreeMountedDriveLetter
+	IoMountVolume
+	IoDismountVolume
+	IoRequestMount
+	IoRequestDismount
 	
 	;
 	; Cc
@@ -117,6 +130,7 @@ EXPORTS
 	ObCreateObject
 	ObCreateObjectType
 	ObDeleteObject
+	ObCreateSymbolicLink
 	ObReferenceObject
 	ObDereferenceObject
 	ObDereferenceObjectEx
@@ -136,6 +150,7 @@ EXPORTS
 	
 	MmIsAddressValid
 	MmMapPhysicalPages
+	MmMapPhysicalPagesInRange
 	MmUnmapPhysicalPages = MiUnmapPhysicalPages
 	MmIsAddressValidEx
 	MmAllocateMmd
@@ -147,6 +162,7 @@ EXPORTS
 	MmMapLockedPages
 	MmUnlockPages
 	MmUnmapLockedPages
+	MmLoadSystemImage
 	
 	;
 	; Processes

@@ -183,6 +183,8 @@ typedef struct FSFATVCB
 
 	UCHAR FatType;
 
+	CHAR DriveLetter;
+
 } *PFSFATVCB;
 
 //

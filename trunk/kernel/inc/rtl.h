@@ -1,5 +1,7 @@
 #pragma once
 
+#define UPCASE(ch)  (( (ch)>='a' && (ch)<='z' ) ? (ch)-'a'+'A' : (ch) )
+
 KESYSAPI
 char*
 KEAPI
