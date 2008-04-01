@@ -118,7 +118,7 @@ MmMapPhysicalPagesInRange(
 
 	PMMPTE PointerPte = MiGetPteAddress (StartVirtual);
 
-	for (ULONG i=0; i<(EndVirtual-StartVirtual); i++)
+	for (ULONG i=0; i<((EndVirtual-StartVirtual)>>PAGE_SHIFT); i++)
 	{
 		if ( *(ULONG*)PointerPte == 0 )
 		{
@@ -1089,19 +1089,40 @@ MmMapLockedPages(
 	// Don't support other modes now..
 	//
 
-	ASSERT (TargetMode == KernelMode);
+	ULONG StartVirtual = MM_CRITICAL_AREA;
+	ULONG EndVirtual = MM_CRITICAL_AREA + (MM_CRITICAL_AREA_PAGES<<PAGE_SHIFT);
+
+	
+	if (TargetMode == KernelMode)
+	{
+		StartVirtual = MM_CRITICAL_AREA;
+		EndVirtual = MM_CRITICAL_AREA + (MM_CRITICAL_AREA_PAGES<<PAGE_SHIFT);
+	}
+	else if (TargetMode == DriverMode)
+	{
+		StartVirtual = MM_DRIVER_AREA;
+		EndVirtual = MM_DRIVER_AREA_END;
+	}
+	else if (TargetMode == UserMode)
+	{
+		StartVirtual = MM_USERMODE_AREA;
+		EndVirtual = MM_USERMODE_AREA_END;
+	}
+	else
+	{
+		KeRaiseStatus (STATUS_INVALID_PARAMETER);
+	}
 	
 
 	ExAcquireMutex (&MmPageDatabaseLock);
 
-	ULONG StartVirtual = MM_CRITICAL_AREA;
 	PMMPTE PointerPte = MiGetPteAddress (StartVirtual);
 
 #if MM_TRACE_MMDS
 	KdPrint(("MM: Maping locked pages.\n"));
 #endif
 
-	for (ULONG i=0; i<MM_CRITICAL_AREA_PAGES; i++)
+	for (ULONG i=0; i<((EndVirtual-StartVirtual)>>PAGE_SHIFT); i++)
 	{
 		if ( *(ULONG*)PointerPte == 0 )
 		{
@@ -1173,6 +1194,8 @@ MmMapLockedPages(
 	ExReleaseMutex (&MmPageDatabaseLock);
 	return NULL;
 }
+
+
 
 KESYSAPI
 VOID
@@ -1321,7 +1344,7 @@ MiZeroPageThread(
 		{
 			PMMPPD Next = Ppd->u1.NextFlink;
 
-			KdPrint(("Zeroing page %08x [PPD=%08, NEXT=%08x]\n", MmGetPpdPfn(Ppd), Ppd, Next));
+			KdPrint(("Zeroing page %08x [PPD=%08x, NEXT=%08x]\n", MmGetPpdPfn(Ppd), Ppd, Next));
 
 			MiMapPageToHyperSpace (MmGetPpdPfn(Ppd));
 			memset (VirtualAddress, 0, PAGE_SIZE);
@@ -1348,11 +1371,69 @@ KESYSAPI
 STATUS
 KEAPI
 MmLoadSystemImage(
-	PUNICODE_STRING ImagePath
+	IN PUNICODE_STRING ImagePath,
+	IN PUNICODE_STRING DriverName,
+	OUT PVOID *ImageBase
 	)
 /*++
 	Attempt to load system image into the memory.
 --*/
 {
 	return STATUS_NOT_IMPLEMENTED;
+
+	PFILE FileObject = 0;
+	STATUS Status = STATUS_UNSUCCESSFUL;
+	PIMAGE_DOS_HEADER DosHeader = 0;
+	PIMAGE_NT_HEADERS NtHeaders = 0;
+	PMMD Mmd = 0;
+	IO_STATUS_BLOCK IoStatus = {0};
+	PVOID Hdr = 0;
+
+	__try
+	{
+		//
+		// Open the file
+		//
+
+		Status = IoCreateFile(
+			&FileObject,
+			FILE_READ_DATA,
+			ImagePath,
+			&IoStatus,
+			FILE_OPEN_EXISTING, 
+			0
+			);
+		if (!SUCCESS(Status))
+			return Status;
+
+		//
+		// Allocate heap space for the header page
+		//
+
+		Hdr = ExAllocateHeap (TRUE, 512);
+		if (!Hdr)
+			return STATUS_INSUFFICIENT_RESOURCES;
+
+		Status = IoReadFile (
+			FileObject,
+			Hdr,
+			512,
+			NULL,
+			&IoStatus
+			);
+		if (!SUCCESS(Status))
+			return Status;
+
+
+	}
+	__finally
+	{
+		if (Hdr)
+			ExFreeHeap (Hdr);
+
+		if (FileObject)
+			IoCloseFile (FileObject);
+	}
+
+	return Status;
 }

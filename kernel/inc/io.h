@@ -110,7 +110,9 @@ typedef struct IRP_STACK_LOCATION
 
 		struct
 		{
-			ULONG DesiredAccess  UNIMPLEMENTED;
+			ULONG DesiredAccess;
+			ULONG Disposition;
+			ULONG Options;
 		} Create;
 
 		//
@@ -256,6 +258,14 @@ struct FILE
 #define FILE_READ_DATA			0x00000008
 #define FILE_WRITE_DATA			0x00000010
 #define FILE_DELETE				0x00000020
+
+// dispositions
+
+#define FILE_OPEN_EXISTING		0x00000001
+#define FILE_OPEN_ALWAYS		0x00000002
+#define FILE_CREATE_NEW			0x00000003
+#define FILE_CREATE_ALWAYS		0x00000004
+#define FILE_TRUNCATE_EXISTING	0x00000005
 
 KESYSAPI
 PIRP

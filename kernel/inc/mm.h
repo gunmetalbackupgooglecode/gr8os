@@ -14,6 +14,10 @@
 
 	Kernel virtual memory map
 
+		00000000 - 0000FFFF    Reserved for null pointers.
+		00010000 - 7FFFF000    UserMode address space
+		7FFFF000 - 7FFFFFFF    Reserved
+
 		80000000 - 800FFFFF    Loader. This will be unmapped during boot up
 		80100000 - 801FFFFF    Kernel. Resident part of kernel address space
 		80200000 - 80FFFFFF    Kernel heap.
@@ -48,6 +52,13 @@
 
 #define MM_DPC_LIST			((PVOID)0x80000000)
 #define MM_DPCLIST_PHYS		0x00000000
+
+
+#define MM_DRIVER_AREA		0xF0000000
+#define MM_DRIVER_AREA_END	0xFFEFFFFF
+
+#define MM_USERMODE_AREA	0x00010000
+#define MM_USERMODE_AREA_END	0x7FFFF000
 
 //
 // This structure describes both a valid PTE and not valid PTE
@@ -531,5 +542,7 @@ KESYSAPI
 STATUS
 KEAPI
 MmLoadSystemImage(
-	PUNICODE_STRING ImagePath
+	IN PUNICODE_STRING ImagePath,
+	IN PUNICODE_STRING DriverName,
+	OUT PVOID *ImageBase
 	);

@@ -102,6 +102,7 @@ CcFreeCacheMap(
 		}
 	}
 
+	ExReleaseMutex (&File->CacheMap->CacheMapLock);
 	ExFreeHeap (File->CacheMap->ClusterCacheMap);
 	ExFreeHeap (File->CacheMap);
 
@@ -113,7 +114,6 @@ CcFreeCacheMap(
 	File->Synchronize = TRUE;
 	File->DesiredAccess |= SYNCHRONIZE;
 
-	ExReleaseMutex (&File->CacheMap->CacheMapLock);
 	return STATUS_SUCCESS;
 }
 
