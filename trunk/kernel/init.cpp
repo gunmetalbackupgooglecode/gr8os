@@ -193,7 +193,7 @@ KiDemoThread(
 	//RtlInitUnicodeString (&FdName, L"\\SystemRoot\\message.txt");
 	RtlInitUnicodeString (&FdName, L"\\Global\\A:\\message.txt");
 
-	Status = IoCreateFile (&File, FILE_READ_DATA, &FdName, &IoStatus, 0, 0);
+	Status = IoCreateFile (&File, FILE_READ_DATA, &FdName, &IoStatus, FILE_OPEN_EXISTING, 0);
 	if (!SUCCESS(Status)) {
 		KeBugCheck (KE_INITIALIZATION_FAILED,
 					__LINE__,

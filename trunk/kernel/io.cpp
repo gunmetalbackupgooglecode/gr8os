@@ -674,6 +674,8 @@ IoCreateFile(
 	//
 
 	Irp->CurrentStackLocation->Parameters.Create.DesiredAccess = DesiredAccess;
+	Irp->CurrentStackLocation->Parameters.Create.Disposition = Disposition;
+	Irp->CurrentStackLocation->Parameters.Create.Options = Options;
 
 	for (int i=1; i<Irp->StackSize; i++)
 	{

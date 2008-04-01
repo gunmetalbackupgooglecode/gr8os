@@ -1025,7 +1025,14 @@ FsFatDriverEntry (
 	{
 		KdPrint (("FSFAT: Failed to mount fdd0 : Status=%08x\n", Status));
 		IoDeleteDevice (&FsDeviceName);
-		return Status;
+		
+		//return Status;
+
+		KeBugCheck (UNMOUNTABLE_BOOT_VOLUME,
+					__LINE__,
+					Status,
+					0,
+					0);
 	}
 
 	//
