@@ -235,11 +235,18 @@ KiDemoThread(
 	PMMPTE PointerPte = MiGetPteAddress (Dummy);
 	PointerPte->u1.e1.Accessed = 0;
 	PointerPte->u1.e1.Dirty = 0;
+	
+	MmInvalidateTlb (Dummy);
 
 	KdPrint(("Dummy = %08x\n", *Dummy));
+
+	MmInvalidateTlb (Dummy);
+
 	KdPrint(("Pte: A=%d, D=%d\n", PointerPte->u1.e1.Accessed, PointerPte->u1.e1.Dirty));
 	*Dummy = 4;
+	MmInvalidateTlb (Dummy);
 	KdPrint(("Dummy = %08x\n", *Dummy));
+	MmInvalidateTlb (Dummy);
 	KdPrint(("Pte: A=%d, D=%d\n", PointerPte->u1.e1.Accessed, PointerPte->u1.e1.Dirty));
 
 	ExFreeHeap (Dummy);
@@ -475,11 +482,12 @@ KiInitSystem(
 
 	// Create two additional threads
 	KeInitializeEvent (&ev, SynchronizationEvent, 0);
+
+	KiDebugPrint ("PS: ZeroPageThread=%08x, Thread1=%08x, Thread2=%08x, Thread3=%08x\n", &SystemThread, &Thread1, &Thread2, &Thread3);
+
 	PspCreateThread( &Thread1, &InitialSystemProcess, PsCounterThread, (PVOID)( 80*3 + 40 ) );
 	PspCreateThread( &Thread2, &InitialSystemProcess, PsCounterThread, (PVOID)( 80*4 + 45 ) );
 	PspCreateThread( &Thread3, &InitialSystemProcess, KiDemoThread, NULL );
-
-	KiDebugPrint ("PS: SystemThread=%08x, Thread1=%08x, Thread2=%08x, Thread3=%08x\n", &SystemThread, &Thread1, &Thread2, &Thread3);
 
 	KiDebugPrintRaw( "INIT: Initialization completed.\n\n" );
 

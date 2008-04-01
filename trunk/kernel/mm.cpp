@@ -1352,7 +1352,9 @@ MiZeroPageThread(
 			MiChangePageLocation (Ppd, ZeroedPageList);
 			Ppd = Next;
 
+#if DBG
 			SomethingWasZeroed = 1;
+#endif
 		}
 
 		MI_UNLOCK_PPD();

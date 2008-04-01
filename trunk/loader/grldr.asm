@@ -201,7 +201,7 @@ ReadClusterChain:
     @@:
 
     call ReadClusters
-    jc	 HaltProcessor
+    jc	 read_error
 
     pop  bx
     add  bx, [BytesPerCluster]
@@ -216,6 +216,10 @@ ReadClusterChain:
 ;
 ; Stop execution of the current processor
 ;
+read_error:
+    mov  si, MSG_READ_ERR
+    call BootErrPrint
+
 HaltProcessor:
     cli
     hlt
@@ -296,6 +300,45 @@ GetFatCluster:
 
 ; endp
 
+BootErrPrint:
+    LODSB			  ; Get next character
+    or	  al,al
+    jz	  BEdone
+
+    MOV     AH,14		    ; Write teletype
+    MOV     BX,7		    ; Attribute
+    INT     10H 		    ; Print it
+    jmp   BootErrPrint
+BEdone:
+    ret
+;endp
+
+kernel_not_found:
+    mov  si, MSG_NO_KERNEL
+    call BootErrPrint
+    call HaltProcessor
+
+MSG_READ_ERR   db 'READERR',0
+
+
+KERNELNAME     db 'KERNEL  EXE'
+MSG_NO_KERNEL  db 'No kernel file found on the disk',0
+
+KernelSize     dd ?
+
+KernelStart equ 0xB000
+
+LoadKernel:
+
+    ;Find kernel file in the root directory
+    mov  dx, KERNELNAME
+    call FindFile
+
+    test ax,ax
+    jz	 kernel_not_found
+
+    jmp ContinueLoadKernel
+
 ;
 ; (dx) -> ASCIIZ string with file name to look for
 ; 2000:0000 -> entire directory entry loaded
@@ -334,41 +377,7 @@ ffend:
 ;endp
 
 
-
-BootErrPrint:
-    LODSB			  ; Get next character
-    or	  al,al
-    jz	  BEdone
-
-    MOV     AH,14		    ; Write teletype
-    MOV     BX,7		    ; Attribute
-    INT     10H 		    ; Print it
-    jmp   BootErrPrint
-BEdone:
-    ret
-;endp
-
-kernel_not_found:
-    mov  si, MSG_NO_KERNEL
-    call BootErrPrint
-    call HaltProcessor
-
-
-KERNELNAME     db 'KERNEL  EXE'
-MSG_NO_KERNEL  db 'No kernel file found on the disk',0
-
-KernelSize     dd ?
-
-KernelStart equ 0xB000
-
-LoadKernel:
-
-    ;Find kernel file in the root directory
-    mov  dx, KERNELNAME
-    call FindFile
-
-    test ax,ax
-    jz	 kernel_not_found
+  ContinueLoadKernel:
 
     mov  di, ax
 

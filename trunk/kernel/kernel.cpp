@@ -381,10 +381,9 @@ KiSetEvent(
 			// Remove terminated threads from wait list
 			//
 
-			//ASSERT (Thread->State == THREAD_STATE_WAIT);
-			if (0)//!(Thread->State == THREAD_STATE_WAIT))
+			ASSERT (Thread->State == THREAD_STATE_WAIT);
+			if (!(Thread->State == THREAD_STATE_WAIT))
 			{
-				INT3
 				KiDebugPrint (
 					"PS: Thread %08x:\n"
 					"Process = %08x\n"
@@ -402,7 +401,7 @@ KiSetEvent(
 					Thread->WaitBlockUsed,
 					Thread->State, Thread->State < 4 ?  ThreadStates[Thread->State] : 0
 					);
-				//INT3
+				INT3
 			}
 
 			/*
@@ -593,11 +592,6 @@ KeWaitForSingleObject(
 		add  esp, 16  ; segment regs
 		add  esp, 12  ; cs,eip,efl
 	}
-
-	RemoveEntryList (&WaitBlock->WaitListEntry);
-	Thread->WaitBlockUsed = NULL;
-	Thread->WaitType = 0;
-	Thread->NumberOfObjectsWaiting = 0;
 
 	PspUnlockSchedulerDatabase ();
 	KeReleaseIrqState(OldIrqState);
