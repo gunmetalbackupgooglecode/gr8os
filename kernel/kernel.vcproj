@@ -40,14 +40,16 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;_USRDLL;KERNEL_EXPORTS;"
+				AdditionalIncludeDirectories="inc;."
+				PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;_USRDLL;KERNEL_EXPORTS;DBG=1"
 				MinimalRebuild="true"
-				BasicRuntimeChecks="3"
+				BasicRuntimeChecks="0"
 				RuntimeLibrary="3"
 				UsePrecompiledHeader="0"
 				WarningLevel="3"
 				Detect64BitPortabilityProblems="true"
 				DebugInformationFormat="4"
+				DisableSpecificWarnings="4311,4312"
 			/>
 			<Tool
 				Name="VCManagedResourceCompilerTool"
@@ -60,6 +62,7 @@
 			/>
 			<Tool
 				Name="VCLinkerTool"
+				OutputFile="..\$(ProjectName).exe"
 				LinkIncremental="2"
 				GenerateDebugInformation="true"
 				SubSystem="2"
@@ -142,10 +145,103 @@
 				ModuleDefinitionFile="kernel.def"
 				GenerateDebugInformation="true"
 				ProgramDatabaseFile="../$(TargetName).pdb"
+				GenerateMapFile="true"
+				MapFileName="../$(TargetName).map"
 				SubSystem="3"
 				LargeAddressAware="2"
 				OptimizeReferences="2"
 				EnableCOMDATFolding="2"
+				EntryPointSymbol="KiInitSystem"
+				SetChecksum="false"
+				BaseAddress="0x80100000"
+				RandomizedBaseAddress="0"
+				FixedBaseAddress="2"
+				DataExecutionPrevention="0"
+				ImportLibrary=""
+				TargetMachine="1"
+				ErrorReporting="0"
+			/>
+			<Tool
+				Name="VCALinkTool"
+			/>
+			<Tool
+				Name="VCManifestTool"
+			/>
+			<Tool
+				Name="VCXDCMakeTool"
+			/>
+			<Tool
+				Name="VCBscMakeTool"
+			/>
+			<Tool
+				Name="VCFxCopTool"
+			/>
+			<Tool
+				Name="VCAppVerifierTool"
+			/>
+			<Tool
+				Name="VCPostBuildEventTool"
+			/>
+		</Configuration>
+		<Configuration
+			Name="Release-Syms|Win32"
+			OutputDirectory="$(ConfigurationName)"
+			IntermediateDirectory="$(ConfigurationName)"
+			ConfigurationType="2"
+			>
+			<Tool
+				Name="VCPreBuildEventTool"
+			/>
+			<Tool
+				Name="VCCustomBuildTool"
+			/>
+			<Tool
+				Name="VCXMLDataGeneratorTool"
+			/>
+			<Tool
+				Name="VCWebServiceProxyGeneratorTool"
+			/>
+			<Tool
+				Name="VCMIDLTool"
+			/>
+			<Tool
+				Name="VCCLCompilerTool"
+				AdditionalIncludeDirectories="inc"
+				PreprocessorDefinitions="NDEBUG;_USRDLL;KERNEL_EXPORTS;DBG=1"
+				RuntimeLibrary="2"
+				BufferSecurityCheck="false"
+				UsePrecompiledHeader="2"
+				PrecompiledHeaderThrough="common.h"
+				WarningLevel="3"
+				WarnAsError="true"
+				Detect64BitPortabilityProblems="false"
+				DebugInformationFormat="3"
+				DisableSpecificWarnings="4733,4731"
+			/>
+			<Tool
+				Name="VCManagedResourceCompilerTool"
+			/>
+			<Tool
+				Name="VCResourceCompilerTool"
+			/>
+			<Tool
+				Name="VCPreLinkEventTool"
+			/>
+			<Tool
+				Name="VCLinkerTool"
+				AdditionalOptions="/SECTION:.text,rwe /MERGE:.data=.text /MERGE:.rdata=.text /ALIGN:32 /IGNORE:4108 /IGNORE:4254 /IGNORE:4216"
+				AdditionalDependencies="$(NOINHERIT)"
+				OutputFile="../$(ProjectName).exe"
+				LinkIncremental="2"
+				GenerateManifest="false"
+				IgnoreAllDefaultLibraries="true"
+				ModuleDefinitionFile="kernel.def"
+				GenerateDebugInformation="true"
+				ProgramDatabaseFile=""
+				SubSystem="3"
+				LargeAddressAware="2"
+				OptimizeReferences="0"
+				EnableCOMDATFolding="0"
 				EntryPointSymbol="KiInitSystem"
 				SetChecksum="false"
 				BaseAddress="0x80100000"
@@ -287,6 +383,15 @@
 						Outputs="exc386.obj"
 					/>
 				</FileConfiguration>
+				<FileConfiguration
+					Name="Release-Syms|Win32"
+					>
+					<Tool
+						Name="VCCustomBuildTool"
+						CommandLine="d:\soft\fasm\fasm.exe exc386.asm exc386.obj&#x0D;&#x0A;"
+						Outputs="exc386.obj"
+					/>
+				</FileConfiguration>
 			</File>
 			<File
 				RelativePath=".\except.cpp"
@@ -328,6 +433,15 @@
 						Outputs="irq386.obj"
 					/>
 				</FileConfiguration>
+				<FileConfiguration
+					Name="Release-Syms|Win32"
+					>
+					<Tool
+						Name="VCCustomBuildTool"
+						CommandLine="d:\soft\fasm\fasm.exe irq386.asm irq386.obj&#x0D;&#x0A;"
+						Outputs="irq386.obj"
+					/>
+				</FileConfiguration>
 			</File>
 			<File
 				RelativePath=".\kd.cpp"
@@ -338,6 +452,15 @@
 				>
 				<FileConfiguration
 					Name="Release|Win32"
+					>
+					<Tool
+						Name="VCCustomBuildTool"
+						CommandLine="D:\Soft\fasm\fasm.exe ke386.asm ke386.obj&#x0D;&#x0A;"
+						Outputs="ke386.obj"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release-Syms|Win32"
 					>
 					<Tool
 						Name="VCCustomBuildTool"
@@ -373,6 +496,14 @@
 						UsePrecompiledHeader="1"
 					/>
 				</FileConfiguration>
+				<FileConfiguration
+					Name="Release-Syms|Win32"
+					>
+					<Tool
+						Name="VCCLCompilerTool"
+						UsePrecompiledHeader="1"
+					/>
+				</FileConfiguration>
 			</File>
 			<File
 				RelativePath=".\ps.cpp"
@@ -383,6 +514,15 @@
 				>
 				<FileConfiguration
 					Name="Release|Win32"
+					>
+					<Tool
+						Name="VCCustomBuildTool"
+						CommandLine="D:\Soft\fasm\fasm.exe ps386.asm ps386.obj&#x0D;&#x0A;"
+						Outputs="ps386.obj"
+					/>
+				</FileConfiguration>
+				<FileConfiguration
+					Name="Release-Syms|Win32"
 					>
 					<Tool
 						Name="VCCustomBuildTool"

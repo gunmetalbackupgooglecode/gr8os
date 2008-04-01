@@ -316,10 +316,27 @@ PspUnwaitThread(
 {
 	ASSERT (Thread->State != THREAD_STATE_TERMINATED);
 
-	Thread->State = THREAD_STATE_READY;
-	RemoveEntryList (&Thread->SchedulerListEntry);
-	InsertHeadList (&PsReadyListHead, &Thread->SchedulerListEntry);
-	Thread->QuantumDynamic = QuantumIncrement;
+	if (Thread->WaitType == THREAD_WAIT_SCHEDULEROBJECTS_ANY)
+	{
+		//
+		// Object Signaled
+		//
+
+		Thread->State = THREAD_STATE_READY;
+		
+		RemoveEntryList (&Thread->SchedulerListEntry);
+		InsertHeadList (&PsReadyListHead, &Thread->SchedulerListEntry);
+		Thread->QuantumDynamic = QuantumIncrement;
+
+		for (int i=0; i<Thread->NumberOfObjectsWaiting; i++)
+		{
+			RemoveEntryList (&Thread->WaitBlocks[i].WaitListEntry);
+		}
+
+		Thread->WaitBlockUsed = NULL;
+		Thread->WaitType = 0;
+		Thread->NumberOfObjectsWaiting = 0;
+	}
 }
 
 
