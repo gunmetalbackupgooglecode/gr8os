@@ -219,7 +219,6 @@ PspReadyThread(
 	InsertTailList (&PsReadyListHead, &Thread->SchedulerListEntry);
 }
 
-KESYSAPI
 VOID
 KEAPI
 PspDumpReadyQueue(
@@ -246,7 +245,6 @@ PspDumpReadyQueue(
 }
 
 
-KESYSAPI
 VOID
 KEAPI
 PspDumpSystemThreads(

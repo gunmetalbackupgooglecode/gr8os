@@ -1171,6 +1171,10 @@ IopCreateDriverObject(
 	PWSTR rel;
 	
 	rel = wcsrchr(DriverName->Buffer+1, L'\\');
+
+	if (!rel)
+		return STATUS_INVALID_PARAMETER;
+
 	RtlInitUnicodeString (&RelativeDriverName, rel+1);
 	
 	Status = ObCreateObject (

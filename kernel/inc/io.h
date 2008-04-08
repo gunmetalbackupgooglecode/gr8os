@@ -1,5 +1,7 @@
+// begin_ddk
 #pragma once
 
+// end_ddk
 
 //
 // Pointers to the appropriate object directories of I/O subsystem
@@ -7,6 +9,8 @@
 
 extern POBJECT_DIRECTORY IoDeviceDirectory;
 extern POBJECT_DIRECTORY IoDriverDirectory;
+
+// begin_ddk
 
 #define SECTOR_SIZE 512
 
@@ -295,10 +299,14 @@ IoCallDriver(
 #define IoGetCurrentIrpStackLocation(Irp) ((Irp)->CurrentStackLocation)
 #define IoGetNextIrpStackLocation(Irp) (++(Irp)->CurrentStackLocation)
 
+// end_ddk
+
 typedef struct IO_PARSE_DEVICE_PACKET
 {
 	UNICODE_STRING RemainingPath;
 } *PIO_PARSE_DEVICE_PACKET;
+
+// begin_ddk
 
 KESYSAPI
 STATUS
@@ -402,6 +410,8 @@ IoDeleteDevice(
 	IN PUNICODE_STRING DeviceName
 	);
 
+// end_ddk
+
 STATUS
 KEAPI
 IopCreateDriverObject(
@@ -412,6 +422,8 @@ IopCreateDriverObject(
 	IN PUNICODE_STRING DriverName,
 	OUT PDRIVER *DriverObject
 	);
+
+// begin_ddk
 
 KESYSAPI
 VOID
@@ -448,6 +460,8 @@ IoBuildDeviceIoControlRequest(
 	IN ULONG OutputBufferSize
 	);
 
+// end_ddk
+
 VOID
 KEAPI
 IoInitSystem(
@@ -474,6 +488,8 @@ IopDequeueThreadIrp(
 
 extern MUTEX IopFileSystemListLock;
 extern LIST_ENTRY IopFileSystemListHead;
+
+// begin_ddk
 
 KESYSAPI
 VOID
@@ -507,11 +523,15 @@ typedef struct VPB
 	WCHAR VolumeLabel [MAX_VOLUME_LABEL_LEN/sizeof(WCHAR)];
 } *PVPB;
 
+// end_ddk
+
 STATUS
 KEAPI
 IopCreateVpb(
 	PDEVICE DeviceObject
 	);
+
+// begin_ddk
 
 KESYSAPI
 STATUS
@@ -544,8 +564,11 @@ IoRequestMount(
 	PDEVICE FsDevice
 	);
 
+// end_ddk
 
 extern ULONG IopMountedDrivesMask;
+
+// begin_ddk
 
 KESYSAPI
 STATUS
@@ -560,3 +583,5 @@ KEAPI
 IoFreeMountedDriveLetter(
 	IN CHAR DriveLetter
 	);
+
+// end_ddk

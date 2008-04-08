@@ -1,7 +1,10 @@
+// begin_ddk
 #pragma once
 
 #define MIN_CACHED_CLUSTERS		32
 #define MAX_CACHED_CLUSTERS		1024
+
+// end_ddk
 
 #pragma pack(1)
 
@@ -17,6 +20,10 @@ typedef struct CCFILE_CACHED_CLUSTER
 } *PCCFILE_CACHED_CLUSTER;
 
 #pragma pack()
+
+// begin_ddk
+
+typedef struct FILE *PFILE;
 
 typedef STATUS (KEAPI *PCCFILE_CACHE_READ)(
 	IN PFILE FileObject,
@@ -39,7 +46,11 @@ typedef struct CCFILE_CACHE_CALLBACKS
 	PCCFILE_CACHE_WRITE ActualWrite;
 } *PCCFILE_CACHE_CALLBACKS;
 
+
 typedef struct CCFILE_CACHE_MAP
+
+// end_ddk
+
 {
 	MUTEX CacheMapLock;
 	PFILE FileObject;
@@ -50,8 +61,11 @@ typedef struct CCFILE_CACHE_MAP
 	ULONG ShouldRebuild;
 	CCFILE_CACHE_CALLBACKS Callbacks;
 	PCCFILE_CACHED_CLUSTER ClusterCacheMap;	// Array of cached clusters.
-} *PCCFILE_CACHE_MAP;
+}
 
+// begin_ddk
+
+*PCCFILE_CACHE_MAP;
 
 KESYSAPI
 VOID
@@ -61,6 +75,8 @@ CcInitializeFileCaching(
 	IN ULONG ClusterSize,
 	IN PCCFILE_CACHE_CALLBACKS Callbacks
 	);
+
+// end_ddk
 
 VOID
 KEAPI
@@ -80,6 +96,8 @@ CcpCacheFileCluster(
 	IN ULONG ClusterNumber,
 	IN PVOID ClusterBuffer
 	);
+
+// begin_ddk
 
 KESYSAPI
 STATUS
@@ -114,3 +132,5 @@ KEAPI
 CcFreeCacheMap(
 	IN PFILE FileObject
 	);
+
+// end_ddk

@@ -48,6 +48,8 @@ FD_MEDIA_TYPE *FdpCurrentType;
 
 void LbaToChs (ULONG LbaSector, ULONG *Cylinder, ULONG *Head, ULONG *Sector)
 {
+//	KdPrint(("CT: S=%x H=%x\n", FdpCurrentType->SectorsPerTrack, FdpCurrentType->NumberOfHeads));
+
 	*Sector = ((LbaSector % FdpCurrentType->SectorsPerTrack) + 1);
 	*Head = ((LbaSector / FdpCurrentType->SectorsPerTrack) % FdpCurrentType->NumberOfHeads);
 	*Cylinder = ((LbaSector / FdpCurrentType->SectorsPerTrack) / FdpCurrentType->NumberOfHeads);
@@ -189,21 +191,41 @@ FdPerformRead(
 	IN ULONG Size
 	)
 {
-	FdPrepareController (0);
-
 	ULONG LbaSector = /* Sector to cluster */ ClusterNumber;
-	ULONG* BufferLength = &Size;
 
-	KdPrint(("FdRead: controller prepared\n"));
+	if (LbaSector > FdpCurrentType->NumberOfSectors)
+	{
+		KdPrint(("FDD: Read beyond the end of disk (LbaSector=%d(%x), NumberOfSectors=%d(%x)\n",
+			LbaSector, LbaSector,
+			FdpCurrentType->NumberOfSectors, FdpCurrentType->NumberOfSectors
+			));
+		return STATUS_INVALID_PARAMETER;
+	}
+
+	ULONG* BufferLength = &Size;
 
 	ULONG Cylinder, Head, Sector;
 	LbaToChs (LbaSector, &Cylinder, &Head, &Sector);
+
+	if (Sector > FdpCurrentType->SectorsPerTrack)
+	{
+		KdPrint(("FDD: LBA->CHS conversion failure!! LBA was %d(%x), C=%d(%x), H=%d(%x), S=%d(%x), SpT=%d(%x)\n",
+			LbaSector, LbaSector,
+			Cylinder, Cylinder,
+			Head, Head,
+			Sector, Sector,
+			FdpCurrentType->SectorsPerTrack, FdpCurrentType->SectorsPerTrack
+			));
+		return STATUS_INVALID_PARAMETER;
+	}
 
 //	ULONG Cylinder = LbaSector / (FdpCurrentType->NumberOfHeads * FdpCurrentType->NumberOfSectors);
 //	ULONG Head = (LbaSector % (FdpCurrentType->NumberOfHeads * FdpCurrentType->NumberOfSectors)) / FdpCurrentType->NumberOfSectors;
 //	ULONG Sector = (LbaSector % (FdpCurrentType->NumberOfHeads * FdpCurrentType->NumberOfSectors)) % FdpCurrentType->NumberOfSectors + 1;
 
-	KdPrint(("FdRead: LBA=%d, C=%d, H=%d, S=%d\n", LbaSector, Cylinder, Head, Sector));
+	FdPrepareController (0);
+
+//	KdPrint(("FdRead: LBA=%d, C=%d, H=%d, S=%d\n", LbaSector, Cylinder, Head, Sector));
 
 	PDMA_REQUEST DmaReq;
 	STATUS Status;
@@ -215,11 +237,11 @@ FdPerformRead(
 		return Status;
 	}
 
-	KdPrint(("FdRead: dma initialized (PageUsed=%08x,PageSize=%08x,Buff=%08x,Mapped=%08x)\n",
-		DmaReq->PageUsed,
-		DmaReq->PageCount,
-		DmaReq->Buffer,
-		DmaReq->MappedPhysical));
+//	KdPrint(("FdRead: dma initialized (PageUsed=%08x,PageSize=%08x,Buff=%08x,Mapped=%08x)\n",
+//		DmaReq->PageUsed,
+//		DmaReq->PageCount,
+//		DmaReq->Buffer,
+//		DmaReq->MappedPhysical));
 
 	FdpOut (FD_OPERATION_READ);
 	FdpOut ((UCHAR)Head << 2); // HDS=0, DS=0
@@ -233,9 +255,21 @@ FdPerformRead(
 	FdpOut (FdpCurrentType->Gap1Size);
 	FdpOut (0xFF);
 
-	while (!(KiInPort(FD_STATUS) & FD_STATUS_RDY_FOR_IO));
-		
-	KdPrint(("FdRead: Read completed\n"));
+	ULONG TryCount = 1000000;
+
+	while ( (!(KiInPort(FD_STATUS) & FD_STATUS_RDY_FOR_IO)) && TryCount>0 )
+	{
+		TryCount --;
+	}
+
+	if (TryCount == 0)
+	{
+		KdPrint(("FdRead: Timed out\n"));
+	}
+	else
+	{
+//		KdPrint(("FdRead: Read completed\n"));
+	}
 
 	ST0 = FdpIn ();
 	ST1 = FdpIn ();
@@ -245,22 +279,22 @@ FdPerformRead(
 	FdpReplyBuffer[5] = FdpIn (); // R
 	FdpReplyBuffer[6] = FdpIn (); // N
 
-	KdPrint(("FD: ST0=%02x, ST1=%02x, ST2=%02x, C=%02x, H=%02x, R=%02x, N=%02x\n",
-		ST0,
-		ST1,
-		ST2,
-		FdpReplyBuffer[3],
-		FdpReplyBuffer[4],
-		FdpReplyBuffer[5],
-		FdpReplyBuffer[6]));
+//	KdPrint(("FD: ST0=%02x, ST1=%02x, ST2=%02x, C=%02x, H=%02x, R=%02x, N=%02x\n",
+//		ST0,
+//		ST1,
+//		ST2,
+//		FdpReplyBuffer[3],
+//		FdpReplyBuffer[4],
+//		FdpReplyBuffer[5],
+//		FdpReplyBuffer[6]));
 
 	HalCompleteDmaRequest (DmaReq);
 
-	KdPrint(("FdRead: Buffer: %02x %02x %02x %02x\n",
-		((UCHAR*)Buffer)[0],
-		((UCHAR*)Buffer)[1],
-		((UCHAR*)Buffer)[2],
-		((UCHAR*)Buffer)[3]));
+//	KdPrint(("FdRead: Buffer: %02x %02x %02x %02x\n",
+//		((UCHAR*)Buffer)[0],
+//		((UCHAR*)Buffer)[1],
+//		((UCHAR*)Buffer)[2],
+//		((UCHAR*)Buffer)[3]));
 
 	FD_ST0 st0;
 	*(UCHAR*)&st0 = ST0;

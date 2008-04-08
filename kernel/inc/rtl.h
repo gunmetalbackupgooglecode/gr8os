@@ -1,6 +1,9 @@
+// begin_ddk
+
 #pragma once
 
 #define UPCASE(ch)  (( (ch)>='a' && (ch)<='z' ) ? (ch)-'a'+'A' : (ch) )
+#define UPCASEW(ch)  (( (ch)>=L'a' && (ch)<=L'z' ) ? (ch)-L'a'+L'A' : (ch) )
 
 KESYSAPI
 char*
@@ -57,6 +60,15 @@ wcstomb(
 	);
 
 KESYSAPI
+ULONG
+KEAPI
+mbstowcs(
+	WCHAR *wcs,
+	char *mbs,
+	ULONG count
+	);
+
+KESYSAPI
 INT 
 KEAPI
 strncmp(
@@ -65,7 +77,38 @@ strncmp(
 	ULONG count
 	);
 
+KESYSAPI
+INT 
+KEAPI
+strcmp(
+	char *s1,
+	char *s2
+	);
 
+KESYSAPI
+char*
+KEAPI
+strncpy(
+	char* to,
+	const char* from, 
+	int count
+	);
+
+KESYSAPI
+char* 
+KEAPI
+strcpy(
+	char *s1,
+	char *s2
+	);
+
+KESYSAPI
+char* 
+KEAPI
+strcat(
+	char *s1,
+	char *s2
+	);
 
 KESYSAPI
 INT
@@ -75,9 +118,34 @@ strlen(
 	);
 
 KESYSAPI
+INT 
+KEAPI
+strnicmp(
+	char *s1,
+	char *s2,
+	ULONG count
+	);
+
+KESYSAPI
+INT 
+KEAPI
+stricmp(
+	char *s1,
+	char *s2
+	);
+
+KESYSAPI
 INT
 KEAPI
 wcscmp(
+	PWSTR wstr,
+	PWSTR wstr2
+	);
+
+KESYSAPI
+INT
+KEAPI
+wcsicmp(
 	PWSTR wstr,
 	PWSTR wstr2
 	);
@@ -565,3 +633,29 @@ typedef struct _RTL_BITMAP {
 } RTL_BITMAP;
 typedef RTL_BITMAP *PRTL_BITMAP;
 
+#define DOS_HEADER(Image) ((PIMAGE_DOS_HEADER)Image)
+#define NT_HEADERS(Image) ((PIMAGE_NT_HEADERS) ((ULONG)(((PIMAGE_DOS_HEADER) Image)->e_lfanew) + (ULONG)Image))
+#define FILE_HEADER(Image) (&NT_HEADERS(Image)->FileHeader)
+#define OPTIONAL_HEADER(Image) (&NT_HEADERS(Image)->OptionalHeader)
+#define IMAGE_FIRST_RELOCATION(Image) \
+	((PIMAGE_BASE_RELOCATION)((DWORD)OPTIONAL_HEADER(Image)->DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress + \
+		(ULONG)Image))
+#define IMAGE_NEXT_RELOCATION(Reloc) ((PIMAGE_BASE_RELOCATION)(Reloc->SizeOfBlock + (ULONG)Reloc))
+
+#define VRFY_PE_HDR(Image) \
+	( (DOS_HEADER(Image)->e_magic == IMAGE_DOS_SIGNATURE) && \
+	  (NT_HEADERS(Image)->Signature == IMAGE_NT_SIGNATURE) )
+#define IMAGE_FIRST_IMPORT(Image) \
+	((PIMAGE_IMPORT_DESCRIPTOR)(OPTIONAL_HEADER(Image)->DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress + (ULONG)Image))
+#define RVATOVA(Base,Offset) ((PVOID)((ULONG_PTR)Base + (ULONG_PTR)Offset))
+#define DATA_DIR_SIZE(Image,Dir) (OPTIONAL_HEADER(Image)->DataDirectory[Dir].Size)
+
+#pragma pack(2)
+typedef struct 
+{
+	USHORT Offset : 12;
+	USHORT Type : 4;
+} IMAGE_FIXUP_ENTRY, *PIMAGE_FIXUP_ENTRY;
+#pragma pack()
+
+// end_ddk

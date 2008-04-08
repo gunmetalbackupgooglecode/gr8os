@@ -1,3 +1,4 @@
+// begin_ddk
 #pragma once
 
 KESYSAPI
@@ -14,6 +15,8 @@ KiDebugPrint(
 	PCHAR FormatString,
 	...
 	);
+
+// end_ddk
 
 #define BOCHS_LOGGER_PORT 0xE9
 

@@ -1,3 +1,4 @@
+// begin_ddk
 #pragma once
 
 /*
@@ -18,47 +19,72 @@
 		00010000 - 7FFFF000    UserMode address space
 		7FFFF000 - 7FFFFFFF    Reserved
 
+		// ring0
 		80000000 - 800FFFFF    Loader. This will be unmapped during boot up
 		80100000 - 801FFFFF    Kernel. Resident part of kernel address space
-		80200000 - 80FFFFFF    Kernel heap.
-		90000000 - A7FFFFFF    Free for further allocations
-		A8000000 - BFFFFFFF    Critical drivers
+		80200000 - 802FFFFF    Kernel heap.
+		80300000 - BFFFFFFF    Critical Drivers & Extenders
 		C0000000 - C7FFFFFF    PTEs, PDEs
 		C8000000 - CFFFFFFF    PPDs
-		D0000000 - DFFFFFFF    \
-		E0000000 - EFFFFFFF    / Heap for drivers
-		F0000000 - FFEFFFFF    Drivers
-		FFF00000 - FFFFDFFF    Kernel critical area
+
+		// ring1 context-swappable area
+		D0000000 - D1FFFFFF    \ Paged heap for drivers
+		D2000000 - D3FFFFFF    / NonPaged heap for drivers
+		D4000000 - FEFFFFFF    Non-Critical drivers
+
+		// ring0
+		FF000000 - FFFFDFFF    Kernel critical area
 		FFFFE000 - FFFFEFFF    Hyperspace
 		FFFFF000 - FFFFFFFF	   Reserved
 */
 
-#define MM_LOADER_START		0x80000000
-#define MM_KERNEL_START		0x80100000
+#define MM_DPCLIST_PHYS				0x00000000
 #define MM_KERNEL_START_PHYS		0x0000B000
-#define MM_KERNEL_HEAP		((PVOID)0x80200000)
-#define MM_KERNEL_HEAP_PHYS 0x02000000
-#define MM_PDE_START		0xC0000000
-#define MM_PPD_START		((PVOID)0xC8000000)
-
-#define MM_PDE_START_PHYS	0x00180000
-#define MM_PPD_START_PHYS	0x01000000
-
-#define MM_CRITICAL_AREA	0xFFF00000
-#define MM_CRITICAL_AREA_PAGES 254
-
-#define MM_HYPERSPACE_START ((PVOID)0xFFFFE000)
-#define MM_HYPERSPACE_PAGES 1
-
-#define MM_DPC_LIST			((PVOID)0x80000000)
-#define MM_DPCLIST_PHYS		0x00000000
+#define MM_PDE_START_PHYS			0x00180000
+#define MM_PPD_START_PHYS			0x01000000
+#define MM_KERNEL_HEAP_PHYS			0x02000000
 
 
-#define MM_DRIVER_AREA		0xF0000000
-#define MM_DRIVER_AREA_END	0xFFEFFFFF
+//
+// Ring 3
+//
 
-#define MM_USERMODE_AREA	0x00010000
-#define MM_USERMODE_AREA_END	0x7FFFF000
+#define MM_USERMODE_AREA					0x00010000
+#define MM_USERMODE_AREA_END				0x7FFFF000
+
+//
+// Ring 0  (Write = 0, does not change when context switches)
+//
+
+#define MM_DPC_LIST					((PVOID)0x80000000)
+#define MM_LOADER_START				((PVOID)0x80000000)
+#define MM_KERNEL_START				((PVOID)0x80100000)
+#define MM_KERNEL_HEAP				((PVOID)0x80200000)
+#define MM_CRITICAL_DRIVER_AREA		((PVOID)0x80300000)
+#define MM_CRITICAL_DRIVER_AREA_END	((PVOID)0xBFFFFFFF)
+#define MM_PDE_START						0xC0000000
+#define MM_PPD_START				((PVOID)0xC8000000)
+
+//
+// Ring1  (Write = 1, involved into context switching)
+//
+#define MM_PAGED_HEAP_START			((PVOID)0xD0000000)
+#define MM_PAGED_HEAP_END			((PVOID)0xD1FFFFFF)
+#define MM_NONPAGED_HEAP_START		((PVOID)0xD2000000)
+#define MM_NONPAGED_HEAP_END		((PVOID)0xD3FFFFFF)
+#define MM_DRIVER_AREA				((PVOID)0xD4000000)
+#define MM_DRIVER_AREA_END			((PVOID)0xFEFFFFFF)
+
+//
+// Ring 0  (Write = 0, does not change when context switches)
+//
+#define MM_CRITICAL_AREA					0xFF000000
+#define MM_CRITICAL_AREA_END				0xFFFFDFFF
+#define MM_CRITICAL_AREA_PAGES	((0xFFFFE000 - 0xFF000000)>>PAGE_SHIFT)
+#define MM_HYPERSPACE_START			((PVOID)0xFFFFE000)
+#define MM_HYPERSPACE_PAGES					1
+
+// end_ddk
 
 //
 // This structure describes both a valid PTE and not valid PTE
@@ -133,8 +159,12 @@ STATIC_ASSERT (sizeof(MMPTE) == 4);
 #define PTE_TYPE_TRIMMED				2
 #define PTE_TYPE_VIEW					3
 
+// begin_ddk
+
 #define PAGE_SIZE 0x1000
 #define PAGE_SHIFT 12
+
+// end_ddk
 
 //
 // PMMPTE
@@ -146,7 +176,7 @@ STATIC_ASSERT (sizeof(MMPTE) == 4);
 
 
 // Owner, Write, Valid
-#define MiWriteValidKernelPte(PTE) (*(ULONG*)(PTE)) = 7
+#define MiWriteValidKernelPte(PTE) (*(ULONG*)(PTE)) = 5
 
 #define MiWriteTrimmedPte(PTE) { \
 	(PTE)->u1.e1.Valid = 0; \
@@ -167,6 +197,8 @@ MiMapPhysicalPages(
 	ULONG PhysicalAddress,
 	ULONG PageCount
 	);
+
+// begin_ddk
 
 KESYSAPI
 PVOID
@@ -199,8 +231,9 @@ MiMapPageToHyperSpace(
 	ULONG Pfn
 	);
 
-
 #define MmUnmapPhysicalPages MiUnmapPhysicalPages
+
+// end_ddk
 
 VOID
 KEAPI
@@ -218,6 +251,8 @@ MmAccessFault(
 	PVOID VirtualAddress,
 	PVOID FaultingAddress
 	);
+
+// begin_ddk
 
 KESYSAPI
 VOID
@@ -258,6 +293,8 @@ KEAPI
 MmIsAddressValidEx(
 	IN PVOID VirtualAddress
 	);
+
+// end_ddk
 
 typedef struct PROCESS *PPROCESS;
 
@@ -325,6 +362,18 @@ typedef struct MMWORKING_SET
 extern PMMWORKING_SET MiSystemWorkingSet;
 
 #define MM_WORKING_SET_INCREMENT	100
+
+ULONG
+KEAPI
+MiAddPageToWorkingSet(
+	PMMPPD Ppd
+	);
+
+VOID
+KEAPI
+MiRemovePageFromWorkingSet(
+	PMMPPD Ppd
+	);
 
 //
 // The following MMPPD structure is the 
@@ -447,6 +496,7 @@ MiDumpPageLists(
 
 #pragma pack()
 
+// begin_ddk
 
 //
 // Memory Descriptor
@@ -506,8 +556,6 @@ MmFreePhysicalPages(
 	IN PMMD Mmd
 	);
 
-#define MmGetCurrentWorkingSet() (PsGetCurrentProcess()->WorkingSet)
-
 KESYSAPI
 VOID
 KEAPI
@@ -527,7 +575,8 @@ PVOID
 KEAPI
 MmMapLockedPages(
 	IN PMMD Mmd,
-	IN PROCESSOR_MODE TargetMode
+	IN PROCESSOR_MODE TargetMode,
+	IN BOOLEAN IsImage
 	);
 
 KESYSAPI
@@ -538,11 +587,116 @@ MmUnmapLockedPages(
 	);
 
 
+// end_ddk
+
+#define MmGetCurrentWorkingSet() (PsGetCurrentProcess()->WorkingSet)
+
+// begin_ddk
+
+typedef struct THREAD *PTHREAD;
+typedef struct PROCESS *PPROCESS;
+
+typedef
+VOID
+(KEAPI
+ *PEXT_SWAP_THREAD_CALLBACK)(
+	IN PTHREAD PrevThread,
+	IN PTHREAD NextThread
+	);
+
+typedef
+VOID
+(KEAPI
+ *PEXT_CREATE_THREAD_CALLBACK)(
+	IN PTHREAD ThreadBeingCreated
+	);
+
+typedef
+VOID
+(KEAPI
+ *PEXT_TERMINATE_THREAD_CALLBACK)(
+	IN PTHREAD ThreadBeingTerminated,
+	IN ULONG ExitCode
+	);
+
+typedef
+VOID
+(KEAPI
+ *PEXT_CREATE_PROCESS_CALLBACK)(
+	IN PPROCESS ProcessBeingCreated
+	);
+
+typedef
+VOID
+(KEAPI
+ *PEXT_TERMINATE_PROCESS_CALLBACK)(
+	IN PPROCESS ProcessBeingTerminated
+	);
+
+typedef
+VOID
+(KEAPI
+ *PEXT_BUGCHECK_CALLBACK)(
+	IN ULONG BugCheckCode,
+	IN ULONG Parameter1,
+	IN ULONG Parameter2,
+	IN ULONG Parameter3,
+	IN ULONG Parameter4
+	);
+
+typedef
+VOID
+(KEAPI
+ *PEXT_EXCEPTION_CALLBACK)(
+	IN PEXCEPTION_ARGUMENTS ExceptionArguments,
+	IN PEXCEPTION_FRAME EstablisherFrame,
+	IN PCONTEXT_FRAME CallerContext,
+	IN PVOID Reserved
+	);
+
+typedef struct DRIVER *PDRIVER;
+typedef struct OBJECT_TYPE *POBJECT_TYPE;
+
+typedef struct EXTENDER
+{
+	PVOID ExtenderStart;
+	PVOID ExtenderEnd;
+	PDRIVER CorrespondingDriverObject;
+
+	LIST_ENTRY ExtenderListEntry;
+
+	PEXT_SWAP_THREAD_CALLBACK SwapThread;
+	PEXT_CREATE_THREAD_CALLBACK CreateThread;
+	PEXT_TERMINATE_THREAD_CALLBACK TerminateThread;
+	PEXT_CREATE_PROCESS_CALLBACK CreateProcess;
+	PEXT_TERMINATE_PROCESS_CALLBACK TerminateProcess;
+	PEXT_BUGCHECK_CALLBACK BugcheckDispatcher;
+	PEXT_EXCEPTION_CALLBACK ExceptionDispatcher;
+
+} *PEXTENDER;
+
+extern POBJECT_TYPE MmExtenderObjectType;
+extern LIST_ENTRY MmExtenderListHead;
+extern LOCK MmExtenderListLock;
+
+
 KESYSAPI
 STATUS
 KEAPI
 MmLoadSystemImage(
 	IN PUNICODE_STRING ImagePath,
-	IN PUNICODE_STRING DriverName,
-	OUT PVOID *ImageBase
+	IN PUNICODE_STRING ModuleName,
+	IN PROCESSOR_MODE TargetMode,
+	IN BOOLEAN Extender,
+	OUT PVOID *ImageBase,
+	OUT PVOID *ModuleObject
 	);
+
+// end_ddk
+
+enum MMSYSTEM_MODE {
+	NormalMode,
+	UpdateMode
+};
+
+extern MMSYSTEM_MODE MmSystemMode;

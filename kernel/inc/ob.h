@@ -1,3 +1,4 @@
+// begin_ddk
 #pragma once
 
 
@@ -172,10 +173,10 @@ typedef struct OBJECT_TYPE
 extern POBJECT_TYPE ObDirectoryObjectType;
 extern POBJECT_TYPE IoDeviceObjectType;
 extern POBJECT_TYPE IoDriverObjectType;
-extern POBJECT_TYPE KeEventObjectType;
-extern POBJECT_TYPE MmViewObjectType;
-extern POBJECT_TYPE PsThreadObjectType;
-extern POBJECT_TYPE PsProcessObjectType;
+//extern POBJECT_TYPE KeEventObjectType;
+extern POBJECT_TYPE MmExtenderObjectType;
+//extern POBJECT_TYPE PsThreadObjectType;
+//extern POBJECT_TYPE PsProcessObjectType;
 
 typedef struct OBJECT_DIRECTORY
 {
@@ -278,14 +279,21 @@ ObInsertObject(
 	IN PVOID Object
 	);
 
+// end_ddk
+
 VOID
 KEAPI
 ObInitSystem(
 	);
 
-#define ObInterlockedDecrement(x) (--*(x))
-#define ObInterlockedIncrement(x) (*(x) += 1)
-#define ObInterlockedExchangeAdd(x,val) (*(x) += (val))
+#define ObInterlockedDecrement(x) InterlockedDecrement((PLONG)(x)) 
+	//(--*(x))
+#define ObInterlockedIncrement(x) InterlockedIncrement((PLONG)(x))
+	//(*(x) += 1)
+#define ObInterlockedExchangeAdd(x,val) InterlockedExchangeAdd((PLONG)(x),(val))
+	//(*(x) += (val))
+
+// begin_ddk
 
 KESYSAPI
 VOID
@@ -323,6 +331,8 @@ ObDereferenceObjectEx(
 	ULONG Count
 	);
 
+// end_ddk
+
 STATUS
 KEAPI
 ObpDeleteObjectInternal(
@@ -334,6 +344,8 @@ KEAPI
 ObpDeleteObject(
 	PVOID Object
 	);
+
+// begin_ddk
 
 KESYSAPI
 STATUS
@@ -352,6 +364,8 @@ ObCreateDirectory(
 	IN POBJECT_DIRECTORY InsertInto
 	);
 
+// end_ddk
+
 STATUS
 KEAPI
 ObpFindObjectInDirectory(
@@ -359,6 +373,8 @@ ObpFindObjectInDirectory(
 	IN PWSTR ObjectName,
 	OUT POBJECT_HEADER *ObjectHeader
 	);
+
+// begin_ddk
 
 KESYSAPI
 STATUS
@@ -387,6 +403,8 @@ ObQueryObjectName(
 	OUT PUNICODE_STRING ObjectName
 	);
 
+// end_ddk
+
 struct OBJECT_HANDLE
 {
 	PVOID Object;
@@ -394,14 +412,16 @@ struct OBJECT_HANDLE
 	PTHREAD Owner;
 };
 
-#define INVALID_HANDLE_VALUE ((HANDLE)-1)
 #define ObGetCurrentThreadObjectTable() (PsGetCurrentProcess()->ObjectTable.HandleTable)
 #define ObLockObjectTable() ExAcquireMutex (&PsGetCurrentProcess()->ObjectTable.TableLock)
 #define ObUnlockObjectTable() ExReleaseMutex (&PsGetCurrentProcess()->ObjectTable.TableLock)
 
 #define OB_MAX_HANDLES	65536
 
+// begin_ddk
 typedef ULONG  HANDLE, *PHANDLE;
+#define INVALID_HANDLE_VALUE ((HANDLE)-1)
+// end_ddk
 
 HANDLE
 KEAPI
@@ -425,6 +445,7 @@ ObpMapHandleToPointer(
 	IN BOOLEAN KeepLock
 	);
 
+// begin_ddk
 
 KESYSAPI
 STATUS
@@ -468,6 +489,8 @@ ObReferenceObjectByHandle(
 
 extern POBJECT_TYPE ObSymbolicLinkObjectType;
 
+// end_ddk
+
 STATUS
 KEAPI
 ObpParseSymbolicLink(
@@ -483,6 +506,8 @@ ObpDeleteSymbolicLink(
 	IN POBJECT_HEADER Object
 	);
 
+// begin_ddk
+
 KESYSAPI
 STATUS
 KEAPI
@@ -490,6 +515,8 @@ ObCreateSymbolicLink(
 	PUNICODE_STRING SymlinkName,
 	PUNICODE_STRING TargetPath
 	);
+
+// end_ddk
 
 #if DBG
 VOID 

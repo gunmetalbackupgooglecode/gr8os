@@ -103,17 +103,17 @@ KiPutChar(
 			);
 		*/
 
-		for( ULONG i=0; i<KiXResolution*(KiYResolution-1); i++ )
+		for( ULONG i=0; i<KiXResolution*(KiYResolution-2); i++ )
 		{
-			KiWriteChar(i, KiReadChar (i + KiXResolution));
+			KiWriteChar(i, KiReadChar (i + KiXResolution*2));
 		}
 
-		for (ULONG i=0; i<KiXResolution; i++)
+		for (ULONG i=0; i<KiXResolution*2; i++)
 		{
-			KiWriteChar ( KiXResolution*(KiYResolution-1) + i, ' ');
+			KiWriteChar ( KiXResolution*(KiYResolution-2) + i, ' ');
 		}
 
-		KiScreenY --;
+		KiScreenY -= 2;
 
 //		BochsPrintF("KiPutChar: line scrolled, X=%d, Y=%d, XRes=%d, YRes=%d\n",
 //			KiScreenX,

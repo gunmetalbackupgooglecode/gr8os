@@ -1,13 +1,12 @@
+// begin_ddk
 #pragma once
 
-#pragma pack(1)
+typedef struct PROCESS *PPROCESS;
+typedef struct THREAD *PTHREAD;
 
 //
 // Thread structure.
 //
-
-struct PROCESS;
-typedef struct THREAD *PTHREAD;
 
 typedef struct WAIT_BLOCK
 {
@@ -25,6 +24,10 @@ typedef enum PROCESSOR_MODE
 } *PPROCESSOR_MODE;
 
 struct CONTEXT_FRAME;
+
+// end_ddk
+
+#pragma pack(1)
 
 typedef struct THREAD
 {
@@ -97,6 +100,8 @@ typedef struct THREAD
 
 } *PTHREAD;
 
+// begin_ddk
+
 enum THREAD_STATE
 {
 	THREAD_STATE_READY,
@@ -134,6 +139,8 @@ typedef struct CONTEXT_FRAME
 	ULONG  Cs;
 	ULONG  Eflags;
 } CONTEXT, *PCONTEXT;
+
+// end_ddk
 
 extern THREAD SystemThread;
 extern ULONG UniqueThreadIdSeed;
@@ -182,6 +189,8 @@ extern PROCESS InitialSystemProcess;
 
 #pragma pack()
 
+// begin_ddk
+
 typedef struct LDR_MODULE
 {
 	LIST_ENTRY ListEntry;
@@ -189,6 +198,8 @@ typedef struct LDR_MODULE
 	PVOID Base;
 	ULONG Size;
 } *PLDR_MODULE;
+
+// end_ddk
 
 extern LIST_ENTRY PsLoadedModuleList;
 extern MUTEX PsLoadedModuleListLock;
@@ -215,6 +226,8 @@ PspDumpSingleThread(
 	IN PTHREAD Thread
 	);
 
+// begin_ddk
+
 KENORETURN
 KESYSAPI
 VOID
@@ -234,6 +247,8 @@ PPCB
 KEAPI
 PsGetCurrentPcb(
 	);
+
+// end_ddk
 
 VOID
 KEAPI
@@ -265,6 +280,8 @@ PspCreateThread(
 	IN  PVOID  StartContext
 	);
 
+// begin_ddk
+
 KESYSAPI
 PTHREAD
 KEAPI
@@ -282,6 +299,8 @@ PsTerminateThread(
 	IN ULONG Code
 	);
 
+// end_ddk
+
 PTHREAD
 KEAPI
 FindReadyThread(
@@ -297,6 +316,8 @@ SwapContext(
 	);
 */
 
+// begin_ddk
+
 KESYSAPI
 VOID
 KEAPI
@@ -309,29 +330,29 @@ KEAPI
 PsSwapThread(
 	);
 
-KESYSAPI
+// end_ddk
+
 VOID
 KEAPI
 PspDumpReadyQueue(
 	);
 
-KESYSAPI
 VOID
 KEAPI
 PspDumpSystemThreads(
 	);
 
-KESYSAPI
 VOID
 KEAPI
 PsQuantumEnd(
 	);
 
-KESYSAPI
 VOID
 KEAPI
 PspSchedulerTimerInterruptDispatcher(
 	);
+
+// begin_ddk
 
 KESYSAPI
 VOID
@@ -370,6 +391,8 @@ PsDelayThreadExecution(
 	IN ULONG ClockTickCount
 	);
 
+// end_ddk
+
 VOID
 KEAPI
 PspReadyThread(
@@ -402,6 +425,8 @@ PspCreateProcess(
 	OUT PPROCESS Process
 	);
 
+// begin_ddk
+
 KESYSAPI
 PPROCESS
 KEAPI
@@ -414,3 +439,4 @@ KEAPI
 PsGetCurrentProcess(
 	);
 
+// end_ddk

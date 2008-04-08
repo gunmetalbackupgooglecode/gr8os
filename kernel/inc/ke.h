@@ -1,5 +1,5 @@
+// begin_ddk
 #pragma once
-
 
 #pragma pack(1)
 
@@ -165,6 +165,8 @@ _global_unwind2(
 	IN PEXCEPTION_FRAME RegistrationFrame
 	);
 
+// end_ddk
+
 #define KI_CHECK_IF() { \
 	ULONG efl;			\
 	{ __asm pushfd	}	\
@@ -172,6 +174,7 @@ _global_unwind2(
 	ASSERT (efl & 0x200); \
 	}
 
+// begin_ddk
 
 typedef struct PCB
 {
@@ -398,8 +401,6 @@ memmove_far(
 	IN ULONG Length
 	);
 
-char* strncpy(char*, const char*, int);
-
 KESYSAPI
 STATUS
 KEAPI
@@ -429,10 +430,13 @@ typedef struct DPC_QUEUE
 	PVOID  Context;
 } *PDPC_QUEUE;
 
+// end_ddk
+
 extern PDPC_QUEUE KiDpcListHead;
 extern UCHAR  KiNumberDpcs;
 extern LOCK   KiDpcQueueLock;
 
+// begin_ddk
 
 KESYSAPI
 VOID
@@ -449,11 +453,6 @@ KiInPort(
 	USHORT PortNumber
 	);
 
-VOID
-KEAPI
-KiProcessDpcQueue(
-	);
-
 KESYSAPI
 PDPC_QUEUE
 KEAPI
@@ -462,18 +461,25 @@ KeInsertQueueDpc(
 	PVOID Context
 	);
 
-VOID
-KEAPI
-KiCallDpc(
-	PDPC_QUEUE DpcEntry
-	);
-
 KESYSAPI
 VOID
 KEAPI
 KeRemoveQueueDpc(
 	PDPC_QUEUE DpcEntry,
 	BOOLEAN LockQueue
+	);
+
+VOID
+KEAPI
+KiProcessDpcQueue(
+	);
+
+// end_ddk
+
+VOID
+KEAPI
+KiCallDpc(
+	PDPC_QUEUE DpcEntry
 	);
 
 VOID
@@ -488,17 +494,19 @@ KiOutChar(
 	CHAR chr
 	);
 
+KENORETURN
+VOID
+KEAPI
+KiStopExecution(
+	);
+
+// begin_ddk
+
 KESYSAPI
 VOID
 KEAPI
 KeStallExecution(
 	ULONG TickCount
-	);
-
-KENORETURN
-VOID
-KEAPI
-KiStopExecution(
 	);
 
 KESYSAPI
@@ -569,6 +577,8 @@ KeBugCheck(
 
 #define MAXIMUM_BUGCHECK				0x00000014
 
+// end_ddk
+
 extern PCHAR KeBugCheckDescriptions[];
 
 // First argument
@@ -592,6 +602,8 @@ extern PCHAR KeBugCheckDescriptions[];
 #define HEAP_GUARD_LEAK_DETECTED			3
 
 #define PSP_NO_READY_THREADS				1
+
+// begin_ddk
 
 #pragma pack(1)
 
@@ -758,12 +770,16 @@ KeWaitForSingleObject(
 	IN PLARGE_INTEGER Timeout
 	);
 
+// end_ddk
+
 BOOLEAN
 KEAPI
 KiSetEvent(
 	IN PEVENT Event,
 	IN USHORT QuantumIncrement
 	);
+
+// begin_ddk
 
 enum PROCESSOR_MODE;
 
@@ -786,11 +802,21 @@ InterlockedExchange(
 KESYSAPI
 LONG
 KEFASTAPI
+InterlockedExchangeAdd(
+	PLONG Variable,
+	LONG Increment
+	);
+
+KESYSAPI
+LONG
+KEFASTAPI
 InterlockedCompareExchange(
 	PLONG Variable,			// @ECX
 	LONG Exchange,			// @EDX
 	LONG Comperand
 	);
+
+// end_ddk
 
 VOID
 KEAPI
@@ -810,6 +836,10 @@ KiWriteChar(
 	CHAR chr
 	);
 
+extern ULONG KiInitializationPhase;
+
+// begin_ddk
+
 KESYSAPI
 VOID
 KEFASTAPI
@@ -824,5 +854,4 @@ InterlockedIncrement(
 	PLONG Long
 );
 
-extern ULONG KiInitializationPhase;
-
+// end_ddk

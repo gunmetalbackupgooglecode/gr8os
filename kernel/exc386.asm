@@ -298,6 +298,11 @@ general_exception:
     push fs       ; 24 bytes
     pushad        ; 32 bytes
     push dword [faulting_message]
+    
+    push dword [faulting_message]
+    call DbgPrintRaw
+    
+    jmp $
 
     invoke sprintf, tempbuffer, ctx   ; 8 bytes
     add  esp, 72

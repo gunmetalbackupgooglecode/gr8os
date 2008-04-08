@@ -143,7 +143,12 @@ FsFatCreateVcb(
 	// Read fat
 	//
 
-	LARGE_INTEGER Offset = { (Vcb->Fat1StartSector) * fh->SectorSize, 0 };
+	LARGE_INTEGER Offset = { 0 };
+
+	Offset.LowPart = (Vcb->Fat1StartSector) * fh->SectorSize;
+
+	KdPrint(("FSFAT: Reading fat, offset=%08x [F1=%08x, SS=%08x]\n", Offset.LowPart,
+		Vcb->Fat1StartSector, fh->SectorSize));
 
 	Vcb->Fat = Vcb->FirstFat = (PUCHAR) ExAllocateHeap (TRUE, fh->FatSectors * fh->SectorSize);
 
@@ -532,7 +537,7 @@ FsFatCreate(
 	Handle the create operation.
 --*/
 {
-	STATUS Status = STATUS_INVALID_FUNCTION;
+	STATUS Status = STATUS_INTERNAL_FAULT;
 
 	if (DeviceObject == FsDeviceObject)
 	{
@@ -643,7 +648,7 @@ FsFatClose(
 	Handle the close operation.
 --*/
 {
-	STATUS Status = STATUS_INVALID_FUNCTION;
+	STATUS Status = STATUS_INTERNAL_FAULT;
 
 	if (DeviceObject == FsDeviceObject)
 	{
@@ -759,6 +764,9 @@ FsFatReadFatEntry(
 
 			Cluster = (*(USHORT*)&Fat[nByte]) >> 4;
 		}
+
+	//	KdPrint(("nByte=%08x, FAT=%08x, short=%08x, Cluster=%08x\n", nByte, Fat, *(USHORT*)&Fat[nByte], Cluster));
+
 		break;
 
 	case 16:
@@ -773,6 +781,38 @@ FsFatReadFatEntry(
 	return Cluster;
 }
 
+struct FSFAT_CLUSTERS {
+	ULONG Mask;
+	ULONG ReservedStart;
+	ULONG ReservedEnd;
+	ULONG BadCluster;
+	ULONG LastClusterStart;
+};
+
+FSFAT_CLUSTERS FsFatClusters[] = {
+	{ 0xFFF, 0xFF0, 0xFF6, 0xFF7, 0xFF8 },
+	{ 0xFFFF, 0xFFFF0, 0xFFFF6, 0xFFFF7, 0xFFFF8 },
+	{ 0x0FFFFFFF, 0x0FFFFFFF0, 0x0FFFFFFF6, 0x0FFFFFFF7, 0x0FFFFFFF8 }
+};
+
+FSFAT_CLUSTERS* FsFatGetClTable(UCHAR Size)
+{
+	switch (Size)
+	{
+	case 12:
+		return &FsFatClusters[0];
+	case 16:
+		return &FsFatClusters[1];
+	case 32:
+		return &FsFatClusters[2];
+	}
+
+	return NULL;
+}
+
+#define CLUSTER(x) ((x) & FsFatGetClTable(Vcb->FatType)->Mask)
+#define FATTBL(x) (FsFatGetClTable(Vcb->FatType)->x)
+
 ULONG
 FsFatFileClusterByPos (
 	PFSFATVCB Vcb,
@@ -783,17 +823,40 @@ FsFatFileClusterByPos (
 	ULONG i=0;
 	ULONG Cluster;
 
+	ChainHead = CLUSTER(ChainHead);
+
 	for (Cluster = (ChainHead); 
-		 Cluster < 0xFF8 && i < Pos;
+		 i < Pos;
 		 i++)
 	{
 		Cluster = FsFatReadFatEntry(Vcb, Cluster);
+
+//		KdPrint(("FSFAT: Got %8x cluster (#%d) from cluster chain head %08x\n", (Cluster), i, ChainHead));
+
+		if ((Cluster) >= FATTBL(LastClusterStart))
+		{
+			Cluster = -1;
+			break;
+		}
+
+		if ((Cluster) >= FATTBL(ReservedStart)
+			&& (Cluster) <= FATTBL(ReservedEnd))
+		{
+			// Reserved sector
+			KdPrint(("FSFAT: Warn: Resevred cluster %8x found in file, cluster chain head %08x\n", (Cluster), ChainHead));
+			Cluster = -3;
+			break;
+		}
+
+		if (Cluster == FATTBL(BadCluster))
+		{
+			KdPrint(("FSFAT: Warn: Bad cluster %08x found in cluster chain %08x, file will be unreadable\n", Cluster, ChainHead));
+			Cluster = -2;
+			break;
+		}
 	}
 
-	if (i == Pos)
-		return Cluster;
-
-	return 0;
+	return Cluster;
 }
 
 STATUS
@@ -845,6 +908,12 @@ FsFatSEHandler(
 				);
 }
 
+#if FSFAT_TRACE_READING
+#define FrPrint(x) KiDebugPrint x
+#else
+#define FrPrint(x)
+#endif
+
 STATUS
 KEAPI
 FsFatRead(
@@ -855,7 +924,7 @@ FsFatRead(
 	Handle the read operation.
 --*/
 {
-	STATUS Status = STATUS_INVALID_FUNCTION;
+	STATUS Status = STATUS_INTERNAL_FAULT;
 	ULONG Read = 0;
 
 	if (DeviceObject == FsDeviceObject)
@@ -870,7 +939,7 @@ FsFatRead(
 	{
 		PDEVICE RealDevice = DeviceObject->Vpb->PhysicalDeviceObject;
 
-		KdPrint(("FSFAT read req: %S\n", Irp->FileObject->RelativeFileName.Buffer));
+//		KdPrint(("FSFAT read req: %S\n", Irp->FileObject->RelativeFileName.Buffer));
 
 		if (Irp->FileObject->RelativeFileName.Length == 0)
 		{
@@ -902,30 +971,87 @@ FsFatRead(
 
 			ULONG Length = Irp->BufferLength;
 			ULONG FilePos = Irp->CurrentStackLocation->Parameters.ReadWrite.Offset.LowPart;
-			if (Irp->BufferLength + FilePos > Fcb->DirEnt->FileSize)
+			if (Irp->BufferLength + FilePos >= Fcb->DirEnt->FileSize)
 			{
 				Length = Fcb->DirEnt->FileSize - FilePos;
 			}
 
 			ULONG AlignedPos = ALIGN_DOWN(FilePos, Vcb->ClusterSize) / Vcb->ClusterSize;
-			ULONG AlignedSize = ALIGN_UP(Length, Vcb->ClusterSize) / Vcb->ClusterSize;
+			ULONG AlignedSize = ALIGN_UP (FilePos+Length, Vcb->ClusterSize)/Vcb->ClusterSize - AlignedPos + 1;
+
+			if ( (AlignedSize + AlignedPos)*Vcb->ClusterSize >= ALIGN_UP(Fcb->DirEnt->FileSize,Vcb->ClusterSize) )
+			{
+				AlignedSize --;
+			}
 
 			PVOID InternalBuffer = ExAllocateHeap (TRUE, AlignedSize*Vcb->ClusterSize);
 			PUCHAR iBufferPos = (PUCHAR)InternalBuffer;
 
+			FrPrint(("Pos=%08x, Len=%08x, AlignedPos = %08x, AlignedSize = %08x\n", FilePos, Length, AlignedPos, AlignedSize));
+
+			if( AlignedSize == 0 )
+				Status = STATUS_SUCCESS;
+
 			for (ULONG i=AlignedPos; i<AlignedPos+AlignedSize; i++)
 			{
-				STATUS Status;
-
 				ULONG Cluster = FsFatFileClusterByPos (Vcb,
 					Fcb->DirEnt->StartCluster | (Fcb->DirEnt->StartClusterHigh<<16),
 					i
 					);
 
+				if (Cluster == -1)
+				{
+					//
+					// Reading truncated because the end-of-file occurred.
+					//
+					KdPrint(("FSFAT: End-of-file occurred, read truncated\n"));
+
+					//
+					// This is the internal fault
+					//
+
+					Status = STATUS_INTERNAL_FAULT;
+					ExFreeHeap (InternalBuffer);
+					goto finally;
+				}
+				else if (Cluster == -2)
+				{
+					//
+					// Bad cluster found.
+					//
+
+					KdPrint(("FSFAT: Bad cluster #%d in file\n", i));
+					Status = STATUS_PARTIAL_COMPLETION;
+					ExFreeHeap (InternalBuffer);
+					goto finally;
+				}
+				else if (Cluster == -3)
+				{
+					//
+					// Reserved cluster found.
+					//
+
+					KdPrint(("FSFAT: Reserved cluster #%d in file\n", i));
+					Status = STATUS_PARTIAL_COMPLETION;
+					ExFreeHeap (InternalBuffer);
+					goto finally;
+				}
+
+				FrPrint(("FSFAT: Reading cluster #%d: %08x (offset %08x)\n", i, Cluster, i*Vcb->ClusterSize));
+
+				if (Cluster < 2)
+				{
+					KdPrint(("FSFAT: Internal check failed (Cluster<2)\n"));
+					Status = STATUS_INVALID_PARAMETER;
+					ExFreeHeap (InternalBuffer);
+					goto finally;
+				}
+
 				Status = FsFatReadCluster (Vcb, Cluster, iBufferPos);
 
 				if (!SUCCESS(Status))
 				{
+					KdPrint(("FSFAT: Reading cluster %08x failed with status %08x\n", Cluster, Status));
 					ExFreeHeap (InternalBuffer);
 					goto finally;
 				}
