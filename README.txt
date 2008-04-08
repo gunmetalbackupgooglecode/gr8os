@@ -1,4 +1,30 @@
-Source files layout:
+*************   To build your own image  ************* 
+
+   1. Build the loader if you have modified it. To do this, built sequentially 
+      bootcode.asm and then grldr.asm
+   2. Build the kernel. To do this, build the project kernel\kernel.vcproj
+   3. Make bootable image with script makeimage.cmd
+   4. Enjoy the image located at image\floppy.ima  ;)
+
+
+
+************       To run GR8OS          **************
+
+   1. Set image\floppy.ima as the floppy image for the virtual machine
+   2. Boot the virtual machine from floppy
+   3. Enjoy =)
+
+  I.e., for QEMU:
+    qemu.exe -L . -m 128 -fda D:/soft/gr8os/image/floppy.ima -localtime -M pc
+
+  Optionally you can add -s option to QEMU to activate gdbserver.
+
+
+  NB:  Now this image works on QEMU, Bochs and VMware Workstation.
+
+
+
+************   Source files layout:      **************
 
 	\image
 		this directory will be created during build and the appropriate
@@ -109,7 +135,8 @@ Source files layout:
 			Hardware interrupts handling
 
 		kernel.inc
-			Some mini-kernel routines, that are not used for a long time.. This file will be deleted in later versions
+			Some mini-kernel routines, that are not used for a long 
+                        time.. This file will be deleted in later versions
 
 		krnldbg.inc
 			Debug output
@@ -158,14 +185,6 @@ Source files layout:
 		This file
 
 
-
-
-*************   To build your own image  ************* 
-
-   1. Build the loader if you have modified it. To do this, built sequentially bootcode.asm and then grldr.asm
-   2. Build the kernel. To do this, build the project kernel\kernel.vcproj
-   3. Make bootable image with script makeimage.cmd
-   4. Enjoy the image located at image\floppy.ima  ;)
 
 
 
