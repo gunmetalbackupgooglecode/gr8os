@@ -1,3 +1,5 @@
+// begin_ddk
+
 #ifndef _GR8OS_
 #define _GR8OS_
 
@@ -53,6 +55,8 @@ typedef ULONG STATUS, *PSTATUS;
 #define STATUS_NOT_SUPPORTED				((STATUS) 0xF000000F)
 #define STATUS_DATATYPE_MISALIGNMENT		((STATUS) 0xF0000010)
 #define STATUS_BUSY							((STATUS) 0xF0000011)
+#define STATUS_INVALID_FILE_FOR_IMAGE		((STATUS) 0xF0000012)
+#define STATUS_PRIVILEGE_NOT_HELD			((STATUS) 0xF0000013)
 
 //
 // Warning codes
@@ -139,6 +143,8 @@ typedef struct COUNTED_BUFFER<PCHAR> ANSI_STRING, *PANSI_STRING;
 
 #define STATIC_ASSERT(x)  extern char __dummy[(x)?1:-1];
 
+// end_ddk
+
 #define KGDT_R0_CODE 0x08
 #define KGDT_R0_DATA 0x10
 #define KGDT_VIDEO   0x18
@@ -163,6 +169,8 @@ FAR_POINTER<T> __inline RtlMakeFarPointer(USHORT Segment, T* Offset)
 #pragma pack()
 */
 
+// begin_ddk
+
 LARGE_INTEGER __inline RtlMakeLargeInteger(ULONG Low, ULONG High)
 {
 	LARGE_INTEGER ret = { Low, High };
@@ -170,6 +178,8 @@ LARGE_INTEGER __inline RtlMakeLargeInteger(ULONG Low, ULONG High)
 }
 
 #define bzero(x,y) memset(x,0,y)
+
+// end_ddk
 
 //
 // Configuration
@@ -188,7 +198,7 @@ LARGE_INTEGER __inline RtlMakeLargeInteger(ULONG Low, ULONG High)
 #define KD_TRACE_LOW_LEVEL_IO	0
 
 // Dump packets
-#define TRACE_PACKETS			1
+#define TRACE_PACKETS			0
 
 // Dump head allocation/freeing atttempts
 #define EX_TRACE_HEAP			0
@@ -203,11 +213,19 @@ LARGE_INTEGER __inline RtlMakeLargeInteger(ULONG Low, ULONG High)
 #define EX_TRACE_MUTEXES		0
 
 // Trace operations with memory descriptors
-#define MM_TRACE_MMDS			1
+#define MM_TRACE_MMDS			0
 
 // Trace exception unwind
-#define KI_TRACE_EXCEPTION_UNWIND 0
+#define KI_TRACE_EXCEPTION_UNWIND	0
 
+// Trace PE loading
+#define LDR_TRACE_MODULE_LOADING	0
+
+// Trace FS FAT reading
+#define FSFAT_TRACE_READING			0
+
+
+// begin_ddk
 
 extern "C"
 {
@@ -225,13 +243,18 @@ extern "C"
 #include "cc.h"
 #include "io.h"
 
+// end_ddk
+
 // Built-in driver includes
 #include "builtin/floppy/floppy.h"
 #include "builtin/fsfat/fsfat.h"
 
+// begin_ddk
 }
 
 #define KdPrint(x) KiDebugPrint x
 
 
 #endif
+
+// end_ddk

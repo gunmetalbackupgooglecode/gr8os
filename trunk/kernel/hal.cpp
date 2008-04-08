@@ -797,6 +797,15 @@ Return Value:
 
 	DmaReq->MappedPhysical = MmMapPhysicalPages (DmaReq->PageUsed << PAGE_SHIFT, DmaReq->PageCount);
 
+	if (DmaReq->MappedPhysical == NULL)
+	{
+		KdPrint(("HAL: Cannot map physical pages from low meg\n"));
+		HalFreePhysicalLowMegPages (DmaReq->PageUsed, DmaReq->PageCount);
+		ExFreeHeap (DmaReq);
+		HalFreeDma (Channel);
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
 	if (!DmaReq->ReadOperation)
 	{
 		//
@@ -846,6 +855,9 @@ HalCompleteDmaRequest(
 {
 	if (DmaReq->ReadOperation)
 	{
+		ASSERT (DmaReq->MappedPhysical);
+		ASSERT (DmaReq->Buffer);
+
 		memcpy (DmaReq->Buffer, DmaReq->MappedPhysical, DmaReq->BufferSize);
 	}
 
@@ -869,4 +881,18 @@ HalCmosRead(
 {
 	KiOutPort (CMOS_SELECTOR, Offset);
 	return KiInPort (CMOS_DATA);
+}
+
+
+KENORETURN
+KESYSAPI
+VOID
+KEAPI
+HalRebootMachine(
+	)
+/*++
+	Reboots the machine
+--*/
+{
+	KiOutPort (KEYB_CONTROLLER, KEYB_REBOOT);
 }

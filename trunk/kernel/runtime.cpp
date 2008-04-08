@@ -733,11 +733,30 @@ int KEAPI vsprintf(char *buf, const char *fmt, va_list args)
 	return _vsnprintf(buf,MAXLONG,fmt,args);
 }
 
-char* strncpy(char* to, const char* from, int count)
+KESYSAPI
+char*
+KEAPI
+strncpy(
+	char* to,
+	const char* from, 
+	int count
+	)
 {
 	for (int i=0;i<count && (to[i] = from[i]);i++);
 	return to;
 }
+
+KESYSAPI
+char*
+KEAPI
+strcpy(
+	char *s1,
+	char *s2
+	)
+{
+	return strncpy (s1, s2, strlen(s2));
+}
+
 
 KESYSAPI
 INT
@@ -802,6 +821,29 @@ wcstomb(
 }
 
 KESYSAPI
+ULONG
+KEAPI
+mbstowcs(
+	WCHAR *wcs,
+	char *mbs,
+	ULONG count
+	)
+{
+	if (count == -1)
+		count = strlen(mbs);
+
+	ULONG i=0;
+
+	for (; i<count; i++)
+	{
+		wcs[i] = (WCHAR) mbs[i];
+	}
+
+	wcs[i] = 0;
+	return i;
+}
+
+KESYSAPI
 INT 
 KEAPI
 strncmp(
@@ -822,6 +864,72 @@ strncmp(
 }
 
 KESYSAPI
+INT 
+KEAPI
+strcmp(
+	char *s1,
+	char *s2
+	)
+{
+	int l1 = strlen(s1);
+	int l2 = strlen(s2);
+
+	if( l1 != l2 )
+		return l2-l1;
+
+	return strncmp (s1, s2, l1);
+}
+
+
+KESYSAPI
+INT 
+KEAPI
+strnicmp(
+	char *s1,
+	char *s2,
+	ULONG count
+	)
+{
+	for (ULONG i=0; i<count; i++)
+	{
+		char diff = UPCASE(s1[i]) - UPCASE(s2[i]);
+
+		if (diff)
+			return diff;
+	}
+
+	return 0;
+}
+
+KESYSAPI
+INT 
+KEAPI
+stricmp(
+	char *s1,
+	char *s2
+	)
+{
+	int l1 = strlen(s1);
+	int l2 = strlen(s2);
+
+	if( l1 != l2 )
+		return l2-l1;
+
+	return strnicmp (s1, s2, l1);
+}
+
+KESYSAPI
+char* 
+KEAPI
+strcat(
+	char *s1,
+	char *s2
+	)
+{
+	return strcpy (s1 + strlen(s1), s2);
+}
+
+KESYSAPI
 INT
 KEAPI
 wcscmp(
@@ -838,6 +946,31 @@ wcscmp(
 	for (int i=0; i<l1;i++)
 	{
 		WCHAR diff = wstr[i] - wstr2[i];
+
+		if (diff)
+			return diff;
+	}
+
+	return 0;
+}
+
+KESYSAPI
+INT
+KEAPI
+wcsicmp(
+	PWSTR wstr,
+	PWSTR wstr2
+	)
+{
+	int l1 = wcslen(wstr);
+	int l2 = wcslen(wstr2);
+
+	if (l1!=l2)
+		return -1;
+
+	for (int i=0; i<l1;i++)
+	{
+		WCHAR diff = UPCASEW(wstr[i]) - UPCASEW(wstr2[i]);
 
 		if (diff)
 			return diff;

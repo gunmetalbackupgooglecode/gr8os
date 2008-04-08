@@ -1,4 +1,6 @@
+// begin_ddk
 #pragma once
+// end_ddk
 
 BOOLEAN
 KEAPI
@@ -12,6 +14,8 @@ HalpInitializeComPort(
 	IN UCHAR Port,
 	IN ULONG Frequency
 	);
+
+// begin_ddk
 
 KESYSAPI
 STATUS
@@ -249,10 +253,14 @@ HalQueryTimerCounter(
 
 #define TIMER_FREQ  1193180
 
+// end_ddk
+
 VOID
 KEAPI
 HalInitSystem(
 	);
+
+// begin_ddk
 
 KESYSAPI
 VOID
@@ -301,8 +309,6 @@ HalReadConfigTimer(
 #define DMA_ADDR_6              0xC8
 #define DMA_ADDR_7              0xCC
 
-extern USHORT HalpDmaAddr[MAX_DMA_CHANNELS];
-
 #define DMA_CNT_0               0x01    /* DMA count registers */
 #define DMA_CNT_1               0x03
 #define DMA_CNT_2               0x05
@@ -312,8 +318,6 @@ extern USHORT HalpDmaAddr[MAX_DMA_CHANNELS];
 #define DMA_CNT_6               0xCA
 #define DMA_CNT_7               0xCE
 
-extern USHORT HalpDmaCnt[MAX_DMA_CHANNELS];
-
 #define DMA_PAGE_0              0x87    /* DMA page registers */
 #define DMA_PAGE_1              0x83
 #define DMA_PAGE_2              0x81
@@ -322,14 +326,17 @@ extern USHORT HalpDmaCnt[MAX_DMA_CHANNELS];
 #define DMA_PAGE_6              0x89
 #define DMA_PAGE_7              0x8A
 
-extern USHORT HalpDmaPage[MAX_DMA_CHANNELS];
-
 #define DMA_MODE_READ	0x44	/* I/O to memory, no autoinit, increment, single mode */
 #define DMA_MODE_WRITE	0x48	/* memory to I/O, no autoinit, increment, single mode */
 #define DMA_MODE_CASCADE 0xC0   /* pass thru DREQ->HRQ, DACK<-HLDA only */
 
 
+// end_ddk
+extern USHORT HalpDmaAddr[MAX_DMA_CHANNELS];
+extern USHORT HalpDmaCnt[MAX_DMA_CHANNELS];
+extern USHORT HalpDmaPage[MAX_DMA_CHANNELS];
 extern LONG HalpDmaChannelBusy[MAX_DMA_CHANNELS];
+// begin_ddk
 
 KESYSAPI
 STATUS
@@ -348,9 +355,12 @@ HalFreeDma(
 #define _1Meg 1048576
 #define _1MegPages 256
 
-extern ULONG HalpLowMegBusyForDma[];
+// end_ddk
 
+extern ULONG HalpLowMegBusyForDma[];
 extern MUTEX HalpLowMegDbLock;
+
+// begin_ddk
 
 typedef struct DMA_REQUEST
 {
@@ -438,3 +448,15 @@ HalCmosRead(
 
 #define CMOS_SELECTOR	0x70
 #define CMOS_DATA		0x71
+
+#define KEYB_CONTROLLER	0x64
+#define KEYB_REBOOT		0xFE
+
+KENORETURN
+KESYSAPI
+VOID
+KEAPI
+HalRebootMachine(
+	);
+
+// end_ddk

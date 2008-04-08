@@ -1,3 +1,5 @@
+// begin_ddk
+
 #pragma once
 
 //
@@ -140,6 +142,8 @@ typedef struct TSS32
 } *PTSS32;
 
 #pragma pack()
+
+// end_ddk
 
 typedef struct _LOADER_ARGUMENTS {
 	ULONG PhysicalMemoryPages;

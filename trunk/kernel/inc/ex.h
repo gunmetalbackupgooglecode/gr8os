@@ -1,4 +1,6 @@
+// begin_ddk
 #pragma once
+// end_ddk
 
 #define HEAP_BLOCK_FREE	1
 #define HEAP_BLOCK_ALLOCATED 2
@@ -108,18 +110,20 @@ ExpFindIdealBlock(
 	ULONG Size
 	);
 
+VOID
+KEAPI
+ExpFreeHeapBlock(
+	PEHEAP_BLOCK Block
+	);
+
+// begin_ddk
+
 KESYSAPI
 PVOID
 KEAPI
 ExAllocateHeap(
 	BOOLEAN Paged,
 	ULONG Size
-	);
-
-VOID
-KEAPI
-ExpFreeHeapBlock(
-	PEHEAP_BLOCK Block
 	);
 
 KESYSAPI
@@ -152,6 +156,8 @@ ExUnlockHeapBlock(
 	PVOID Ptr
 	);
 
+// end_ddk
+
 VOID
 KEAPI
 ExpDumpHeap(
@@ -177,6 +183,8 @@ typedef struct EHEAP_GUARD_TABLE
 
 #define EX_GUARD_TABLE_INITIAL_SIZE		128
 
+// begin_ddk
+
 KESYSAPI
 VOID
 KEAPI
@@ -188,6 +196,8 @@ VOID
 KEAPI
 ExLeaveHeapGuardedRegion(
 	);
+
+// end_ddk
 
 VOID
 KEAPI
@@ -214,6 +224,8 @@ KEAPI
 ExInitSystem(
 	);
 
+// begin_ddk
+
 typedef struct MUTEX
 {
 	SCHEDULER_HEADER Header;
@@ -239,3 +251,5 @@ KEAPI
 ExReleaseMutex(
 	PMUTEX Mutex
 	);
+
+// end_ddk

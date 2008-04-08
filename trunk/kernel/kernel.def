@@ -37,6 +37,7 @@ EXPORTS
 	HalClearDmaFf
 	HalSetDmaMode
 	HalCmosRead
+	HalRebootMachine
 	
 	;
 	; DBGKD
@@ -82,6 +83,11 @@ EXPORTS
 	KiDebugPrintRaw
 	KiFillDataSegment
 	KiInitSystem
+	InterlockedExchange
+	InterlockedExchangeAdd
+	InterlockedIncrement
+	InterlockedDecrement
+	InterlockedCompareExchange
 	
 	;
 	; Io
@@ -144,6 +150,15 @@ EXPORTS
 	ObLockObject
 	ObUnlockObject
 	
+	ObDirectoryObjectType
+	IoDeviceObjectType
+	IoDriverObjectType
+	MmExtenderObjectType
+	ObSymbolicLinkObjectType
+	IoVpbObjectType
+	
+	ObRootObjectDirectory
+	
 	;
 	; Mm
 	;
@@ -205,5 +220,12 @@ EXPORTS
 	wcscat
 	wcscpy
 	wcstomb
-	
+	wcsicmp
+	mbstowcs
+	strcat
+	strcmp
+	strcpy
+	stricmp
+	strncpy
+	strnicmp
 	

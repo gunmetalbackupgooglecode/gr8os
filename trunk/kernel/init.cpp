@@ -156,7 +156,7 @@ KiDemoThread(
 		KeBugCheck (KE_INITIALIZATION_FAILED, Status, __LINE__, 0, 0);
 	}
 
-	PVOID Mapped = MmMapLockedPages(Mmd, KernelMode);
+	PVOID Mapped = MmMapLockedPages(Mmd, KernelMode, FALSE);
 	strncpy ((char*)Mapped, "1234", 5);
 
 	KdPrint(("Allocated MMD at %08x [fl=%08x]\n", Mmd, Mmd->Flags));
@@ -288,6 +288,27 @@ KiDemoThread(
 		KiDebugPrint("Last finally block\n");
 	}
 
+	ObpDumpDirectory (ObRootObjectDirectory,0);
+
+
+	UNICODE_STRING DriverName, ImagePath;
+	PVOID ImageBase = 0;
+	PDRIVER DriverObject = 0;
+
+	RtlInitUnicodeString( &ImagePath, L"\\SystemRoot\\hdd.sys" );
+	RtlInitUnicodeString( &DriverName, L"\\Driver\\hdd" );
+
+	Status = MmLoadSystemImage (
+		&ImagePath,
+		&DriverName,
+		DriverMode,
+		FALSE,
+		&ImageBase,
+		(PVOID*) &DriverObject
+		);
+
+	KdPrint(("MmLoadSystemImage: Mapped at %08x, DrvObj %08x, Status %08x\n", ImageBase, DriverObject, Status));
+
 	// Fall through counter thread code.
 	PsCounterThread( (PVOID)( 80*5 + 35 ) );
 }
@@ -347,6 +368,10 @@ KiInitSystem(
 
 	KiDebugPrint( "KERNEL: Got execution. Starting with %d megabytes of RAM on board\n", LdrArgs->PhysicalMemoryPages / 256);
 	KiDebugPrintRaw( "INIT: Initializing kernel\n" );
+
+	//
+	// Phase0: Low-level initialization
+	//
 
 	// Initialize executive
 	ExInitSystem( );
@@ -458,9 +483,10 @@ KiInitSystem(
 
 	KiDebugPrintRaw("INIT: Starting initialization phase 1\n");
 
-//	KiDebugPrint("Stalling execution...\n");
-//	KiStallExecutionMilliseconds (3);
-//	KiDebugPrint("OK\n");
+
+	//
+	// Phase 1: Initializing high-level subsystems
+	//
 
 
 	// Initialize memory management
@@ -475,18 +501,33 @@ KiInitSystem(
 	IoInitSystem( );
 	KiDebugPrintRaw( "IO: Passed initialization\n" );
 
-	KiDebugPrintRaw( "INIT: Initialization phase 1 completed\n"  );
+	KiDebugPrintRaw( "INIT: Initialization phase 1 completed, Starting initialization phase 2\n"  );
 
-	ObpDumpDirectory (ObRootObjectDirectory,0);
 
+	//
+	// Phase 2: Finalizing high-level initialization
+	//
+
+	KiInitializationPhase = 2;
+
+	MmInitSystem( );
+	KiDebugPrintRaw( "MM: Finalized initialization\n" );
+
+
+	KiDebugPrintRaw( "INIT: Initialization phase 2 completed. Initialization completed.\n"  );
+
+
+	//
+	// Start demo threads
+	//
 
 	// Create two additional threads
 	KeInitializeEvent (&ev, SynchronizationEvent, 0);
 
 	KiDebugPrint ("PS: ZeroPageThread=%08x, Thread1=%08x, Thread2=%08x, Thread3=%08x\n", &SystemThread, &Thread1, &Thread2, &Thread3);
 
-	PspCreateThread( &Thread1, &InitialSystemProcess, PsCounterThread, (PVOID)( 80*3 + 40 ) );
-	PspCreateThread( &Thread2, &InitialSystemProcess, PsCounterThread, (PVOID)( 80*4 + 45 ) );
+//	PspCreateThread( &Thread1, &InitialSystemProcess, PsCounterThread, (PVOID)( 80*3 + 40 ) );
+//	PspCreateThread( &Thread2, &InitialSystemProcess, PsCounterThread, (PVOID)( 80*4 + 45 ) );
 	PspCreateThread( &Thread3, &InitialSystemProcess, KiDemoThread, NULL );
 
 	KiDebugPrintRaw( "INIT: Initialization completed.\n\n" );

@@ -40,6 +40,22 @@ InterlockedIncrement:
 	inc  eax
 	lock xadd [ecx], eax
 	retn
+	
+
+public InterlockedExchangeAdd as '@InterlockedExchangeAdd@8'
+;
+;KESYSAPI
+;LONG
+;KEFASTAPI
+;InterlockedExchangeAdd(
+;	PLONG Variable,			@ECX
+;	LONG Increment			@EDX
+;	);
+;
+InterlockedExchangeAdd:
+	lock xadd [ecx], edx
+	mov  eax, edx
+	retn
 
 
 public InterlockedExchange as '@InterlockedExchange@8'
