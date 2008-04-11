@@ -1417,9 +1417,9 @@ MmMapLockedPages(
 				ExReleaseMutex (&MmPageDatabaseLock);
 
 				Mmd->Flags |= MDL_MAPPED;
-				Mmd->MappedVirtual = (PVOID) StartVirtual;
+				Mmd->MappedVirtual = (PVOID) Virtual;
 
-				return (PVOID)( StartVirtual + Mmd->Offset );
+				return (PVOID)( Virtual + Mmd->Offset );
 			}
 		}
 	}
@@ -2039,7 +2039,7 @@ MiCreateExtenderObject(
 		else
 		{
 			//
-			// TODO: Insert EXTENDER object to the list MmExtenderListHead
+			// Insert EXTENDER object to the list MmExtenderListHead
 			// Insert each callback to the appropriate global list.
 			//
 

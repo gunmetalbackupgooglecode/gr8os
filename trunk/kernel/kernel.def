@@ -60,6 +60,10 @@ EXPORTS
 	
 	KiInPort
 	KiOutPort
+	KiInPortW
+	KiOutPortW
+	KiInPortD
+	KiOutPortD
 	KeAllocateGdtDescriptor
 	KeAssertionFailed
 	KeBugCheck

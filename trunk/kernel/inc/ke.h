@@ -454,6 +454,36 @@ KiInPort(
 	);
 
 KESYSAPI
+VOID
+KEFASTAPI
+KiOutPortW(
+	USHORT PortNumber,
+	USHORT  Value
+	);
+
+KESYSAPI
+USHORT
+KEFASTAPI
+KiInPortW(
+	USHORT PortNumber
+	);
+
+KESYSAPI
+VOID
+KEFASTAPI
+KiOutPortD(
+	USHORT PortNumber,
+	ULONG  Value
+	);
+
+KESYSAPI
+ULONG
+KEFASTAPI
+KiInPortD(
+	USHORT PortNumber
+	);
+
+KESYSAPI
 PDPC_QUEUE
 KEAPI
 KeInsertQueueDpc(
