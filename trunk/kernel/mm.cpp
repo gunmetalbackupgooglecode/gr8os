@@ -387,8 +387,7 @@ MmIsAddressValidEx(
 }
 
 
-LIST_ENTRY PsLoadedModuleList;
-MUTEX PsLoadedModuleListLock;
+LOCKED_LIST PsLoadedModuleList;
 
 LDR_MODULE MiKernelModule;
 
@@ -425,13 +424,12 @@ MmInitSystemPhase1(
 	// Initialize our module
 	//
 
-	InitializeListHead (&PsLoadedModuleList);
-	ExInitializeMutex (&PsLoadedModuleListLock);
+	InitializeLockedList (&PsLoadedModuleList);
 
 	MiKernelModule.Base = (PVOID) MM_KERNEL_START;
 	RtlInitUnicodeString (&MiKernelModule.ModuleName, L"kernel.exe");
 
-	InterlockedOp (&PsLoadedModuleListLock, InsertTailList (&PsLoadedModuleList, &MiKernelModule.ListEntry));
+	InterlockedInsertTailList (&PsLoadedModuleList, &MiKernelModule.ListEntry);
 
 	PIMAGE_DOS_HEADER KrnlDosHdr = (PIMAGE_DOS_HEADER) MM_KERNEL_START;
 	PIMAGE_NT_HEADERS KrnlNtHdrs = (PIMAGE_NT_HEADERS) ((ULONG)MM_KERNEL_START + KrnlDosHdr->e_lfanew);
@@ -651,6 +649,8 @@ MmInitSystemPhase2(
 					0,
 					0);
 	}
+
+	ExInitializeMutex (&MmExtenderList.Lock);
 }
 
 
@@ -1258,7 +1258,7 @@ MiAddPageToWorkingSet(
 			sizeof(MMWORKING_SET_ENTRY)*(WorkingSet->TotalPageCount)
 			);
 
-		if (WorkingSet == NULL)
+		if (WorkingSet->WsPages == NULL)
 		{
 			return -1;
 		}
@@ -1636,7 +1636,7 @@ LdrAddModuleToLoadedList(
 	Module->Size = ImageSize;
 	RtlDuplicateUnicodeString( ModuleName, &Module->ModuleName );
 
-	InterlockedOp (&PsLoadedModuleListLock, InsertTailList (&PsLoadedModuleList, &Module->ListEntry));
+	InterlockedInsertTailList (&PsLoadedModuleList, &Module->ListEntry);
 }
 
 STATUS
@@ -1651,10 +1651,10 @@ LdrLookupModule(
 	On success, pointer to LDR_MODULE is returned.
 --*/
 {
-	ExAcquireMutex (&PsLoadedModuleListLock);
+	ExAcquireMutex (&PsLoadedModuleList.Lock);
 
 	PLDR_MODULE Ret = NULL;
-	PLDR_MODULE Module = CONTAINING_RECORD (PsLoadedModuleList.Flink, LDR_MODULE, ListEntry);
+	PLDR_MODULE Module = CONTAINING_RECORD (PsLoadedModuleList.ListEntry.Flink, LDR_MODULE, ListEntry);
 	STATUS Status = STATUS_NOT_FOUND;
 
 	while (Module != CONTAINING_RECORD (&PsLoadedModuleList, LDR_MODULE, ListEntry))
@@ -1669,7 +1669,7 @@ LdrLookupModule(
 		Module = CONTAINING_RECORD (Module->ListEntry.Flink, LDR_MODULE, ListEntry);
 	}
 
-	ExReleaseMutex (&PsLoadedModuleListLock);
+	ExReleaseMutex (&PsLoadedModuleList.Lock);
 
 	*pModule = Ret;
 	return Status;
@@ -1998,6 +1998,7 @@ LdrRelocateImage(
 
 MMSYSTEM_MODE MmSystemMode = NormalMode;
 
+LOCKED_LIST MmExtenderList;
 
 STATUS
 KEAPI
@@ -2042,8 +2043,32 @@ MiCreateExtenderObject(
 			// Insert each callback to the appropriate global list.
 			//
 
-			//todo;
-			KeBugCheck (MEMORY_MANAGEMENT, __LINE__, 0, 0, 0);
+			InterlockedInsertTailList( &MmExtenderList, &Extender->ExtenderListEntry );
+
+			if (Extender->CreateThread)
+			{
+				InterlockedInsertHeadList (&PsCreateThreadCallbackList, &Extender->CreateThread->InternalListEntry);
+			}
+
+			if (Extender->TerminateThread)
+			{
+				InterlockedInsertHeadList (&PsTerminateThreadCallbackList, &Extender->TerminateThread->InternalListEntry);
+			}
+
+			if (Extender->CreateProcess)
+			{
+				InterlockedInsertHeadList (&PsCreateProcessCallbackList, &Extender->CreateProcess->InternalListEntry);
+			}
+
+			if (Extender->TerminateProcess)
+			{
+				InterlockedInsertHeadList (&PsTerminateProcessCallbackList, &Extender->TerminateProcess->InternalListEntry);
+			}
+
+			if (Extender->BugcheckDispatcher)
+			{
+				InterlockedInsertHeadList (&KeBugcheckDispatcherCallbackList, &Extender->BugcheckDispatcher->InternalListEntry);
+			}
 		}
 	}
 
@@ -2160,7 +2185,8 @@ MmLoadSystemImage(
 
 		LdrPrint (("LDR: Mapping pages\n"));
 
-		Image = MmMapLockedPages (Mmd, TargetMode, TRUE, TRUE);
+		// BUGBUG: Last parameter should be TRUE (add to working set)
+		Image = MmMapLockedPages (Mmd, TargetMode, TRUE, FALSE);
 		if (Image == NULL)
 			RETURN ( STATUS_INSUFFICIENT_RESOURCES );
 

@@ -619,6 +619,7 @@ extern PVOID MmAcpiInfo;
 typedef struct THREAD *PTHREAD;
 typedef struct PROCESS *PPROCESS;
 
+/*
 typedef
 VOID
 (KEAPI
@@ -626,12 +627,15 @@ VOID
 	IN PTHREAD PrevThread,
 	IN PTHREAD NextThread
 	);
+*/
 
 typedef
 VOID
 (KEAPI
  *PEXT_CREATE_THREAD_CALLBACK)(
-	IN PTHREAD ThreadBeingCreated
+	IN PTHREAD ThreadBeingCreated,
+	IN PVOID StartRoutine,
+	IN PVOID StartContext
 	);
 
 typedef
@@ -660,13 +664,14 @@ typedef
 VOID
 (KEAPI
  *PEXT_BUGCHECK_CALLBACK)(
-	IN ULONG BugCheckCode,
+	IN ULONG StopCode,
 	IN ULONG Parameter1,
 	IN ULONG Parameter2,
 	IN ULONG Parameter3,
 	IN ULONG Parameter4
 	);
 
+/*
 typedef
 VOID
 (KEAPI
@@ -676,6 +681,7 @@ VOID
 	IN PCONTEXT_FRAME CallerContext,
 	IN PVOID Reserved
 	);
+*/
 
 typedef struct DRIVER *PDRIVER;
 typedef struct OBJECT_TYPE *POBJECT_TYPE;
@@ -698,20 +704,17 @@ typedef struct EXTENDER
 
 	LIST_ENTRY ExtenderListEntry;
 
-	PEXCALLBACK SwapThread;
 	PEXCALLBACK CreateThread;
 	PEXCALLBACK TerminateThread;
 	PEXCALLBACK CreateProcess;
 	PEXCALLBACK TerminateProcess;
 	PEXCALLBACK BugcheckDispatcher;
-	PEXCALLBACK ExceptionDispatcher;
 
 } *PEXTENDER;
 
-
 extern POBJECT_TYPE MmExtenderObjectType;
-extern LIST_ENTRY MmExtenderListHead;
-extern LOCK MmExtenderListLock;
+
+extern LOCKED_LIST MmExtenderList;
 
 STATUS
 KEAPI

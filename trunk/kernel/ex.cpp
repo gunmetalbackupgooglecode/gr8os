@@ -1410,3 +1410,58 @@ ExDeleteCallback(
 
 	return ObpDeleteObject (CallbackObject);
 }
+
+VOID
+KEAPI
+ExpProcessCallbackList(
+	IN PLIST_ENTRY CallbackList,
+	IN ULONG NumberParameters,
+	IN PVOID *Parameters
+	)
+/*++
+	Process callback list w/o synchronization
+--*/
+{
+	PEXCALLBACK Callback = CONTAINING_RECORD (CallbackList->Flink, EXCALLBACK, InternalListEntry);
+
+	while (Callback != CONTAINING_RECORD(CallbackList, EXCALLBACK, InternalListEntry))
+	{
+		PVOID Routine = Callback->CallbackRoutine;
+
+		__asm
+		{
+			mov edx, [Routine]
+			mov ecx, [NumberParameters]
+			dec ecx
+			mov eax, [Parameters]
+
+_l:
+			push dword ptr [eax + ecx*4]
+			dec  ecx
+			cmp  ecx, -1
+			jnz  _l
+
+			call edx
+		}
+		
+		Callback = CONTAINING_RECORD (Callback->InternalListEntry.Flink, EXCALLBACK, InternalListEntry);
+	}
+}
+
+VOID
+KEAPI
+ExProcessCallbackList(
+	IN PLOCKED_LIST CallbackList,
+	IN ULONG NumberParameters,
+	IN PVOID *Parameters
+	)
+/*++
+	Process callback list. Each callback is being called for this event.
+--*/
+{
+	ExAcquireMutex (&CallbackList->Lock);
+
+	ExpProcessCallbackList (&CallbackList->ListEntry, NumberParameters, Parameters);
+
+	ExReleaseMutex (&CallbackList->Lock);
+}

@@ -17,6 +17,12 @@ THREAD SystemThread;
 
 ULONG UniqueThreadIdSeed;
 
+LOCKED_LIST PsCreateThreadCallbackList;
+LOCKED_LIST PsTerminateThreadCallbackList;
+LOCKED_LIST PsCreateProcessCallbackList;
+LOCKED_LIST PsTerminateProcessCallbackList;
+
+
 KESYSAPI
 BOOLEAN
 KEAPI
@@ -58,6 +64,18 @@ PsExitThread(
 	BOOLEAN OldIrqState;
 
 	Thread = PsGetCurrentThread();
+
+	PVOID Arguments[2] = {
+		Thread,
+		(PVOID) Code
+	};
+
+	ExProcessCallbackList (
+		&PsTerminateThreadCallbackList,
+		2,
+		Arguments
+		);
+
 	OldIrqState = PspLockSchedulerDatabase ();
 
 	RemoveEntryList (&Thread->SchedulerListEntry);
@@ -82,9 +100,26 @@ PsTerminateThread(
 	This function terminates any thread
 --*/
 {
+	BOOLEAN OldIrqState;
+
+	PVOID Arguments[2] = {
+		Thread,
+		(PVOID) Code
+	};
+
+	ExProcessCallbackList (
+		&PsTerminateThreadCallbackList,
+		2,
+		Arguments
+		);
+
+	OldIrqState = PspLockSchedulerDatabase ();
+
 	RemoveEntryList (&Thread->SchedulerListEntry);
 	Thread->ExitCode = Code;
 	Thread->State = THREAD_STATE_TERMINATED;
+
+	KeReleaseIrqState (OldIrqState);
 }
 
 #if PS_TRACE_CONTEXT_SWITCH
@@ -473,8 +508,20 @@ PsCreateThread(
 --*/
 {
 	PTHREAD NewThread = (PTHREAD) ExAllocateHeap( FALSE, sizeof(THREAD) );
-
 	PspCreateThread( NewThread, OwningProcess, StartRoutine, StartContext );
+
+	PVOID Arguments[3] = {
+		NewThread,
+		StartRoutine,
+		StartContext
+	};
+
+	ExProcessCallbackList (
+		&PsCreateThreadCallbackList,
+		3,
+		Arguments
+		);
+
 	return NewThread;
 }
 
@@ -523,6 +570,17 @@ PsCreateProcess(
 	PPROCESS Process = (PPROCESS) ExAllocateHeap( FALSE, sizeof(PROCESS) );
 	PspCreateProcess( Process );
 	MmCreateAddressSpace( Process );
+
+	PVOID Arguments[1] = {
+		Process
+	};
+
+	ExProcessCallbackList (
+		&PsCreateProcessCallbackList,
+		3,
+		Arguments
+		);
+
 	return Process;
 }
 
@@ -552,6 +610,11 @@ PspInitSystem(
 
 	InsertTailList (&InitialSystemProcess.ThreadListHead, &SystemThread.ProcessThreadListEntry);
 	InsertTailList (&PsReadyListHead, &SystemThread.SchedulerListEntry);
+
+	InitializeLockedList (&PsCreateThreadCallbackList);
+	InitializeLockedList (&PsTerminateThreadCallbackList);
+	InitializeLockedList (&PsCreateProcessCallbackList);
+	InitializeLockedList (&PsTerminateProcessCallbackList);
 }
 
 

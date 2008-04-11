@@ -6,7 +6,7 @@ FsFatDriverEntry (
 	PDRIVER DriverObject
 	);
 
-extern LIST_ENTRY FsFatVcbListHead;
+extern LOCKED_LIST FsFatVcbList;
 
 #pragma pack(1)
 
