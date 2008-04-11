@@ -288,12 +288,23 @@ KiDemoThread(
 		KiDebugPrint("Last finally block\n");
 	}
 
-	ObpDumpDirectory (ObRootObjectDirectory,0);
-
-
 	UNICODE_STRING DriverName, ImagePath;
 	PVOID ImageBase = 0;
 	PDRIVER DriverObject = 0;
+
+	RtlInitUnicodeString( &ImagePath, L"\\SystemRoot\\pci.sys" );
+	RtlInitUnicodeString( &DriverName, L"\\Driver\\pci" );
+
+	Status = MmLoadSystemImage (
+		&ImagePath,
+		&DriverName,
+		DriverMode,
+		FALSE,
+		&ImageBase,
+		(PVOID*) &DriverObject
+		);
+
+	KdPrint(("MmLoadSystemImage: Mapped at %08x, DrvObj %08x, Status %08x\n", ImageBase, DriverObject, Status));
 
 	RtlInitUnicodeString( &ImagePath, L"\\SystemRoot\\hdd.sys" );
 	RtlInitUnicodeString( &DriverName, L"\\Driver\\hdd" );
@@ -307,6 +318,11 @@ KiDemoThread(
 		(PVOID*) &DriverObject
 		);
 
+	KdPrint(("MmLoadSystemImage: Mapped at %08x, DrvObj %08x, Status %08x\n", ImageBase, DriverObject, Status));
+
+	ObpDumpDirectory (ObRootObjectDirectory,0);
+
+	/*
 	PEXCALLBACK Callback;
 	PEXCALLBACK Callback2;
 
@@ -345,9 +361,8 @@ KiDemoThread(
 	InterlockedInsertHeadList (&PsTerminateThreadCallbackList, &Callback->InternalListEntry);
 	InterlockedInsertHeadList (&PsCreateThreadCallbackList, &Callback2->InternalListEntry);
 
-	KdPrint(("MmLoadSystemImage: Mapped at %08x, DrvObj %08x, Status %08x\n", ImageBase, DriverObject, Status));
-
 	PTHREAD Thread = PsCreateThread (PsGetCurrentProcess(), InitDemoThreadStartRoutine, NULL);
+	*/
 
 	// Fall through counter thread code.
 	PsCounterThread( (PVOID)( 80*5 + 35 ) );

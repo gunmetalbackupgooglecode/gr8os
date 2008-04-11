@@ -177,6 +177,68 @@ KiInPort(
 
 KESYSAPI
 VOID
+KEFASTAPI
+KiOutPortW(
+	USHORT PortNumber,
+	USHORT  Value
+	)
+/*++
+	Out to port
+--*/
+{
+	__asm mov  ax, dx
+	__asm mov  dx, cx
+	__asm out  dx, ax
+}
+
+
+KESYSAPI
+USHORT
+KEFASTAPI
+KiInPortW(
+	USHORT PortNumber
+	)
+/*++
+	Read from port
+--*/
+{
+	__asm mov  dx, cx
+	__asm in   ax, dx
+}
+
+KESYSAPI
+VOID
+KEFASTAPI
+KiOutPortD(
+	USHORT PortNumber,
+	ULONG  Value
+	)
+/*++
+	Out to port
+--*/
+{
+	__asm mov  eax, edx
+	__asm mov  dx, cx
+	__asm out  dx, eax
+}
+
+
+KESYSAPI
+ULONG
+KEFASTAPI
+KiInPortD(
+	USHORT PortNumber
+	)
+/*++
+	Read from port
+--*/
+{
+	__asm mov  dx, cx
+	__asm in   eax, dx
+}
+
+KESYSAPI
+VOID
 KEAPI
 KeStallExecution(
 	ULONG TickCount

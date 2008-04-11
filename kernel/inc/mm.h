@@ -164,6 +164,8 @@ STATIC_ASSERT (sizeof(MMPTE) == 4);
 #define PAGE_SIZE 0x1000
 #define PAGE_SHIFT 12
 
+typedef ULONG PHYSICAL_ADDRESS;
+
 // end_ddk
 
 //
@@ -189,8 +191,6 @@ STATIC_ASSERT (sizeof(MMPTE) == 4);
 }
 
 #define MiNextPte(PTE) (PMMPTE)((ULONG_PTR)PTE+4)
-
-typedef ULONG PHYSICAL_ADDRESS;
 
 VOID
 KEAPI

@@ -387,7 +387,7 @@ HalInitSystem(
 
 	Timer.Divisor = 0xA;
 	Timer.Flags = TIMER_MODIFY_DIVISOR | TIMER_MODIFY_LVT_ENTRY | TIMER_MODIFY_INITIAL_COUNTER;
-	Timer.LvtTimer.Masked = FALSE;
+	Timer.LvtTimer.Masked = TRUE;
 	Timer.LvtTimer.Vector = 6;
 	Timer.LvtTimer.TimerMode = Periodic;
 	Timer.InitialCounter = -20;

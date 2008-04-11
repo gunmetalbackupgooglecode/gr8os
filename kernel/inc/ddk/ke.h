@@ -1,5 +1,5 @@
 //
-// <ke.h> built by header file parser at 20:46:52  08 Apr 2008
+// <ke.h> built by header file parser at 19:50:50  11 Apr 2008
 // This is a part of gr8os include files for GR8OS Driver & Extender Development Kit (DEDK)
 //
 
@@ -437,6 +437,36 @@ KESYSAPI
 UCHAR
 KEFASTAPI
 KiInPort(
+	USHORT PortNumber
+	);
+
+KESYSAPI
+VOID
+KEFASTAPI
+KiOutPortW(
+	USHORT PortNumber,
+	USHORT  Value
+	);
+
+KESYSAPI
+USHORT
+KEFASTAPI
+KiInPortW(
+	USHORT PortNumber
+	);
+
+KESYSAPI
+VOID
+KEFASTAPI
+KiOutPortD(
+	USHORT PortNumber,
+	ULONG  Value
+	);
+
+KESYSAPI
+ULONG
+KEFASTAPI
+KiInPortD(
 	USHORT PortNumber
 	);
 

@@ -1,5 +1,5 @@
 //
-// <mm.h> built by header file parser at 20:46:52  08 Apr 2008
+// <mm.h> built by header file parser at 19:50:50  11 Apr 2008
 // This is a part of gr8os include files for GR8OS Driver & Extender Development Kit (DEDK)
 //
 
@@ -92,12 +92,14 @@
 #define PAGE_SIZE 0x1000
 #define PAGE_SHIFT 12
 
+typedef ULONG PHYSICAL_ADDRESS;
+
 
 KESYSAPI
 PVOID
 KEAPI
-MmMapPhysicalPages(
-	ULONG PhysicalAddress,
+MmMapPhysicalPagesKernel(
+	PHYSICAL_ADDRESS PhysicalAddress,
 	ULONG PageCount
 	);
 
@@ -107,8 +109,9 @@ KEAPI
 MmMapPhysicalPagesInRange(
 	PVOID VirtualAddressStart,
 	PVOID VirtualAddressEnd,
-	ULONG PhysicalAddress,
-	ULONG PageCount
+	PHYSICAL_ADDRESS PhysicalAddress,
+	ULONG PageCount,
+	BOOLEAN AddToWorkingSet
 	);
 
 VOID
@@ -246,7 +249,8 @@ KEAPI
 MmMapLockedPages(
 	IN PMMD Mmd,
 	IN PROCESSOR_MODE TargetMode,
-	IN BOOLEAN IsImage
+	IN BOOLEAN IsImage,
+	IN BOOLEAN AddToWorkingSet
 	);
 
 KESYSAPI
@@ -256,11 +260,21 @@ MmUnmapLockedPages(
 	IN PMMD Mmd
 	);
 
+KESYSAPI
+VOID
+KEAPI
+MmReservePhysicalAddressRange(
+	PHYSICAL_ADDRESS PhysStart,
+	PHYSICAL_ADDRESS PhysEnd
+	);
+
+extern PVOID MmAcpiInfo;
 
 
 typedef struct THREAD *PTHREAD;
 typedef struct PROCESS *PPROCESS;
 
+/*
 typedef
 VOID
 (KEAPI
@@ -268,12 +282,15 @@ VOID
 	IN PTHREAD PrevThread,
 	IN PTHREAD NextThread
 	);
+*/
 
 typedef
 VOID
 (KEAPI
  *PEXT_CREATE_THREAD_CALLBACK)(
-	IN PTHREAD ThreadBeingCreated
+	IN PTHREAD ThreadBeingCreated,
+	IN PVOID StartRoutine,
+	IN PVOID StartContext
 	);
 
 typedef
@@ -302,13 +319,14 @@ typedef
 VOID
 (KEAPI
  *PEXT_BUGCHECK_CALLBACK)(
-	IN ULONG BugCheckCode,
+	IN ULONG StopCode,
 	IN ULONG Parameter1,
 	IN ULONG Parameter2,
 	IN ULONG Parameter3,
 	IN ULONG Parameter4
 	);
 
+/*
 typedef
 VOID
 (KEAPI
@@ -318,31 +336,50 @@ VOID
 	IN PCONTEXT_FRAME CallerContext,
 	IN PVOID Reserved
 	);
+*/
 
 typedef struct DRIVER *PDRIVER;
 typedef struct OBJECT_TYPE *POBJECT_TYPE;
+
+typedef struct EXTENDER *PEXTENDER;
+
+typedef
+STATUS
+(KEAPI
+ *PEXTENDER_ENTRY)(
+	PEXTENDER ExtenderObject
+	);
 
 typedef struct EXTENDER
 {
 	PVOID ExtenderStart;
 	PVOID ExtenderEnd;
+	PEXTENDER_ENTRY ExtenderEntry;
 	PDRIVER CorrespondingDriverObject;
 
 	LIST_ENTRY ExtenderListEntry;
 
-	PEXT_SWAP_THREAD_CALLBACK SwapThread;
-	PEXT_CREATE_THREAD_CALLBACK CreateThread;
-	PEXT_TERMINATE_THREAD_CALLBACK TerminateThread;
-	PEXT_CREATE_PROCESS_CALLBACK CreateProcess;
-	PEXT_TERMINATE_PROCESS_CALLBACK TerminateProcess;
-	PEXT_BUGCHECK_CALLBACK BugcheckDispatcher;
-	PEXT_EXCEPTION_CALLBACK ExceptionDispatcher;
+	PEXCALLBACK CreateThread;
+	PEXCALLBACK TerminateThread;
+	PEXCALLBACK CreateProcess;
+	PEXCALLBACK TerminateProcess;
+	PEXCALLBACK BugcheckDispatcher;
 
 } *PEXTENDER;
 
 extern POBJECT_TYPE MmExtenderObjectType;
-extern LIST_ENTRY MmExtenderListHead;
-extern LOCK MmExtenderListLock;
+
+extern LOCKED_LIST MmExtenderList;
+
+STATUS
+KEAPI
+MiCreateExtenderObject(
+	IN PVOID ExtenderStart,
+	IN PVOID ExtenderEnd,
+	IN PVOID ExtenderEntry,
+	IN PUNICODE_STRING ExtenderName,
+	OUT PEXTENDER *ExtenderObject
+	);
 
 
 KESYSAPI

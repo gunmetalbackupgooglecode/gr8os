@@ -66,6 +66,7 @@ typedef ULONG STATUS, *PSTATUS;
 
 #define SUCCESS(Status) ((LONG)(Status)>=0)
 
+#pragma warning(disable:4391)
 
 #define IN
 #define OUT
