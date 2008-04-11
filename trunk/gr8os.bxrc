@@ -5,7 +5,7 @@
 cpu: count=1, ips=5000000, reset_on_triple_fault=1
 
 # how much memory the emulated machine will have
-megs: 256
+megs: 128
 
 # filename of ROM images
 romimage: file="D:\Soft\Bochs\BIOS-bochs-latest", address=0xf0000

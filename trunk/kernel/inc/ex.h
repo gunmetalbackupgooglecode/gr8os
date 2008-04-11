@@ -252,4 +252,48 @@ ExReleaseMutex(
 	PMUTEX Mutex
 	);
 
+//
+// Callbacks
+//
+
+typedef struct OBJECT_TYPE *POBJECT_TYPE;
+typedef struct THREAD *PTHREAD;
+typedef struct OBJECT_HEADER *POBJECT_HEADER;
+
+extern POBJECT_TYPE ExCallbackObjectType;
+
+typedef struct EXCALLBACK
+{
+	PVOID CallbackRoutine;
+	PVOID Context;
+	PTHREAD Owner;
+	
+	LIST_ENTRY InternalListEntry;
+	BOOLEAN Inserted;
+
+} *PEXCALLBACK;
+
+KESYSAPI
+STATUS
+KEAPI
+ExCreateCallback(
+	IN PVOID Routine,
+	IN PVOID Context OPTIONAL,
+	OUT PEXCALLBACK *CallbackObject
+	);
+
+KESYSAPI
+STATUS
+KEAPI
+ExDeleteCallback(
+	IN PEXCALLBACK CallbackObject
+	);
+
+VOID
+KEAPI
+ExpDeleteCallback(
+	IN POBJECT_HEADER Object
+	);
+
+
 // end_ddk

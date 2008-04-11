@@ -156,10 +156,10 @@ KiDemoThread(
 		KeBugCheck (KE_INITIALIZATION_FAILED, Status, __LINE__, 0, 0);
 	}
 
-	PVOID Mapped = MmMapLockedPages(Mmd, KernelMode, FALSE);
-	strncpy ((char*)Mapped, "1234", 5);
-
 	KdPrint(("Allocated MMD at %08x [fl=%08x]\n", Mmd, Mmd->Flags));
+
+	PVOID Mapped = MmMapLockedPages(Mmd, KernelMode, FALSE, FALSE);
+	strncpy ((char*)Mapped, "1234", 5);
 	
 //	MmBuildMmdForNonpagedSpace (Mmd);
 //	KdPrint(("Built mmd for nonpaged space\n"));
@@ -367,6 +367,13 @@ KiInitSystem(
 	KiLoaderBlock = *LdrArgs;
 
 	KiDebugPrint( "KERNEL: Got execution. Starting with %d megabytes of RAM on board\n", LdrArgs->PhysicalMemoryPages / 256);
+
+	if (LdrArgs->PhysicalMemoryPages/256 < 52)
+	{
+		KiDebugPrint("KERNEL: Not enough memory to run, need at least 52 megs. System halted\n");
+		KiStopExecution ();
+	}
+
 	KiDebugPrintRaw( "INIT: Initializing kernel\n" );
 
 	//
@@ -513,6 +520,8 @@ KiInitSystem(
 	MmInitSystem( );
 	KiDebugPrintRaw( "MM: Finalized initialization\n" );
 
+	ExInitSystem( );
+	KiDebugPrintRaw( "EX: Finalized initialization\n" );
 
 	KiDebugPrintRaw( "INIT: Initialization phase 2 completed. Initialization completed.\n"  );
 

@@ -9,9 +9,29 @@
 ; макросы fasm
 include 'auxmacro.inc'
 
+AddressRangeMemory = 1
+AddressRangeReserved = 2
+AddressRangeACPI = 3
+AddressRangeNVS = 4
+
+struct PHYSICAL_MEMORY_RUN
+    BaseAddrLow 	dd ?
+    BaseAddrHigh	dd ?
+    LengthLow		dd ?
+    LengthHigh		dd ?
+    Type		dd ?
+
+    Align		rd 3
+ends
+
+
 ; Базовый адрес загрузчика, 16-битный код
 org 0x8000
 use16
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;      LOADER STARTS     ;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 GRLDR_START:
 
@@ -408,6 +428,48 @@ ffend:
     ; kernel loaded.
 
 
+    ;
+    ; Query BIOS for memory map
+    ;
+
+    ; ES:DI = buffer
+    push 0
+    pop  es
+    lea  di, [PhysicalMemoryRuns and 0xFFFFF]
+
+    xor  ebx, ebx
+
+  @@:
+    mov  eax, 0xE820
+    mov  ecx, sizeof.PHYSICAL_MEMORY_RUN
+    mov  edx, 'PAMS'
+
+    int  15h
+
+    ; error?
+    jc	 _bios_carry
+
+    ; implemented?
+    cmp  eax, 'PAMS'
+    jnz  _bios_not_impl
+
+    ; last block?
+    test ebx, ebx
+    jz	 @F
+
+    inc  byte [PhysicalMemoryRunsCount and 0xFFFFF]
+    add  di, sizeof.PHYSICAL_MEMORY_RUN
+    jmp  @B
+
+  _bios_carry:
+    mov  [PhysicalMemoryRunsError and 0xFFFFF], 1
+    jmp  @F
+
+  _bios_not_impl:
+    mov  [PhysicalMemoryRunsError and 0xFFFFF], 2
+
+  @@:
+
     ; открываем адресную линию A20
     in	 al, 92h
     or	 al, 2
@@ -539,7 +601,27 @@ GDT2:	  dd  GDT2
 	 dd 0, 0,0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 
 LoaderBlock:
+
 PhysicalMemoryPages dd 0
+PhysicalMemoryRunsCount db 0
+PhysicalMemoryRunsError db 0
+
+PhysicalMemoryRuns:
+PhysicalMemoryRun1  PHYSICAL_MEMORY_RUN
+PhysicalMemoryRun2  PHYSICAL_MEMORY_RUN
+PhysicalMemoryRun3  PHYSICAL_MEMORY_RUN
+PhysicalMemoryRun4  PHYSICAL_MEMORY_RUN
+PhysicalMemoryRun5  PHYSICAL_MEMORY_RUN
+PhysicalMemoryRun6  PHYSICAL_MEMORY_RUN
+PhysicalMemoryRun7  PHYSICAL_MEMORY_RUN
+PhysicalMemoryRun8  PHYSICAL_MEMORY_RUN
+PhysicalMemoryRun9  PHYSICAL_MEMORY_RUN
+PhysicalMemoryRun10 PHYSICAL_MEMORY_RUN
+PhysicalMemoryRun11 PHYSICAL_MEMORY_RUN
+PhysicalMemoryRun12 PHYSICAL_MEMORY_RUN
+PhysicalMemoryRun13 PHYSICAL_MEMORY_RUN
+PhysicalMemoryRun14 PHYSICAL_MEMORY_RUN
+PhysicalMemoryRun15 PHYSICAL_MEMORY_RUN
 
 ContinueLoading:
 

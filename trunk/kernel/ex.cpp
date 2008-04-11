@@ -19,6 +19,8 @@ LOCK ExpKernelHeapLock;
 #define KdPrint(x)
 #endif
 
+POBJECT_TYPE ExCallbackObjectType;
+
 VOID
 KEAPI
 ExInitSystem(
@@ -27,20 +29,50 @@ ExInitSystem(
 	Initialize executive
 --*/
 {
-	ExpHeapSize = 16*1024*1024;	// 16 megs
+	if (KiInitializationPhase == 0)
+	{
+		ExpHeapSize = 16*1024*1024;	// 16 megs
 
-	//
-	// Map heap physical pages
-	//
+		//
+		// Map heap physical pages
+		//
 
-	MiMapPhysicalPages( MM_KERNEL_HEAP, MM_KERNEL_HEAP_PHYS, ExpHeapSize >> PAGE_SHIFT );
-	ExpHeapArea = (PVOID) MM_KERNEL_HEAP;
+		MiMapPhysicalPages( MM_KERNEL_HEAP, MM_KERNEL_HEAP_PHYS, ExpHeapSize >> PAGE_SHIFT );
+		ExpHeapArea = (PVOID) MM_KERNEL_HEAP;
 
-	//
-	// Initialize kernel heap
-	//
+		//
+		// Initialize kernel heap
+		//
 
-	ExInitializeHeap ();
+		ExInitializeHeap ();
+	}
+	else if (KiInitializationPhase == 2)
+	{
+		STATUS Status;
+		UNICODE_STRING Name;
+
+		RtlInitUnicodeString( &Name, L"Callback" );
+
+		Status = ObCreateObjectType (
+			&ExCallbackObjectType,
+			&Name,
+			NULL,
+			NULL,
+			NULL,
+			ExpDeleteCallback,
+			NULL,
+			OB_OBJECT_OWNER_EX
+			);
+
+		if (!SUCCESS(Status))
+		{
+			KeBugCheck (EX_INITIALIZATION_FAILED,
+						Status,
+						__LINE__,
+						0,
+						0);
+		}
+	}
 }
 
 
@@ -1294,4 +1326,87 @@ ExReleaseMutex(
 #endif
 
 	KeSetEvent ((PEVENT)Mutex, 0);
+}
+
+
+//
+// Callbacks
+//
+
+VOID
+KEAPI
+ExpDeleteCallback(
+	IN POBJECT_HEADER Object
+	)
+/*++
+	See remarks to the PDELETE_OBJECT_ROUTINE typedef for the general explanations
+	 of the type of such routines.
+
+	This routine is called when the callback object is being deleted.
+	We should remove this object from the internal callback list.
+--*/
+{
+	PEXCALLBACK CallbackObject = OBJECT_HEADER_TO_OBJECT (Object, EXCALLBACK);
+
+	if (CallbackObject->Inserted)
+	{
+		RemoveEntryList (&CallbackObject->InternalListEntry);
+	}
+}
+
+KESYSAPI
+STATUS
+KEAPI
+ExCreateCallback(
+	IN PVOID Routine,
+	IN PVOID Context OPTIONAL,
+	OUT PEXCALLBACK *CallbackObject
+	)
+/*++
+	Create a callback object.
+--*/
+{
+	STATUS Status;
+	PEXCALLBACK Callback;
+
+	Status = ObCreateObject (
+		(PVOID*) &Callback,
+		sizeof(EXCALLBACK),
+		ExCallbackObjectType,
+		NULL,
+		OB_OBJECT_OWNER_EX
+		);
+
+	if (SUCCESS(Status))
+	{
+		Callback->CallbackRoutine = Routine;
+		Callback->Owner = PsGetCurrentThread();
+		Callback->Context = Context;
+		InitializeListHead (&Callback->InternalListEntry);
+		Callback->Inserted = FALSE;
+
+		*CallbackObject = Callback;
+	}
+
+	return Status;
+}
+
+KESYSAPI
+STATUS
+KEAPI
+ExDeleteCallback(
+	IN PEXCALLBACK CallbackObject
+	)
+/*++
+	Delete callback object
+--*/
+{
+	POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER (CallbackObject);
+	
+	if (ObjectHeader->ObjectType != ExCallbackObjectType)
+	{
+		return STATUS_INVALID_PARAMETER;
+	}
+
+	return ObpDeleteObject (CallbackObject);
 }

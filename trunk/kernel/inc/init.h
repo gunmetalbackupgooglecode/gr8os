@@ -145,10 +145,41 @@ typedef struct TSS32
 
 // end_ddk
 
-typedef struct _LOADER_ARGUMENTS {
+#pragma pack(4)
+
+enum PHYSICAL_MEMORY_RUN_TYPE
+{
+	AddressRangeMemory = 1,
+	AddressRangeReserved = 2,
+	AddressRangeACPI = 3,
+	AddressRangeNVS = 4
+};
+
+typedef struct PHYSICAL_MEMORY_RUN
+{
+	ULONG BaseAddress;
+	ULONG BaseAddressHigh;
+
+	ULONG Length;
+	ULONG LengthHigh;
+
+	ULONG Type;
+	ULONG Align[3];
+} *PPHYSICAL_MEMORY_RUN;
+
+#pragma pack(1)
+
+typedef struct LOADER_ARGUMENTS 
+{
 	ULONG PhysicalMemoryPages;
+	BOOLEAN PhysicalMemoryRunsLoaded;
+	UCHAR PhysicalMemoryRunsError;
+
+	PHYSICAL_MEMORY_RUN MemoryRuns[15];
 	
-} LOADER_ARGUMENTS, *PLOADER_ARGUMENTS;
+} *PLOADER_ARGUMENTS;
+
+#pragma pack()
 
 extern LOADER_ARGUMENTS KiLoaderBlock;
 
