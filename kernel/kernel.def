@@ -14,6 +14,8 @@ EXPORTS
 	ExAcquireMutex
 	ExReleaseMutex
 	ExInitializeMutex
+	ExCreateCallback
+	ExDeleteCallback
 	
 	;
 	; HAL
@@ -156,6 +158,7 @@ EXPORTS
 	MmExtenderObjectType
 	ObSymbolicLinkObjectType
 	IoVpbObjectType
+	ExCallbackObjectType
 	
 	ObRootObjectDirectory
 	
@@ -164,7 +167,7 @@ EXPORTS
 	;
 	
 	MmIsAddressValid
-	MmMapPhysicalPages
+	MmMapPhysicalPagesKernel
 	MmMapPhysicalPagesInRange
 	MmUnmapPhysicalPages = MiUnmapPhysicalPages
 	MmIsAddressValidEx
@@ -178,6 +181,8 @@ EXPORTS
 	MmUnlockPages
 	MmUnmapLockedPages
 	MmLoadSystemImage
+	MmReservePhysicalAddressRange
+	MmAcpiInfo
 	
 	;
 	; Processes

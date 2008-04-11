@@ -499,6 +499,35 @@ ULONG HalpLowMegBusyForDma[_1MegPages] = {
 
 MUTEX HalpLowMegDbLock;
 
+VOID
+KEAPI
+HalReservePhysicalLowMegPages(
+	PHYSICAL_ADDRESS PhysStart,
+	PHYSICAL_ADDRESS PhysEnd
+	)
+/*++
+	Reserve address space with the first meg
+--*/
+{
+	ExAcquireMutex (&HalpLowMegDbLock);
+
+	PhysStart = ALIGN_DOWN (PhysStart, PAGE_SIZE);
+	PhysEnd = ALIGN_UP (PhysEnd, PAGE_SIZE);
+
+	ULONG PageStart = PhysStart >> PAGE_SHIFT;
+	ULONG PageEnd = PhysEnd >> PAGE_SHIFT;
+
+	KdPrint(("HAL: Reserving pages %05x-%05x\n", PageStart, PageEnd));
+
+	for (ULONG i=PageStart; i<PageEnd; i++)
+	{
+		KdPrint(("."));
+		HalpLowMegBusyForDma[i] = 2;
+	}
+	KdPrint(("\n"));
+
+	ExReleaseMutex (&HalpLowMegDbLock);
+}
 
 KESYSAPI
 UCHAR
@@ -795,7 +824,7 @@ Return Value:
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 
-	DmaReq->MappedPhysical = MmMapPhysicalPages (DmaReq->PageUsed << PAGE_SHIFT, DmaReq->PageCount);
+	DmaReq->MappedPhysical = MmMapPhysicalPagesKernel (DmaReq->PageUsed << PAGE_SHIFT, DmaReq->PageCount);
 
 	if (DmaReq->MappedPhysical == NULL)
 	{

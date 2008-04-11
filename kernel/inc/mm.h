@@ -190,12 +190,22 @@ STATIC_ASSERT (sizeof(MMPTE) == 4);
 
 #define MiNextPte(PTE) (PMMPTE)((ULONG_PTR)PTE+4)
 
+typedef ULONG PHYSICAL_ADDRESS;
+
 VOID
 KEAPI
 MiMapPhysicalPages(
 	PVOID VirtualAddress,
-	ULONG PhysicalAddress,
+	PHYSICAL_ADDRESS PhysicalAddress,
 	ULONG PageCount
+	);
+
+KESYSAPI
+VOID
+KEAPI
+MmReservePhysicalAddressRange(
+	PHYSICAL_ADDRESS PhysStart,
+	PHYSICAL_ADDRESS PhysEnd
 	);
 
 // begin_ddk
@@ -203,8 +213,8 @@ MiMapPhysicalPages(
 KESYSAPI
 PVOID
 KEAPI
-MmMapPhysicalPages(
-	ULONG PhysicalAddress,
+MmMapPhysicalPagesKernel(
+	PHYSICAL_ADDRESS PhysicalAddress,
 	ULONG PageCount
 	);
 
@@ -214,8 +224,9 @@ KEAPI
 MmMapPhysicalPagesInRange(
 	PVOID VirtualAddressStart,
 	PVOID VirtualAddressEnd,
-	ULONG PhysicalAddress,
-	ULONG PageCount
+	PHYSICAL_ADDRESS PhysicalAddress,
+	ULONG PageCount,
+	BOOLEAN AddToWorkingSet
 	);
 
 VOID
@@ -457,7 +468,6 @@ typedef struct MMPPD
 	UCHAR ReadInProgress : 1;					// Read operation in progress
 	UCHAR WriteInProgress : 1;					// Write operation in progress
 	UCHAR Modified : 1;							// Page was modified
-	//USHORT ReferenceCount;						// Reference count for the page.
 	USHORT Reserved;
 	UCHAR KernelStack : 1;						// Page belongs to kernel stack
 	UCHAR ProcessorMode : 2;					// Owner's processor mode, who owns this page.
@@ -469,6 +479,8 @@ typedef struct MMPPD
 
 } *PMMPPD;
 
+STATIC_ASSERT (sizeof(MMPPD) == 12);
+
 extern PMMPPD MmPpdDatabase;
 
 extern MUTEX MmPpdLock;
@@ -477,7 +489,7 @@ extern MUTEX MmPpdLock;
 #define MI_UNLOCK_PPD() ExReleaseMutex (&MmPpdLock);
 
 // Retrieves PPD for the specified physical address
-#define MmPpdEntry(PhysicalAddress) (&MmPpdDatabase[((ULONG)PhysicalAddress) >> PAGE_SHIFT])
+#define MmPpdEntry(PhysicalAddress) (&MmPpdDatabase[((PHYSICAL_ADDRESS)PhysicalAddress) >> PAGE_SHIFT])
 
 // Retrieves PPD for the specified page frame number
 #define MmPfnPpd(PFN) (&MmPpdDatabase[PFN])
@@ -576,7 +588,8 @@ KEAPI
 MmMapLockedPages(
 	IN PMMD Mmd,
 	IN PROCESSOR_MODE TargetMode,
-	IN BOOLEAN IsImage
+	IN BOOLEAN IsImage,
+	IN BOOLEAN AddToWorkingSet
 	);
 
 KESYSAPI
@@ -586,10 +599,20 @@ MmUnmapLockedPages(
 	IN PMMD Mmd
 	);
 
+KESYSAPI
+VOID
+KEAPI
+MmReservePhysicalAddressRange(
+	PHYSICAL_ADDRESS PhysStart,
+	PHYSICAL_ADDRESS PhysEnd
+	);
+
+extern PVOID MmAcpiInfo;
 
 // end_ddk
 
 #define MmGetCurrentWorkingSet() (PsGetCurrentProcess()->WorkingSet)
+
 
 // begin_ddk
 
@@ -657,27 +680,48 @@ VOID
 typedef struct DRIVER *PDRIVER;
 typedef struct OBJECT_TYPE *POBJECT_TYPE;
 
+typedef struct EXTENDER *PEXTENDER;
+
+typedef
+STATUS
+(KEAPI
+ *PEXTENDER_ENTRY)(
+	PEXTENDER ExtenderObject
+	);
+
 typedef struct EXTENDER
 {
 	PVOID ExtenderStart;
 	PVOID ExtenderEnd;
+	PEXTENDER_ENTRY ExtenderEntry;
 	PDRIVER CorrespondingDriverObject;
 
 	LIST_ENTRY ExtenderListEntry;
 
-	PEXT_SWAP_THREAD_CALLBACK SwapThread;
-	PEXT_CREATE_THREAD_CALLBACK CreateThread;
-	PEXT_TERMINATE_THREAD_CALLBACK TerminateThread;
-	PEXT_CREATE_PROCESS_CALLBACK CreateProcess;
-	PEXT_TERMINATE_PROCESS_CALLBACK TerminateProcess;
-	PEXT_BUGCHECK_CALLBACK BugcheckDispatcher;
-	PEXT_EXCEPTION_CALLBACK ExceptionDispatcher;
+	PEXCALLBACK SwapThread;
+	PEXCALLBACK CreateThread;
+	PEXCALLBACK TerminateThread;
+	PEXCALLBACK CreateProcess;
+	PEXCALLBACK TerminateProcess;
+	PEXCALLBACK BugcheckDispatcher;
+	PEXCALLBACK ExceptionDispatcher;
 
 } *PEXTENDER;
+
 
 extern POBJECT_TYPE MmExtenderObjectType;
 extern LIST_ENTRY MmExtenderListHead;
 extern LOCK MmExtenderListLock;
+
+STATUS
+KEAPI
+MiCreateExtenderObject(
+	IN PVOID ExtenderStart,
+	IN PVOID ExtenderEnd,
+	IN PVOID ExtenderEntry,
+	IN PUNICODE_STRING ExtenderName,
+	OUT PEXTENDER *ExtenderObject
+	);
 
 
 KESYSAPI

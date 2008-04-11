@@ -48,7 +48,7 @@ public SpecialDFTss as '_SpecialDFTss'
 SpecialDFTss:
   LinkTSS  dw 0
            dw 0
-  Esp0     dd 0x80007c00-4
+  Esp0     dd 0x80007c00
   Ss0      dw KGDT_R0_DATA
            dw 0
   Esp1     dd 0
@@ -64,8 +64,8 @@ SpecialDFTss:
   _Ecx     dd 0
   _Edx     dd 0
   _Ebx     dd 0
-  _Esp     dd 0x80007c00-4
-  _Ebp     dd 0x80007c00-4
+  _Esp     dd 0x80007c00
+  _Ebp     dd 0x80007c00
   _Esi     dd 0
   _Edi     dd 0
   _Es      dw KGDT_R0_DATA
@@ -90,7 +90,7 @@ public SpecialSFTss as '_SpecialSFTss'
 SpecialSFTss:
   xLinkTSS  dw 0
            dw 0
-  xEsp0     dd 0x80007c00-4
+  xEsp0     dd 0x802EF000-4
   xSs0      dw KGDT_R0_DATA
            dw 0
   xEsp1     dd 0
@@ -106,8 +106,8 @@ SpecialSFTss:
   x_Ecx     dd 0
   x_Edx     dd 0
   x_Ebx     dd 0
-  x_Esp     dd 0x80007c00-4
-  x_Ebp     dd 0x80007c00-4
+  x_Esp     dd 0x802EF000-4
+  x_Ebp     dd 0x802EF000-4
   x_Esi     dd 0
   x_Edi     dd 0
   x_Es      dw KGDT_R0_DATA
@@ -212,6 +212,8 @@ exNM_handler:
 
 exDF_handler:
     ;pop  eax
+    push -1
+    push 0
     mov  dword [faulting_message], _dbf
     jmp  general_exception
 
@@ -302,7 +304,7 @@ general_exception:
     push dword [faulting_message]
     call DbgPrintRaw
     
-    jmp $
+;    jmp $
 
     invoke sprintf, tempbuffer, ctx   ; 8 bytes
     add  esp, 72
@@ -318,17 +320,18 @@ general_exception:
 
     iretd
 
-ctx db '   *** FATAL EXCEPTION: %s ***    ', 13, \
+ctx db 13, \
+	   '   *** FATAL EXCEPTION: %s ***    ', 13, \
        '    Context dump:    ', 13, \
-       '    EDI = %08x     ESI = %08x    ', 13, \
-       '    EBP = %08x     ESP = %08x    ', 13, \
-       '    EBX = %08x     EDX = %08x    ', 13, \
-       '    ECX = %08x     EAX = %08x    ', 13, \
-       '     FS =     %04x      GS =     %04x    ', 13, \
-       '     ES =     %04x      DS =     %04x    ', 13, \
-       '     SS =     %04x      CS =     %04x    ', 13, \
-       '    Faulting EIP: %08x    ', 13, \
-       '    Exception error code: %08x    ', 13, \
+       '    EDI = %08x     ESI = %08x    ', 10, \
+       '    EBP = %08x     ESP = %08x    ', 10, \
+       '    EBX = %08x     EDX = %08x    ', 10, \
+       '    ECX = %08x     EAX = %08x    ', 10, \
+       '     FS =     %04x      GS =     %04x    ', 10, \
+       '     ES =     %04x      DS =     %04x    ', 10, \
+       '     SS =     %04x      CS =     %04x    ', 10, \
+       '    Faulting EIP: %08x    ', 10, \
+       '    Exception error code: %08x    ', 10, \
        0
 
 _derr db 'DIVIDE ERROR', 0              ; 0

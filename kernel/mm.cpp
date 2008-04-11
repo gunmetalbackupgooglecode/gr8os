@@ -14,7 +14,7 @@ VOID
 KEAPI
 MiMapPhysicalPages(
 	PVOID VirtualAddress,
-	ULONG PhysicalAddress,
+	PHYSICAL_ADDRESS PhysicalAddress,
 	ULONG PageCount
 	)
 /*++
@@ -48,8 +48,8 @@ MiMapPhysicalPages(
 KESYSAPI
 PVOID
 KEAPI
-MmMapPhysicalPages(
-	ULONG PhysicalAddress,
+MmMapPhysicalPagesKernel(
+	PHYSICAL_ADDRESS PhysicalAddress,
 	ULONG PageCount
 	)
 /*++
@@ -61,7 +61,8 @@ MmMapPhysicalPages(
 		(PVOID)MM_CRITICAL_AREA,
 		(PVOID)(MM_CRITICAL_AREA_END),
 		PhysicalAddress,
-		PageCount
+		PageCount,
+		FALSE
 		);
 }
 
@@ -72,8 +73,9 @@ KEAPI
 MmMapPhysicalPagesInRange(
 	PVOID VirtualAddressStart,
 	PVOID VirtualAddressEnd,
-	ULONG PhysicalAddress,
-	ULONG PageCount
+	PHYSICAL_ADDRESS PhysicalAddress,
+	ULONG PageCount,
+	BOOLEAN AddToWorkingSet
 	)
 /*++
 	Try to map physical pages within the specified virtual address range
@@ -132,16 +134,21 @@ MmMapPhysicalPagesInRange(
 						//
 
 						Ppd->u2.PointerPte = PointerPte;
-						Ppd->u1.WsIndex = MiAddPageToWorkingSet (Ppd);
-
-						if (Ppd->u1.WsIndex == -1)
+						Ppd->u1.WsIndex = -1; 
+						
+						if (AddToWorkingSet)
 						{
-							KeBugCheck (MEMORY_MANAGEMENT,
-										__LINE__,
-										(ULONG)Ppd,
-										0,
-										0
-										);
+							Ppd->u1.WsIndex = MiAddPageToWorkingSet (Ppd);
+
+							if (Ppd->u1.WsIndex == -1)
+							{
+								KeBugCheck (MEMORY_MANAGEMENT,
+											__LINE__,
+											(ULONG)Ppd,
+											0,
+											0
+											);
+							}
 						}
 					}
 					
@@ -401,6 +408,8 @@ PMMPPD *MmPageLists[ActiveAndValid] = {
 
 PMMPPD MmPpdDatabase;
 
+PVOID MmAcpiInfo;
+
 VOID
 KEAPI
 MmInitSystemPhase1(
@@ -410,6 +419,7 @@ MmInitSystemPhase1(
 	ExInitializeMutex (&MmPpdLock);
 
 	MiMapPhysicalPages (MM_PPD_START, MM_PPD_START_PHYS, (KiLoaderBlock.PhysicalMemoryPages * sizeof(MMPPD)) / PAGE_SIZE);
+
 
 	//
 	// Initialize our module
@@ -456,7 +466,7 @@ MmInitSystemPhase1(
 
 	InitialSystemProcess.WorkingSet = MiSystemWorkingSet;
 
-	KiDebugPrint("MmInitSystem: initial process' working set %08x\n", MiSystemWorkingSet);
+	KdPrint(("MmInitSystem: initial process' working set %08x\n", MiSystemWorkingSet));
 	
 	ULONG i;
 
@@ -504,6 +514,14 @@ MmInitSystemPhase1(
 
 	MmZeroedPageListHead = &Ppd[i];
 
+	KdPrint(("MI: MM have %d megabytes (0x%08x pages) of free memory\n", 
+		(KiLoaderBlock.PhysicalMemoryPages-i)/256, 
+		KiLoaderBlock.PhysicalMemoryPages-i
+		));
+
+	if (KiLoaderBlock.PhysicalMemoryPages-i == 0)
+		MmZeroedPageListHead = NULL;
+
 	for (; i<KiLoaderBlock.PhysicalMemoryPages; i++)
 	{
 		Ppd[i].PageLocation = ZeroedPageList;
@@ -522,6 +540,70 @@ MmInitSystemPhase1(
 		{
 			Ppd[i].u1.NextFlink = &Ppd[i+1];
 		}
+	}
+
+	//
+	// Read bios memory map
+	//
+
+	KdPrint(("&Runs=%08x, MemoryRunsLoaded: %d, ErrorWas: %d\n", 
+		&KiLoaderBlock.MemoryRuns,
+		KiLoaderBlock.PhysicalMemoryRunsLoaded,
+		KiLoaderBlock.PhysicalMemoryRunsError));
+
+	char *RunTypes[] = {
+		"AddressRangeMemory",
+		"AddressRangeReserved",
+		"AddressRangeACPI",
+		"AddressRangeNVS",
+		"UnknownType5",
+		"UnknownType6",
+		"UnknownType7"
+	};
+
+#if 0
+	KdPrint(("MM: Mapping\n"));
+	INT3
+	MmAcpiInfo = MmMapPhysicalPages (0x7ff0000, 16);
+	KdPrint(("MM: MmAcpiInfo mapped at %08x\n", MmAcpiInfo));
+#endif
+
+	for (int i=0; i<KiLoaderBlock.PhysicalMemoryRunsLoaded; i++)
+	{
+		PPHYSICAL_MEMORY_RUN Run = &KiLoaderBlock.MemoryRuns[i];
+
+		KdPrint(("Run#%d: %08x`%08x - %08x`%08x, type %d [%s]\n", 
+			i,
+			Run->BaseAddressHigh,
+			Run->BaseAddress,
+			Run->BaseAddressHigh + Run->LengthHigh,
+			Run->BaseAddress + Run->Length,
+			Run->Type,
+			RunTypes [Run->Type-1]
+			));
+
+		switch (Run->Type)
+		{
+		case AddressRangeReserved:
+			if (Run->BaseAddress < 0x00100000)
+			{
+				HalReservePhysicalLowMegPages (Run->BaseAddress, Run->BaseAddress + Run->Length);
+			}
+			else if (Run->BaseAddress < KiLoaderBlock.PhysicalMemoryPages<<PAGE_SHIFT)
+			{
+				MmReservePhysicalAddressRange (Run->BaseAddress, Run->BaseAddress + Run->Length);
+			}
+			break;
+
+		case AddressRangeACPI:
+			KdPrint(("Mapping page count %08x\n", (ALIGN_UP(Run->BaseAddress + Run->Length,PAGE_SIZE) - ALIGN_DOWN(Run->BaseAddress,PAGE_SIZE))/PAGE_SIZE));
+			MmAcpiInfo = MmMapPhysicalPagesKernel (Run->BaseAddress, 
+				(ALIGN_UP(Run->BaseAddress + Run->Length,PAGE_SIZE) - ALIGN_DOWN(Run->BaseAddress,PAGE_SIZE))/PAGE_SIZE);
+			KdPrint(("MM: MmAcpiInfo mapped at %08x\n", MmAcpiInfo));
+			break;
+
+		}
+
 	}
 }
 
@@ -726,6 +808,43 @@ MiDumpPageLists(
 }
 
 MUTEX MmPpdLock;
+
+
+KESYSAPI
+VOID
+KEAPI
+MmReservePhysicalAddressRange(
+	PHYSICAL_ADDRESS PhysStart,
+	PHYSICAL_ADDRESS PhysEnd
+	)
+/*++
+	Reserve the specified address range
+--*/
+{
+	MI_LOCK_PPD();
+
+	PhysStart = ALIGN_DOWN (PhysStart, PAGE_SIZE);
+	PhysEnd = ALIGN_UP (PhysEnd, PAGE_SIZE);
+
+	ULONG PageStart = PhysStart >> PAGE_SHIFT;
+	ULONG PageEnd = PhysEnd >> PAGE_SHIFT;
+
+	KdPrint(("MM: Reserving pages %05x-%05x\n", PageStart, PageEnd));
+
+	for (ULONG i=PageStart; i<PageEnd; i++)
+	{
+		PMMPPD Ppd = MmPfnPpd (i);
+
+		KdPrint(("."));
+
+		MiChangePageLocation (Ppd, ReservedOrBadPage);
+	}
+	KdPrint(("\n"));
+
+	MI_UNLOCK_PPD();
+}
+
+
 
 KESYSAPI
 STATUS
@@ -1176,7 +1295,8 @@ KEAPI
 MmMapLockedPages(
 	IN PMMD Mmd,
 	IN PROCESSOR_MODE TargetMode,
-	IN BOOLEAN IsImage
+	IN BOOLEAN IsImage,
+	IN BOOLEAN AddToWorkingSet
 	)
 /*++
 	Map locked pages to target address space
@@ -1256,7 +1376,7 @@ MmMapLockedPages(
 
 					MI_LOCK_PPD();
 
-					PMMPPD Ppd = MmPfnPpd(Mmd->PfnList[j-i]);
+					PMMPPD Ppd = MmPfnPpd(Mmd->PfnList[j]);
 					Ppd->ShareCount ++;
 
 					
@@ -1267,16 +1387,21 @@ MmMapLockedPages(
 						//
 
 						Ppd->u2.PointerPte = PointerPte;
-						Ppd->u1.WsIndex = MiAddPageToWorkingSet (Ppd);
-
-						if (Ppd->u1.WsIndex == -1)
+						Ppd->u1.WsIndex = -1;
+						
+						if (AddToWorkingSet)
 						{
-							KeBugCheck (MEMORY_MANAGEMENT,
-										__LINE__,
-										(ULONG)Ppd,
-										0,
-										0
-										);
+							Ppd->u1.WsIndex = MiAddPageToWorkingSet (Ppd);
+
+							if (Ppd->u1.WsIndex == -1)
+							{
+								KeBugCheck (MEMORY_MANAGEMENT,
+											__LINE__,
+											(ULONG)Ppd,
+											0,
+											0
+											);
+							}
 						}
 					}
 					
@@ -1316,28 +1441,6 @@ MmUnmapLockedPages(
 --*/
 {
 	MiUnmapPhysicalPages (Mmd->MappedVirtual, Mmd->PageCount);
-
-	/*
-	MI_LOCK_PPD();
-
-	for (ULONG i=0; i<Mmd->PageCount; i++)
-	{
-		PMMPPD Ppd = MmPfnPpd (Mmd->PfnList[i]);
-
-		Ppd->ShareCount --;
-		if (Ppd->ShareCount == 0)
-		{
-			//
-			// Page is not used anymore. Remove from working set
-			//
-
-			MiRemovePageFromWorkingSet (Ppd);
-			Ppd->u1.WsIndex = -1;
-		}
-	}
-
-	MI_UNLOCK_PPD();
-	*/
 
 	Mmd->MappedVirtual = NULL;
 	Mmd->Flags &= ~MDL_MAPPED;
@@ -1892,7 +1995,61 @@ LdrRelocateImage(
 	return TRUE;
 }
 
+
 MMSYSTEM_MODE MmSystemMode = NormalMode;
+
+
+STATUS
+KEAPI
+MiCreateExtenderObject(
+	IN PVOID ExtenderStart,
+	IN PVOID ExtenderEnd,
+	IN PVOID ExtenderEntry,
+	IN PUNICODE_STRING ExtenderName,
+	OUT PEXTENDER *ExtenderObject
+	)
+/*++
+	Create EXTENDER object representing the extender being loaded into the system.
+--*/
+{
+	STATUS Status;
+	PEXTENDER Extender;
+
+	Status = ObCreateObject (
+		(PVOID*) &Extender,
+		sizeof(EXTENDER),
+		MmExtenderObjectType,
+		ExtenderName,
+		OB_OBJECT_OWNER_MM
+		);
+
+	if (SUCCESS(Status))
+	{
+		Extender->ExtenderStart = ExtenderStart;
+		Extender->ExtenderEnd = ExtenderEnd;
+		Extender->ExtenderEntry = (PEXTENDER_ENTRY) ExtenderEntry;
+
+		Status = (Extender->ExtenderEntry) (Extender);
+
+		if (!SUCCESS(Status))
+		{
+			ObpDeleteObject (Extender);
+		}
+		else
+		{
+			//
+			// TODO: Insert EXTENDER object to the list MmExtenderListHead
+			// Insert each callback to the appropriate global list.
+			//
+
+			//todo;
+			KeBugCheck (MEMORY_MANAGEMENT, __LINE__, 0, 0, 0);
+		}
+	}
+
+	return Status;
+}
+
 
 KESYSAPI
 STATUS
@@ -2003,7 +2160,7 @@ MmLoadSystemImage(
 
 		LdrPrint (("LDR: Mapping pages\n"));
 
-		Image = MmMapLockedPages (Mmd, TargetMode, TRUE);
+		Image = MmMapLockedPages (Mmd, TargetMode, TRUE, TRUE);
 		if (Image == NULL)
 			RETURN ( STATUS_INSUFFICIENT_RESOURCES );
 

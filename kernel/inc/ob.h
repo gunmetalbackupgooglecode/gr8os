@@ -223,6 +223,9 @@ typedef struct OBJECT_HEADER
 #define OB_OBJECT_OWNER_KD	'  dK'
 #define OB_OBJECT_OWNER_EX	'  xE'
 #define OB_OBJECT_OWNER_RTL	' ltR'
+#define OB_OBJECT_OWNER_DRV	' vrD'				// Drivers
+#define OB_OBJECT_OWNER_CDRV	'vrDC'			// Critical drivers
+#define OB_OBJECT_OWNER_EXT	' txE'				// Extenders
 
 
 //

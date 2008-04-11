@@ -388,6 +388,17 @@ HalFreePhysicalLowMegPages(
 	UCHAR PageCount
 	);
 
+// end_ddk
+
+VOID
+KEAPI
+HalReservePhysicalLowMegPages(
+	ULONG PhysStart,
+	ULONG PhysEnd
+	);
+
+// begin_ddk
+
 #define _enable() { __asm sti }
 #define _disable() { __asm cli }
 
