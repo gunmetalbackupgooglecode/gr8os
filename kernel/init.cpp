@@ -307,11 +307,68 @@ KiDemoThread(
 		(PVOID*) &DriverObject
 		);
 
+	PEXCALLBACK Callback;
+	PEXCALLBACK Callback2;
+
+	VOID KEAPI InitTerminateThreadCallback(PTHREAD,ULONG);
+	VOID KEAPI InitCreateThreadCallback(PTHREAD,PVOID,PVOID);
+	VOID KEAPI InitDemoThreadStartRoutine(PVOID);
+
+	Status = ExCreateCallback(
+		InitTerminateThreadCallback,
+		NULL,
+		&Callback);
+
+	if (!SUCCESS(Status)) {
+		KeBugCheck (KE_INITIALIZATION_FAILED,
+					__LINE__,
+					Status,
+					0,
+					0
+					);
+	}
+
+	Status = ExCreateCallback(
+		InitCreateThreadCallback,
+		NULL,
+		&Callback2);
+
+	if (!SUCCESS(Status)) {
+		KeBugCheck (KE_INITIALIZATION_FAILED,
+					__LINE__,
+					Status,
+					0,
+					0
+					);
+	}
+
+	InterlockedInsertHeadList (&PsTerminateThreadCallbackList, &Callback->InternalListEntry);
+	InterlockedInsertHeadList (&PsCreateThreadCallbackList, &Callback2->InternalListEntry);
+
 	KdPrint(("MmLoadSystemImage: Mapped at %08x, DrvObj %08x, Status %08x\n", ImageBase, DriverObject, Status));
+
+	PTHREAD Thread = PsCreateThread (PsGetCurrentProcess(), InitDemoThreadStartRoutine, NULL);
 
 	// Fall through counter thread code.
 	PsCounterThread( (PVOID)( 80*5 + 35 ) );
 }
+
+VOID KEAPI InitCreateThreadCallback(PTHREAD Thread, PVOID StartRoutine, PVOID StartContext)
+{
+	KdPrint(("InitCreateThreadCallback: Thread=%08x, Routine=%08x, Context=%08x\n", Thread, StartRoutine, StartContext));
+}
+
+VOID KEAPI InitTerminateThreadCallback(PTHREAD Thread,ULONG Code)
+{
+	KdPrint(("InitTerminateThreadCallback: Thread=%08x, Code=%08x\n", Thread, Code));
+}
+
+VOID KEAPI InitDemoThreadStartRoutine(PVOID)
+{
+	KdPrint(("In new thread - InitDemoThreadStartRoutine\n"));
+	PsExitThread (0x99773311);
+}
+
 
 
 KEVAR  TSS32 SpecialDFTss;
@@ -495,6 +552,8 @@ KiInitSystem(
 	// Phase 1: Initializing high-level subsystems
 	//
 
+
+	InitializeLockedList (&KeBugcheckDispatcherCallbackList);
 
 	// Initialize memory management
 	MmInitSystem( );

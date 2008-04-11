@@ -201,8 +201,7 @@ typedef struct LDR_MODULE
 
 // end_ddk
 
-extern LIST_ENTRY PsLoadedModuleList;
-extern MUTEX PsLoadedModuleListLock;
+extern LOCKED_LIST PsLoadedModuleList;
 
 KESYSAPI
 BOOLEAN

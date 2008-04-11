@@ -720,7 +720,7 @@ KeStackUnwind(
 	bool first = true;
 	int syms = 0;
 
-	for (ULONG i=0; i<50 && syms<10; i++, _esp++)
+	for (ULONG i=0; i<40 && syms<10; i++, _esp++)
 	{
 		if ((*_esp & 0xFFFF0000) == Base)
 		{
@@ -745,6 +745,8 @@ KeStackUnwind(
 	}
 }
 
+LOCKED_LIST KeBugcheckDispatcherCallbackList;
+
 KENORETURN
 KESYSAPI
 VOID
@@ -764,9 +766,30 @@ KeBugCheck(
 	void* _ebp;
 
 	__asm mov [_ebp], ebp;
+	__asm cli;
 
 	if (StopCode < MAXIMUM_BUGCHECK)
 		szCode = KeBugCheckDescriptions[StopCode];
+
+
+	PVOID Arguments[5] = {
+		(PVOID) StopCode,
+		(PVOID) Argument1,
+		(PVOID) Argument2,
+		(PVOID) Argument3,
+		(PVOID) Argument4
+	};
+
+	//
+	// Process callback list w/o locking - we CANNOT wait here.
+	// Also, interrupts are already masked off
+	//
+	ExpProcessCallbackList (
+		&KeBugcheckDispatcherCallbackList.ListEntry,
+		5,
+		Arguments
+		);
+
 
 	char *KiBugCheckDescriptions[4] = { "", "", "", "" };
 

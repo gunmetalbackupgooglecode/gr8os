@@ -10,8 +10,7 @@ UNICODE_STRING FsDeviceName;
 		return (xStatus);							\
 	}
 
-MUTEX FsFatVcbListLock;
-LIST_ENTRY FsFatVcbListHead;
+LOCKED_LIST FsFatVcbList;
 
 #define FsPrint(x) KdPrint(x)
 
@@ -238,7 +237,7 @@ FsFatCreateVcb(
 	FsPrint(("FSFAT: FsFatCreateVcb: Metadata loaded\n"));
 
 	// Synchronously insert this VCB into the global VCB list
-	InterlockedOp (&FsFatVcbListLock, InsertTailList (&FsFatVcbListHead, &Vcb->VcbListEntry));
+	InterlockedInsertTailList (&FsFatVcbList, &Vcb->VcbListEntry);
 
 	return STATUS_SUCCESS;
 }
@@ -256,7 +255,7 @@ FsFatCloseVcb(
 
 	KdPrint(("FSFAT: FsFatCloseVcb: Deleting VCB\n"));
 
-	InterlockedOp (&FsFatVcbListLock, RemoveEntryList (&Vcb->VcbListEntry));
+	InterlockedRemoveEntryList (&FsFatVcbList, &Vcb->VcbListEntry);
 
 	//
 	// Unload FatHeader & other metadata
@@ -1088,8 +1087,7 @@ FsFatDriverEntry (
 {
 	KdPrint(("FSFAT: INIT\n"));
 
-	InitializeListHead (&FsFatVcbListHead);
-	ExInitializeMutex (&FsFatVcbListLock);
+	InitializeLockedList (&FsFatVcbList);
 
 	STATUS Status;
 

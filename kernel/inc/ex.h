@@ -231,6 +231,17 @@ typedef struct MUTEX
 	SCHEDULER_HEADER Header;
 } *PMUTEX;
 
+typedef struct LOCKED_LIST
+{
+	LIST_ENTRY ListEntry;
+	MUTEX Lock;
+} *PLOCKED_LIST;
+
+#define InitializeLockedList(list) { InitializeListHead(&(list)->ListEntry); ExInitializeMutex(&(list)->Lock); }
+#define InterlockedInsertHeadList(list,entry) InterlockedOp(&(list)->Lock, InsertHeadList(&(list)->ListEntry, (entry)))
+#define InterlockedInsertTailList(list,entry) InterlockedOp(&(list)->Lock, InsertTailList(&(list)->ListEntry, (entry)))
+#define InterlockedRemoveEntryList(list,entry) InterlockedOp(&(list)->Lock, RemoveEntryList(entry))
+
 KESYSAPI
 VOID
 KEAPI
@@ -278,7 +289,7 @@ STATUS
 KEAPI
 ExCreateCallback(
 	IN PVOID Routine,
-	IN PVOID Context OPTIONAL,
+	IN PVOID Context OPTIONAL UNIMPLEMENTED,
 	OUT PEXCALLBACK *CallbackObject
 	);
 
@@ -295,5 +306,28 @@ ExpDeleteCallback(
 	IN POBJECT_HEADER Object
 	);
 
-
 // end_ddk
+
+extern LOCKED_LIST PsCreateThreadCallbackList;
+extern LOCKED_LIST PsTerminateThreadCallbackList;
+extern LOCKED_LIST PsCreateProcessCallbackList;
+extern LOCKED_LIST PsTerminateProcessCallbackList;		// unreferenced
+extern LOCKED_LIST KeBugcheckDispatcherCallbackList;
+
+VOID
+KEAPI
+ExpProcessCallbackList(
+	IN PLIST_ENTRY CallbackList,
+	IN ULONG NumberParameters,
+	IN PVOID *Parameters
+	);
+
+
+VOID
+KEAPI
+ExProcessCallbackList(
+	IN PLOCKED_LIST CallbackList,
+	IN ULONG NumberParameters,
+	IN PVOID *Parameters
+	);
+
