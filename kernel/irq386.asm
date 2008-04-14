@@ -259,6 +259,8 @@ FdIrq_handler:
 ; EOI helper
 ;
 
+public KiEoiHelper as '_KiEoiHelper@0'
+
 KiEoiHelper:
     push ax
     mov  al, 20h
@@ -306,6 +308,30 @@ KiWriteVector:
 	pop  ecx
 	retn 8
 	
+public KiConnectInterrupt as '_KiConnectInterrupt@8'
+
+;  Writes IDT vector
+;  esp+4  vector
+;  esp+8  handler
+KiConnectInterrupt:
+	mov  eax, [esp + 4]
+	add  eax, KE_IDT_IRQ_BASE
+	
+	mov  ecx, [esp + 8]
+	
+	push esi
+	
+	sidt fword [IDTR]
+	mov  esi, [IDTR_base]
+
+	push ecx
+	push eax
+	call KiWriteNewVector
+	
+	pop  esi
+	retn 8
+	
+
 ; @implemented
 ;
 ; KiWriteNewVector

@@ -94,6 +94,8 @@ EXPORTS
 	InterlockedIncrement
 	InterlockedDecrement
 	InterlockedCompareExchange
+	KiConnectInterrupt
+	_KiEoiHelper@0
 	
 	;
 	; Io
