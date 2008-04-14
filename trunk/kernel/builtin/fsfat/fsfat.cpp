@@ -78,11 +78,15 @@ FsFatCreateVcb(
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 
+	LARGE_INTEGER Offset;
+
+	Offset.LowPart = 0;
+
 	Status = IoReadFile (
 		Vcb->RawFileObject,
 		Vcb->BootSector,
 		SECTOR_SIZE,
-		NULL,
+		&Offset,
 		&IoStatus
 		);
 
@@ -93,10 +97,15 @@ FsFatCreateVcb(
 		return Status;
 	}
 
+	PUCHAR buff = (PUCHAR)Vcb->BootSector;
+	FsPrint(("FSFAT: FsFatCreateVcb: Bootsector read: %02x %02x %02x %02x [%s]\n", 
+		buff[0], buff[1], buff[2], buff[3], buff));
+
 	PFSFAT_HEADER fh = Vcb->FatHeader;
 
+	ULONG FatSectors = (fh->FatSectors ? fh->FatSectors : fh->FatSectors32);
+
 	FsPrint((
-		"FSFAT: FsFatCreateVcb: Bootsector read. \n"
 		"SectorsPerCluster = %d\n"
 		"SectorSize = %d\n"
 		"ReservedSectors = %d\n"
@@ -111,6 +120,8 @@ FsFatCreateVcb(
 		"DriveNumber = %d\n"
 		"Signature = %d\n"
 		"SerialNumber = %08x\n"
+		"\n"
+		"FatSectors16/32 = %08x\n"
 		,
 		fh->SectorsPerCluster,
 		fh->SectorSize,
@@ -125,13 +136,17 @@ FsFatCreateVcb(
 		fh->HiddenSectors,
 		fh->DriveNumber,
 		fh->Signature,
-		fh->BootID
+		fh->BootID,
+		FatSectors
 		));
 
-	Vcb->Fat1StartSector = (USHORT) (1 + fh->HiddenSectors);
-	Vcb->Fat2StartSector = Vcb->Fat1StartSector + fh->FatSectors;
-	Vcb->DirStartSector = Vcb->Fat2StartSector + fh->FatSectors;
-	Vcb->Cluster2StartSector = Vcb->DirStartSector + fh->DirectoryEntries*sizeof(FSFATDIR_ENT)/fh->SectorSize;
+//	if (KiInitializationPhase >= 2)
+//		INT3
+
+	Vcb->Fat1StartSector = (USHORT) (fh->ReservedSectors /*+ fh->HiddenSectors*/);
+	Vcb->Fat2StartSector = Vcb->Fat1StartSector + FatSectors;
+	Vcb->DirStartSector = Vcb->Fat2StartSector + FatSectors;
+	Vcb->Cluster2StartSector = Vcb->DirStartSector + ALIGN_UP(fh->DirectoryEntries*sizeof(FSFATDIR_ENT),fh->SectorSize)/fh->SectorSize;
 	Vcb->ClusterSize = fh->SectorsPerCluster*fh->SectorSize;
 
 	Vcb->Vpb->SerialNumber = fh->BootID;
@@ -142,14 +157,12 @@ FsFatCreateVcb(
 	// Read fat
 	//
 
-	LARGE_INTEGER Offset = { 0 };
-
 	Offset.LowPart = (Vcb->Fat1StartSector) * fh->SectorSize;
 
-	KdPrint(("FSFAT: Reading fat, offset=%08x [F1=%08x, SS=%08x]\n", Offset.LowPart,
+	FsPrint(("FSFAT: Reading fat, offset=%08x [F1=%08x, SS=%08x]\n", Offset.LowPart,
 		Vcb->Fat1StartSector, fh->SectorSize));
 
-	Vcb->Fat = Vcb->FirstFat = (PUCHAR) ExAllocateHeap (TRUE, fh->FatSectors * fh->SectorSize);
+	Vcb->Fat = Vcb->FirstFat = (PUCHAR) ExAllocateHeap (TRUE, FatSectors * fh->SectorSize);
 
 	if (!Vcb->FirstFat)
 	{
@@ -161,7 +174,7 @@ FsFatCreateVcb(
 	Status = IoReadFile (
 		Vcb->RawFileObject,
 		Vcb->Fat,
-		fh->FatSectors * fh->SectorSize,
+		FatSectors * fh->SectorSize,
 		&Offset,
 		&IoStatus
 		);
@@ -177,7 +190,7 @@ FsFatCreateVcb(
 		Status = IoReadFile (
 			Vcb->RawFileObject,
 			Vcb->Fat,
-			fh->FatSectors * fh->SectorSize,
+			FatSectors * fh->SectorSize,
 			&Offset,
 			&IoStatus
 			);
@@ -194,31 +207,75 @@ FsFatCreateVcb(
 	}
 
 	FsPrint(("FSFAT: FsFatCreateVcb: FAT loaded\n"));
+	buff = (PUCHAR)Vcb->Fat;
+	FsPrint(("FSFAT: FAT: %02x %02x %02x %02x [%s]\n", 
+		buff[0], buff[1], buff[2], buff[3], buff));
 
 	//
 	// FAT loaded.
 	// Load root directory.
 	//
 
-	Vcb->RootDirectory = (PFSFATDIR_ENT) ExAllocateHeap (TRUE, fh->DirectoryEntries*sizeof(FSFATDIR_ENT));
-
-	if (!Vcb->RootDirectory)
+	if (fh->DirectoryEntries)
 	{
-		ExFreeHeap (Vcb->Fat);
-		ExFreeHeap (Vcb->BootSector);
-		IoCloseFile (Vcb->RawFileObject);
-		return STATUS_INSUFFICIENT_RESOURCES;
+		//
+		// Reading root directory for FAT12/16 - fixed size.
+		//
+
+		Vcb->RootDirectory = (PFSFATDIR_ENT) ExAllocateHeap (TRUE, fh->DirectoryEntries*sizeof(FSFATDIR_ENT));
+
+		if (!Vcb->RootDirectory)
+		{
+			ExFreeHeap (Vcb->Fat);
+			ExFreeHeap (Vcb->BootSector);
+			IoCloseFile (Vcb->RawFileObject);
+			return STATUS_INSUFFICIENT_RESOURCES;
+		}
+
+		Offset.LowPart = Vcb->DirStartSector * fh->SectorSize;
+
+		FsPrint(("FSFAT: Reading root directory, offset=%08x\n", Offset.LowPart));
+
+		Status = IoReadFile (
+			Vcb->RawFileObject,
+			Vcb->RootDirectory,
+			fh->DirectoryEntries*sizeof(FSFATDIR_ENT),
+			&Offset,
+			&IoStatus
+			);
 	}
+	else
+	{
+		//
+		// Read dynamic FAT32 root directory
+		//
 
-	Offset.LowPart = Vcb->DirStartSector * fh->SectorSize;
+		ULONG RootDirSize = FsFatSizeOfClusterChain (Vcb, fh->RootDirectoryCluster);
 
-	Status = IoReadFile (
-		Vcb->RawFileObject,
-		Vcb->RootDirectory,
-		fh->DirectoryEntries*sizeof(FSFATDIR_ENT),
-		&Offset,
-		&IoStatus
-		);
+		FsPrint(("FSFAT: Root directory cluster chain size %08x\n", RootDirSize));
+
+		Vcb->RootDirectory = (PFSFATDIR_ENT) ExAllocateHeap (TRUE, RootDirSize*Vcb->ClusterSize);
+
+		if (!Vcb->RootDirectory)
+		{
+			ExFreeHeap (Vcb->Fat);
+			ExFreeHeap (Vcb->BootSector);
+			IoCloseFile (Vcb->RawFileObject);
+			return STATUS_INSUFFICIENT_RESOURCES;
+		}
+
+		PUCHAR iBufferPos = (PUCHAR) Vcb->RootDirectory;
+
+		for (	ULONG Cluster = fh->RootDirectoryCluster; 
+				Cluster >= 2 && Cluster < 0xFF0; 
+				Cluster = FsFatReadFatEntry (Vcb, Cluster) )
+		{
+			FsPrint(("FSFAT: Reading root directory cluster %08x\n", Cluster));
+
+			Status = FsFatReadCluster (Vcb, Cluster, iBufferPos);
+			iBufferPos += Vcb->ClusterSize;
+		}
+	}
 
 	if (!SUCCESS(Status))
 	{
@@ -229,7 +286,11 @@ FsFatCreateVcb(
 		IoCloseFile (Vcb->RawFileObject);
 		return Status;
 	}
-	
+
+	buff = (PUCHAR)Vcb->RootDirectory;
+	FsPrint(("FSFAT: ROOT: %02x %02x %02x %02x [%s]\n", 
+		buff[0], buff[1], buff[2], buff[3], buff));
+
 	//
 	// Root directory loaded.
 	//
@@ -593,9 +654,16 @@ FsFatCreate(
 			PFSFAT_VOLUME_OBJECT dev = (PFSFAT_VOLUME_OBJECT) DeviceObject;
 			PFSFAT_HEADER fh = dev->Vcb.FatHeader;
 
-			for (ULONG i=0; i<fh->DirectoryEntries; i++)
+			ULONG numEntries = fh->DirectoryEntries ? fh->DirectoryEntries : (((ULONG)fh->SectorsPerCluster*(ULONG)fh->SectorSize)/(ULONG)sizeof(FSFATDIR_ENT));
+
+			KdPrint(("CREAT: %d entries\n", numEntries));
+
+			for (ULONG i=0; i<numEntries; i++)
 			{
 				PFSFATDIR_ENT dirent = &dev->Vcb.RootDirectory[i];
+
+				KdPrint(("CREAT: [%s] %s\n", dosname, dirent->Filename));
+
 				if (!strncmp (dosname, dirent->Filename, 11))
 				{
 					//
@@ -791,7 +859,7 @@ struct FSFAT_CLUSTERS {
 FSFAT_CLUSTERS FsFatClusters[] = {
 	{ 0xFFF, 0xFF0, 0xFF6, 0xFF7, 0xFF8 },
 	{ 0xFFFF, 0xFFFF0, 0xFFFF6, 0xFFFF7, 0xFFFF8 },
-	{ 0x0FFFFFFF, 0x0FFFFFFF0, 0x0FFFFFFF6, 0x0FFFFFFF7, 0x0FFFFFFF8 }
+	{ 0x0FFFFFFF, 0x0FFFFFF0, 0x0FFFFFF6, 0x0FFFFFF7, 0x0FFFFFF8 }
 };
 
 FSFAT_CLUSTERS* FsFatGetClTable(UCHAR Size)
@@ -842,20 +910,66 @@ FsFatFileClusterByPos (
 			&& (Cluster) <= FATTBL(ReservedEnd))
 		{
 			// Reserved sector
-			KdPrint(("FSFAT: Warn: Resevred cluster %8x found in file, cluster chain head %08x\n", (Cluster), ChainHead));
+			KdPrint(("FSFAT: Warn: Resevred cluster %08x found in file, cluster chain head %08x\n", (Cluster), ChainHead));
 			Cluster = -3;
 			break;
 		}
 
 		if (Cluster == FATTBL(BadCluster))
 		{
-			KdPrint(("FSFAT: Warn: Bad cluster %08x found in cluster chain %08x, file will be unreadable\n", Cluster, ChainHead));
+			KdPrint(("FSFAT: Warn: Bad cluster %08x found in file (chain %08x), file will be unreadable\n", Cluster, ChainHead));
 			Cluster = -2;
 			break;
 		}
 	}
 
 	return Cluster;
+}
+
+ULONG
+KEAPI
+FsFatSizeOfClusterChain(
+	PFSFATVCB Vcb,
+	ULONG Head
+	)
+{
+	ULONG i=1;
+	ULONG Cluster;
+
+	Head = CLUSTER(Head);
+
+	for (Cluster = (Head); 
+		 ;
+		 i++)
+	{
+		Cluster = FsFatReadFatEntry(Vcb, Cluster);
+
+//		KdPrint(("FSFAT: Got %8x cluster (#%d) from cluster chain head %08x\n", (Cluster), i-1, Head));
+
+		if ((Cluster) >= FATTBL(LastClusterStart))
+		{
+			Cluster = -1;
+			break;
+		}
+
+		if ((Cluster) >= FATTBL(ReservedStart)
+			&& (Cluster) <= FATTBL(ReservedEnd))
+		{
+			// Reserved sector
+			KdPrint(("FSFAT: Warn: Resevred cluster %08x found in chain, cluster chain head %08x\n", (Cluster), Head));
+			Cluster = -3;
+			break;
+		}
+
+		if (Cluster == FATTBL(BadCluster))
+		{
+			KdPrint(("FSFAT: Warn: Bad cluster %08x found in cluster chain %08x, file will be unreadable\n", Cluster, Head));
+			Cluster = -2;
+			break;
+		}
+	}
+
+	return i;
 }
 
 STATUS

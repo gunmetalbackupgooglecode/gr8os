@@ -484,6 +484,20 @@ KiInPortD(
 	);
 
 KESYSAPI
+VOID
+KEAPI
+KiConnectInterrupt(
+	UCHAR IdtVector,
+	PVOID Handler
+	);
+
+KESYSAPI
+VOID
+KEAPI
+KiEoiHelper(
+	);
+
+KESYSAPI
 PDPC_QUEUE
 KEAPI
 KeInsertQueueDpc(

@@ -168,10 +168,10 @@ typedef struct FSFATVCB
 		PFSFAT_HEADER FatHeader;
 	};
 
-	USHORT Fat1StartSector;
-	USHORT Fat2StartSector;
-	USHORT DirStartSector;
-	USHORT Cluster2StartSector;
+	ULONG Fat1StartSector;
+	ULONG Fat2StartSector;
+	ULONG DirStartSector;
+	ULONG Cluster2StartSector;
 
 	PUCHAR FirstFat;
 	PUCHAR SecondFat;
@@ -225,9 +225,23 @@ FsFatReadFatEntry(
 	);
 
 ULONG
+KEAPI
+FsFatSizeOfClusterChain(
+	PFSFATVCB Vcb,
+	ULONG Head
+	);
+
+ULONG
 FsFatFileClusterByPos (
 	PFSFATVCB Vcb,
 	ULONG ChainHead, 
 	ULONG Pos
 	);
 
+STATUS
+KEAPI
+FsFatReadCluster(
+	PFSFATVCB Vcb,
+	ULONG Cluster,
+	PVOID Buffer
+	);

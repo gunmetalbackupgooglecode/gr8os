@@ -292,6 +292,55 @@ KiDemoThread(
 	PVOID ImageBase = 0;
 	PDRIVER DriverObject = 0;
 
+	RtlInitUnicodeString( &ImagePath, L"\\SystemRoot\\hdd.sys" );
+	RtlInitUnicodeString( &DriverName, L"\\Driver\\hdd" );
+
+	Status = MmLoadSystemImage (
+		&ImagePath,
+		&DriverName,
+		DriverMode,
+		FALSE,
+		&ImageBase,
+		(PVOID*) &DriverObject
+		);
+
+	KdPrint(("MmLoadSystemImage: Mapped at %08x, DrvObj %08x, Status %08x\n", ImageBase, DriverObject, Status));	
+	
+
+	UNICODE_STRING FileName;
+	RtlInitUnicodeString( &FileName, L"\\Device\\hda0\\boot.ini" );
+
+	Status = IoCreateFile (
+		&File,
+		FILE_READ_DATA,
+		&FileName,
+		&IoStatus,
+		FILE_OPEN_EXISTING,
+		0
+		);
+	if (!SUCCESS(Status)) {
+		KdPrint(("IoCreateFile failed with status %08x\n", Status));
+		INT3
+	}
+
+	for (int i=0; i<2; i++)
+	{
+		UCHAR buff[513];
+
+		Status = IoReadFile (File, buff, SECTOR_SIZE, NULL, &IoStatus);
+		if (!SUCCESS(Status)) {
+			KdPrint(("IoReadFile failed with status %08x\n", Status));
+			INT3
+		}
+
+		buff[IoStatus.Information] = 0;
+
+		KdPrint(("Read: \n%s\n", buff));
+	}
+
+	IoCloseFile (File);
+
+	/*
 	RtlInitUnicodeString( &ImagePath, L"\\SystemRoot\\pci.sys" );
 	RtlInitUnicodeString( &DriverName, L"\\Driver\\pci" );
 
@@ -306,21 +355,8 @@ KiDemoThread(
 
 	KdPrint(("MmLoadSystemImage: Mapped at %08x, DrvObj %08x, Status %08x\n", ImageBase, DriverObject, Status));
 
-	RtlInitUnicodeString( &ImagePath, L"\\SystemRoot\\hdd.sys" );
-	RtlInitUnicodeString( &DriverName, L"\\Driver\\hdd" );
-
-	Status = MmLoadSystemImage (
-		&ImagePath,
-		&DriverName,
-		DriverMode,
-		FALSE,
-		&ImageBase,
-		(PVOID*) &DriverObject
-		);
-
-	KdPrint(("MmLoadSystemImage: Mapped at %08x, DrvObj %08x, Status %08x\n", ImageBase, DriverObject, Status));
-
 	ObpDumpDirectory (ObRootObjectDirectory,0);
+	*/
 
 	/*
 	PEXCALLBACK Callback;
@@ -365,7 +401,7 @@ KiDemoThread(
 	*/
 
 	// Fall through counter thread code.
-	PsCounterThread( (PVOID)( 80*5 + 35 ) );
+	//PsCounterThread( (PVOID)( 80*5 + 35 ) );
 }
 
 VOID KEAPI InitCreateThreadCallback(PTHREAD Thread, PVOID StartRoutine, PVOID StartContext)
@@ -609,8 +645,8 @@ KiInitSystem(
 
 	KiDebugPrint ("PS: ZeroPageThread=%08x, Thread1=%08x, Thread2=%08x, Thread3=%08x\n", &SystemThread, &Thread1, &Thread2, &Thread3);
 
-	PspCreateThread( &Thread1, &InitialSystemProcess, PsCounterThread, (PVOID)( 80*3 + 40 ) );
-	PspCreateThread( &Thread2, &InitialSystemProcess, PsCounterThread, (PVOID)( 80*4 + 45 ) );
+//	PspCreateThread( &Thread1, &InitialSystemProcess, PsCounterThread, (PVOID)( 80*3 + 40 ) );
+//	PspCreateThread( &Thread2, &InitialSystemProcess, PsCounterThread, (PVOID)( 80*4 + 45 ) );
 	PspCreateThread( &Thread3, &InitialSystemProcess, KiDemoThread, NULL );
 
 	KiDebugPrintRaw( "INIT: Initialization completed.\n\n" );

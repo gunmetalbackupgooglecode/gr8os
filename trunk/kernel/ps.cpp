@@ -209,6 +209,13 @@ FindReadyThread(
 	if (Curr->State != THREAD_STATE_READY)
 	{
 		KdPrint (("PS: No ready threads found, and execution cannot be returned to current thread.\n"));
+
+		if (IsListEmpty(&PsReadyListHead) && Curr->State == THREAD_STATE_TERMINATED)
+		{
+			KdPrint(("PS: No alive threads, system halted."));
+			KiStopExecution();
+		}
+
 		KdPrint ((
 			"Current thread %08x:\n"
 			"Process = %08x\n"

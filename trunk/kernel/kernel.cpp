@@ -367,6 +367,7 @@ KeAssertionFailed(
 {
 	sprintf( MmDebugBuffer, "KE: Assertion failed for <%s> in file %s at line %d\n", Message, FileName, Line );
 	KiDebugPrintRaw (MmDebugBuffer);
+	INT3
 }
 
 //==================================
