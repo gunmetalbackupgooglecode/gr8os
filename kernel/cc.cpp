@@ -15,7 +15,7 @@
 #endif
 
 KESYSAPI
-VOID
+STATUS
 KEAPI
 CcInitializeFileCaching(
 	IN PFILE File,
@@ -26,6 +26,12 @@ CcInitializeFileCaching(
 	Initialize file cache map. Further read/write operating may be cached.
 --*/
 {
+	if (PAGE_SIZE > ClusterSize)
+	{
+		if (PAGE_SIZE % ClusterSize)
+			return STATUS_INVALID_PARAMETER; // cannot cache
+	}
+
 	PCCFILE_CACHE_MAP CacheMap = (PCCFILE_CACHE_MAP) ExAllocateHeap (TRUE, sizeof(CCFILE_CACHE_MAP));
 	if (CacheMap == NULL)
 	{
@@ -35,39 +41,60 @@ CcInitializeFileCaching(
 		//
 
 		File->CacheMap = NULL;
-		File->Synchronize = TRUE;
-		File->DesiredAccess |= SYNCHRONIZE;
-		return;
+		
+		SET_FILE_NONCACHED (File);
+
+		File->DesiredAccess |= FILE_NONCACHED;
+		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 
 	CacheMap->CachedClusters = 0;
 	CacheMap->FileObject = File;
 	CacheMap->ClusterSize = ClusterSize;
+
+	CacheMap->ClustersPerPage = 0;
+	if (ClusterSize < PAGE_SIZE)
+	{
+		CacheMap->ClustersPerPage = (UCHAR)(PAGE_SIZE / ClusterSize);
+	}
+
 	CacheMap->MaxCachedClusters = MIN_CACHED_CLUSTERS;
 	CacheMap->RebuildCount = 0;
 	CacheMap->ShouldRebuild = 0;
 	CacheMap->Callbacks = *Callbacks;
-	CacheMap->ClusterCacheMap = (PCCFILE_CACHED_CLUSTER) ExAllocateHeap (TRUE, MIN_CACHED_CLUSTERS*sizeof(CCFILE_CACHED_CLUSTER));
 
-	if (CacheMap->ClusterCacheMap == NULL)
+	if (IS_FILE_CACHED(File))
 	{
-		//
-		// Insufficient resources to allocate cache map.
-		// File operations will be non-cached.
-		//
+		CacheMap->ClusterCacheMap = (PCCFILE_CACHED_CLUSTER) ExAllocateHeap (TRUE, MIN_CACHED_CLUSTERS*sizeof(CCFILE_CACHED_CLUSTER));
 
-		ExFreeHeap (CacheMap);
-		File->CacheMap = NULL;
-		File->Synchronize = TRUE;
-		File->DesiredAccess |= SYNCHRONIZE;
-		return;
+		if (CacheMap->ClusterCacheMap == NULL)
+		{
+			//
+			// Insufficient resources to allocate cache map.
+			// File operations will be non-cached.
+			//
+
+			ExFreeHeap (CacheMap);
+			File->CacheMap = NULL;
+			
+			SET_FILE_NONCACHED (File);
+
+			File->DesiredAccess |= FILE_NONCACHED;
+			return STATUS_INSUFFICIENT_RESOURCES;
+		}
+
+		KeZeroMemory (CacheMap->ClusterCacheMap, MIN_CACHED_CLUSTERS*sizeof(CCFILE_CACHED_CLUSTER));
 	}
-
-	KeZeroMemory (CacheMap->ClusterCacheMap, MIN_CACHED_CLUSTERS*sizeof(CCFILE_CACHED_CLUSTER));
+	else
+	{
+		CacheMap->MaxCachedClusters = 0;
+		CacheMap->ClusterCacheMap = NULL;
+	}
 
 	ExInitializeMutex (&CacheMap->CacheMapLock);
 
 	File->CacheMap = CacheMap;
+	return STATUS_SUCCESS;
 }
 
 KESYSAPI
@@ -82,28 +109,32 @@ CcFreeCacheMap(
 {
 	STATUS Status;
 
-	Status = CcPurgeCacheFile (File);
-	if (!SUCCESS(Status))
+	if (IS_FILE_CACHED(File))
 	{
-		return Status;
-	}
-
-	ExAcquireMutex (&File->CacheMap->CacheMapLock);
-
-	for (ULONG i=0,j=0; i<File->CacheMap->MaxCachedClusters && j<File->CacheMap->CachedClusters; i++)
-	{
-		PCCFILE_CACHED_CLUSTER Cluster = &File->CacheMap->ClusterCacheMap[i];
-
-		if (Cluster->Cached)
+		Status = CcPurgeCacheFile (File);
+		if (!SUCCESS(Status))
 		{
-			ExFreeHeap (Cluster->Buffer);
-			Cluster->Cached = 0;
-			j++;
+			return Status;
 		}
+
+		ExAcquireMutex (&File->CacheMap->CacheMapLock);
+
+		for (ULONG i=0,j=0; i<File->CacheMap->MaxCachedClusters && j<File->CacheMap->CachedClusters; i++)
+		{
+			PCCFILE_CACHED_CLUSTER Cluster = &File->CacheMap->ClusterCacheMap[i];
+
+			if (Cluster->Cached)
+			{
+				ExFreeHeap (Cluster->Buffer);
+				Cluster->Cached = 0;
+				j++;
+			}
+		}
+
+		ExReleaseMutex (&File->CacheMap->CacheMapLock);
+		ExFreeHeap (File->CacheMap->ClusterCacheMap);
 	}
 
-	ExReleaseMutex (&File->CacheMap->CacheMapLock);
-	ExFreeHeap (File->CacheMap->ClusterCacheMap);
 	ExFreeHeap (File->CacheMap);
 
 	//
@@ -111,8 +142,8 @@ CcFreeCacheMap(
 	//
 
 	File->CacheMap = NULL;
-	File->Synchronize = TRUE;
-	File->DesiredAccess |= SYNCHRONIZE;
+	SET_FILE_NONCACHED (File);
+	File->DesiredAccess |= FILE_NONCACHED;
 
 	return STATUS_SUCCESS;
 }
@@ -132,7 +163,7 @@ CcpCacheFileCluster(
 	PCCFILE_CACHED_CLUSTER CachedClusters;
 	STATUS Status = STATUS_UNSUCCESSFUL;
 
-//	ExAcquireMutex (&CacheMap->CacheMapLock);
+	//ExAcquireMutex (&CacheMap->CacheMapLock);
 
 	CacheMap->CachedClusters ++;
 	if (CacheMap->CachedClusters == CacheMap->MaxCachedClusters)
@@ -198,6 +229,12 @@ CcpCacheFileCluster(
 			else
 			{
 				memcpy (CacheMap->ClusterCacheMap[i].Buffer, ClusterBuffer, CacheMap->ClusterSize);
+
+#ifndef GROSEMU
+				PMMPTE PointerPte = MiGetPteAddress (CacheMap->ClusterCacheMap[i].Buffer);
+				PointerPte->u1.e1.Dirty = FALSE;
+#endif
+
 				Status = STATUS_SUCCESS;
 			}
 
@@ -205,7 +242,7 @@ CcpCacheFileCluster(
 		}
 	}
 
-//	ExReleaseMutex (&CacheMap->CacheMapLock);
+	//ExReleaseMutex (&CacheMap->CacheMapLock);
 	return Status;
 }
 
@@ -217,7 +254,7 @@ CcpRebuildCacheMap(
 	)
 /*++
 	Rebuild file cache map and force reducing it if need.
-	For any cached clusters following actions will be performed:
+	For any cached cluster the following actions will be performed:
 		1. if use count is too small, try to delete this cluster.
 		2. to delete cluster check if it is modified. If so, try to write it
 		   on disk
@@ -450,6 +487,16 @@ CcCacheReadFile(
 	STATUS Status = STATUS_NOT_FOUND;
 	PCCFILE_CACHE_MAP CacheMap = FileObject->CacheMap;
 
+	if (FileObject->ReadThrough)
+	{
+		return CacheMap->Callbacks.ActualRead (
+			FileObject,
+			ClusterNumber,
+			Buffer,
+			Size
+			);
+	}
+
 	ExAcquireMutex (&CacheMap->CacheMapLock);
 
 	CcPrint (("CC: Cache read requested for the file %08x, cluster %d\n", FileObject, ClusterNumber));
@@ -526,6 +573,22 @@ CcCacheWriteFile(
 	STATUS Status = STATUS_NOT_FOUND;
 	PCCFILE_CACHE_MAP CacheMap = FileObject->CacheMap;
 
+	if (FileObject->WriteThrough)
+	{
+		Status = CacheMap->Callbacks.ActualWrite (
+			FileObject,
+			ClusterNumber,
+			Buffer,
+			Size
+			);
+
+		if (!SUCCESS(Status))
+			return Status;
+
+		if (IS_FILE_CACHED(FileObject) == FALSE)
+			return Status;
+	}
+
 	ExAcquireMutex (&CacheMap->CacheMapLock);
 
 	for (ULONG i=0; i<CacheMap->MaxCachedClusters; i++)
@@ -547,12 +610,15 @@ CcCacheWriteFile(
 		// Write the cluster
 		//
 
-		Status = CacheMap->Callbacks.ActualWrite (
-			FileObject,
-			ClusterNumber,
-			Buffer,
-			Size
-			);
+		if (FileObject->WriteThrough == FALSE)
+		{
+			Status = CacheMap->Callbacks.ActualWrite (
+				FileObject,
+				ClusterNumber,
+				Buffer,
+				Size
+				);
+		}
 
 		if (SUCCESS(Status))
 		{

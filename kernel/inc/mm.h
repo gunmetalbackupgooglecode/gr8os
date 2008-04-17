@@ -118,6 +118,7 @@ typedef union MMPTE {
 	{
 		union
 		{
+			// Normal, notmapped, view.
 			struct
 			{
 				ULONG Valid : 1;
@@ -135,15 +136,43 @@ typedef union MMPTE {
 				ULONG PageFrameNumber : 20;
 			} e1;
 
+			// Paged out
 			struct
 			{
+				ULONG Valid : 1; // =0
 				ULONG PagingFileNumber : 4;
+				ULONG Protection : 3;
+				ULONG Reserved : 1;
+				ULONG PteType : 2;
+				ULONG Reserved2 : 1;
+
+				ULONG PageFrameNumber : 20;  // PFN in the paging file
+			} e2;
+
+			// View
+			struct
+			{
+				ULONG Valid : 1; // =0
+				ULONG Protection : 3;
 				ULONG Reserved : 5;
 				ULONG PteType : 2;
-				ULONG reserved : 1;
+				ULONG Reserved2 : 1;
 
-				ULONG PageFrameNumber : 20;
-			} e2;
+				ULONG FileDescriptorNumber : 15;
+				ULONG Reserved3 : 5;
+			} e3;
+
+			// Trimmed
+			struct
+			{
+				ULONG Valid : 1;
+				ULONG Protection : 3;
+				ULONG Reserved : 5;
+				ULONG PteType : 2;
+				ULONG Reserved2 : 1;
+
+				ULONG PageFrameNumber : 20;	// by this PFN page can be found in standy/modified page list.
+			} e4;
 		} u1;
 	};
 
@@ -226,7 +255,8 @@ MmMapPhysicalPagesInRange(
 	PVOID VirtualAddressEnd,
 	PHYSICAL_ADDRESS PhysicalAddress,
 	ULONG PageCount,
-	BOOLEAN AddToWorkingSet
+	BOOLEAN AddToWorkingSet,
+	PROCESSOR_MODE TargetMode
 	);
 
 VOID
@@ -468,7 +498,8 @@ typedef struct MMPPD
 	UCHAR ReadInProgress : 1;					// Read operation in progress
 	UCHAR WriteInProgress : 1;					// Write operation in progress
 	UCHAR Modified : 1;							// Page was modified
-	USHORT Reserved;
+	USHORT FileView : 1;						// = 1 if this page is an active view of the file.
+	USHORT FileDescriptorNumber : 15;			// if FileView=1, specifies the file descriptor of the file being mapped, else reserved.
 	UCHAR KernelStack : 1;						// Page belongs to kernel stack
 	UCHAR ProcessorMode : 2;					// Owner's processor mode, who owns this page.
 	UCHAR ShareCount : 5;						// Share count for the page. Increments with each mapping.
@@ -747,3 +778,59 @@ enum MMSYSTEM_MODE {
 };
 
 extern MMSYSTEM_MODE MmSystemMode;
+
+//
+// Sizeof protection == 3 bits.
+//
+
+#define MM_NOACCESS				0
+#define MM_READONLY				1
+#define MM_EXECUTE_READONLY		2
+#define MM_READWRITE			3
+#define MM_EXECUTE_READWRITE	4
+#define MM_WRITECOPY			5
+#define MM_EXECUTE_WRITECOPY	6
+#define MM_GUARD				7
+
+typedef struct MAPPED_FILE
+{
+	PFILE FileObject;
+	ULONG NumberViews;
+	PROCESSOR_MODE TargetMode;
+	LOCKED_LIST ViewList;
+	UCHAR StrongestProtection;
+} *PMAPPED_FILE;
+
+typedef struct MAPPED_VIEW
+{
+	LIST_ENTRY ViewListEntry;
+	LARGE_INTEGER StartOffsetInFile;
+	ULONG ViewSize;
+	PMMPTE StartPte;
+	PMAPPED_FILE Mapping;
+	UCHAR Protection;
+} *PMAPPED_VIEW;
+
+KESYSAPI
+STATUS
+KEAPI
+MmCreateFileMapping(
+	OUT PMAPPED_FILE *Mapping,
+	IN PFILE FileObject,
+	IN PROCESSOR_MODE MappingMode,
+	IN UCHAR StrongestProtection
+	);
+
+KESYSAPI
+STATUS
+KEAPI
+MmMapViewOfFile(
+	OUT PMAPPED_VIEW *View,
+	IN PMAPPED_FILE Mapping,
+	IN ULONG OffsetStart,
+	IN ULONG OffsetStartHigh,
+	IN ULONG ViewSize,
+	IN UCHAR Protection,
+	IN OUT PVOID *VirtualAddress
+	);
+

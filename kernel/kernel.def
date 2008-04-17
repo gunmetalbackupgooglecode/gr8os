@@ -189,6 +189,8 @@ EXPORTS
 	MmLoadSystemImage
 	MmReservePhysicalAddressRange
 	MmAcpiInfo
+	MmCreateFileMapping
+	MmMapViewOfFile
 	
 	;
 	; Processes

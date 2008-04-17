@@ -641,7 +641,8 @@ IoCreateFile(
 	File->ReadAccess = !!(DesiredAccess & FILE_READ_DATA);
 	File->WriteAccess = !!(DesiredAccess & FILE_WRITE_DATA);
 	File->DeleteAccess = !!(DesiredAccess & FILE_DELETE);
-	File->Synchronize = !!(DesiredAccess & SYNCHRONIZE);
+	File->ReadThrough = !!(DesiredAccess & FILE_READ_THROUGH);
+	File->WriteThrough = !!(DesiredAccess & FILE_WRITE_THROUGH);
 
 	PIRP Irp = IoBuildDeviceRequest (
 		DeviceObject,
