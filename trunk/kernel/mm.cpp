@@ -62,7 +62,8 @@ MmMapPhysicalPagesKernel(
 		(PVOID)(MM_CRITICAL_AREA_END),
 		PhysicalAddress,
 		PageCount,
-		FALSE
+		FALSE,
+		KernelMode
 		);
 }
 
@@ -75,7 +76,8 @@ MmMapPhysicalPagesInRange(
 	PVOID VirtualAddressEnd,
 	PHYSICAL_ADDRESS PhysicalAddress,
 	ULONG PageCount,
-	BOOLEAN AddToWorkingSet
+	BOOLEAN AddToWorkingSet,
+	PROCESSOR_MODE TargetMode
 	)
 /*++
 	Try to map physical pages within the specified virtual address range
@@ -135,6 +137,7 @@ MmMapPhysicalPagesInRange(
 
 						Ppd->u2.PointerPte = PointerPte;
 						Ppd->u1.WsIndex = -1; 
+						Ppd->ProcessorMode = TargetMode;
 						
 						if (AddToWorkingSet)
 						{
@@ -149,6 +152,9 @@ MmMapPhysicalPagesInRange(
 											0
 											);
 							}
+
+							if (TargetMode == KernelMode)
+								Ppd->BelongsToSystemWorkingSet = 1;
 						}
 					}
 					
@@ -208,6 +214,9 @@ MiUnmapPhysicalPages(
 
 			MiRemovePageFromWorkingSet (Ppd);
 			Ppd->u1.WsIndex = -1;
+
+			if (Ppd->BelongsToSystemWorkingSet)
+				Ppd->BelongsToSystemWorkingSet = FALSE;
 		}
 
 		MmInvalidateTlb ((PVOID)((ULONG)VirtualAddress + (i<<PAGE_SHIFT)));
@@ -1377,8 +1386,8 @@ MmMapLockedPages(
 					MI_LOCK_PPD();
 
 					PMMPPD Ppd = MmPfnPpd(Mmd->PfnList[j]);
-					Ppd->ShareCount ++;
 
+					Ppd->ShareCount ++;
 					
 					if (Ppd->ShareCount == 1)
 					{
@@ -1388,6 +1397,7 @@ MmMapLockedPages(
 
 						Ppd->u2.PointerPte = PointerPte;
 						Ppd->u1.WsIndex = -1;
+						Ppd->ProcessorMode = TargetMode;
 						
 						if (AddToWorkingSet)
 						{
@@ -1402,6 +1412,9 @@ MmMapLockedPages(
 											0
 											);
 							}
+
+							if (TargetMode == KernelMode)
+								Ppd->BelongsToSystemWorkingSet = 1;
 						}
 					}
 					
@@ -2318,4 +2331,136 @@ MmLoadSystemImage(
 	}
 
 	return Status;
+}
+
+
+
+////////------------------------------------//////////
+////////            File mapping            //////////
+////////------------------------------------//////////
+
+UCHAR
+KEAPI
+MiFileAccessToPageProtection(
+	ULONG GrantedAccess
+	)
+/*++
+	Convert file access to MM page protection
+--*/
+{
+	// If writing is allowed, return read/write protection.
+	if (GrantedAccess & FILE_WRITE_DATA)
+		return MM_READWRITE;
+
+	// Writing is not allowed, but reading is allowed. Return readonly protection
+	if (GrantedAccess & FILE_READ_DATA)
+		return MM_READONLY;
+
+	// Both reading and writing are disabled. Return MM_NOACCESS
+	return MM_NOACCESS;
+}
+
+KESYSAPI
+STATUS
+KEAPI
+MmCreateFileMapping(
+	OUT PMAPPED_FILE *Mapping,
+	IN PFILE FileObject,
+	IN PROCESSOR_MODE MappingMode,
+	IN UCHAR StrongestProtection
+	)
+/*++
+	Create file mapping to the specified file object at target processor mode.
+	To map particular part of file caller should call MmMapViewOfFile later.
+	Strongest acceptable protection should be specified.
+	Pointer to the MAPPED_FILE is returned.
+--*/
+{
+	if (FileObject->CacheMap == NULL)
+	{
+		//
+		// File should be cached if the caller wants us to map it
+		//
+
+		return STATUS_INVALID_PARAMETER_2;
+	}
+
+	if (FileObject->CacheMap->ClusterSize != PAGE_SIZE)
+	{
+		//
+		// Caching cluster size should equal system page size.
+		//
+
+		return STATUS_INVALID_PARAMETER_2;
+	}
+
+	if ( MiFileAccessToPageProtection(FileObject->DesiredAccess) < StrongestProtection )
+	{
+		//
+		// StrongestProtection is greater than granted file access.
+		// Cannot map
+		//
+
+		return STATUS_ACCESS_DENIED;
+	}
+
+	//
+	// Allocate space for the structure
+	//
+	PMAPPED_FILE MappedFile = (PMAPPED_FILE) ExAllocateHeap (TRUE, sizeof(MAPPED_FILE));
+	if (!MappedFile)
+	{
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+	// File cannot go away until all its views are unmapped.
+	ObReferenceObject (FileObject);
+
+	MappedFile->FileObject = FileObject;
+	MappedFile->StrongestProtection = StrongestProtection;
+	MappedFile->TargetMode = MappingMode;
+	InitializeLockedList (&MappedFile->ViewList);
+
+	*Mapping = MappedFile;
+
+	return STATUS_SUCCESS;
+}
+
+KESYSAPI
+STATUS
+KEAPI
+MmMapViewOfFile(
+	OUT PMAPPED_VIEW *pView,
+	IN PMAPPED_FILE Mapping,
+	IN ULONG OffsetStart,
+	IN ULONG OffsetStartHigh,
+	IN ULONG ViewSize,
+	IN UCHAR Protection,
+	IN OUT PVOID *VirtualAddress
+	)
+/*++
+	Map view of the specified file, which is already being mapped (MmCreateFileMapping should be called before this call)
+	Offset and size of the view should be specified.
+	Protection should be lower or equal strongest protection of the specified mapping.
+	Virtual address is returned in *VirtualAddress
+--*/
+{
+	if (Mapping->StrongestProtection < Protection)
+	{
+		return STATUS_ACCESS_DENIED;
+	}
+
+	/*
+	//
+	// Allocate space for the structure
+	//
+	PMAPPED_VIEW View = (PMAPPED_VIEW) ExAllocateHeap (TRUE, sizeof(MAPPED_VIEW));
+	if (!View)
+	{
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+	*/
+
+
+	return STATUS_NOT_IMPLEMENTED;
 }

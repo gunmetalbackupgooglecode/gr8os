@@ -40,18 +40,20 @@ FdCreateClose(
 		//
 
 		CCFILE_CACHE_CALLBACKS Callbacks = { FdPerformRead, NULL };
-		CcInitializeFileCaching (Irp->FileObject, FD_SECTOR_SIZE, &Callbacks);
+		STATUS Status = CcInitializeFileCaching (Irp->FileObject, FD_SECTOR_SIZE, &Callbacks);
+
+		if (!SUCCESS(Status))
+		{
+			COMPLETE_IRP (Irp, Status, 0);
+		}
 	}
 	else
 	{
-		if (Irp->FileObject->Synchronize == FALSE)
-		{
-			//
-			// Purge & free cache map
-			//
+		//
+		// Purge & free cache map
+		//
 
-			CcFreeCacheMap (Irp->FileObject);
-		}
+		CcFreeCacheMap (Irp->FileObject);
 	}
 
 	COMPLETE_IRP (Irp, STATUS_SUCCESS, 0);

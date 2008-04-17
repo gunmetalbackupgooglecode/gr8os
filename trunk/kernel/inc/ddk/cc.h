@@ -1,5 +1,5 @@
 //
-// <cc.h> built by header file parser at 08:46:12  14 Apr 2008
+// <cc.h> built by header file parser at 09:59:07  17 Apr 2008
 // This is a part of gr8os include files for GR8OS Driver & Extender Development Kit (DEDK)
 //
 
@@ -39,7 +39,7 @@ typedef struct CCFILE_CACHE_MAP
 *PCCFILE_CACHE_MAP;
 
 KESYSAPI
-VOID
+STATUS
 KEAPI
 CcInitializeFileCaching(
 	IN PFILE File,

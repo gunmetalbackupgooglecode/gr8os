@@ -627,18 +627,15 @@ HddCreateClose(
 		CCFILE_CACHE_CALLBACKS Callbacks = { HdPerformRead, NULL };
 		CcInitializeFileCaching (Irp->FileObject, SECTOR_SIZE, &Callbacks);
 
-		Irp->FileObject->FsContext2 = (DeviceObject+1);
+		Irp->FileObject->FsContext2 = (DeviceObject+1); // IDE Drive Control Block
 	}
 	else
 	{
-		if (Irp->FileObject->Synchronize == FALSE)
-		{
-			//
-			// Purge & free cache map
-			//
+		//
+		// Purge & free cache map
+		//
 
-			CcFreeCacheMap (Irp->FileObject);
-		}
+		CcFreeCacheMap (Irp->FileObject);
 	}
 
 	COMPLETE_IRP (Irp, STATUS_SUCCESS, 0);

@@ -1,5 +1,5 @@
 //
-// <io.h> built by header file parser at 08:46:13  14 Apr 2008
+// <io.h> built by header file parser at 09:59:08  17 Apr 2008
 // This is a part of gr8os include files for GR8OS Driver & Extender Development Kit (DEDK)
 //
 
@@ -238,7 +238,8 @@ struct FILE
 			BOOLEAN SharedRead UNIMPLEMENTED;
 			BOOLEAN SharedWrite UNIMPLEMENTED;
 			BOOLEAN SharedDelete UNIMPLEMENTED;
-			BOOLEAN Synchronize;
+			BOOLEAN ReadThrough;
+			BOOLEAN WriteThrough;
 		};
 	};
 	UNICODE_STRING RelativeFileName;
@@ -249,13 +250,20 @@ struct FILE
 };
 #pragma pack()
 
-#define SYNCHRONIZE				0x00000001
+#define IS_FILE_CACHED(File) ((File)->ReadThrough==FALSE || (File)->WriteThrough==FALSE)
+#define SET_FILE_NONCACHED(File) { (File)->ReadThrough = (File)->WriteThrough = TRUE; }
+
+//#define SYNCHRONIZE				0x00000001
 
 #define FILE_READ_ATTRIBUTES	0x00000002
 #define FILE_WRITE_ATTRIBUTES	0x00000004
 #define FILE_READ_DATA			0x00000008
 #define FILE_WRITE_DATA			0x00000010
 #define FILE_DELETE				0x00000020
+
+#define FILE_READ_THROUGH		0x00000040
+#define FILE_WRITE_THROUGH		0x00000080
+#define FILE_NONCACHED			(FILE_READ_THROUGH|FILE_WRITE_THROUGH)
 
 // dispositions
 

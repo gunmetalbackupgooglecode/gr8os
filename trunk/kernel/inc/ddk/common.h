@@ -1,5 +1,5 @@
 //
-// <common.h> built by header file parser at 08:46:13  14 Apr 2008
+// <common.h> built by header file parser at 09:59:08  17 Apr 2008
 // This is a part of gr8os include files for GR8OS Driver & Extender Development Kit (DEDK)
 //
 
@@ -61,6 +61,15 @@ typedef ULONG STATUS, *PSTATUS;
 #define STATUS_BUSY							((STATUS) 0xF0000011)
 #define STATUS_INVALID_FILE_FOR_IMAGE		((STATUS) 0xF0000012)
 #define STATUS_PRIVILEGE_NOT_HELD			((STATUS) 0xF0000013)
+
+#define STATUS_INVALID_PARAMETER_1			((STATUS) 0xF0000021)
+#define STATUS_INVALID_PARAMETER_2			((STATUS) 0xF0000022)
+#define STATUS_INVALID_PARAMETER_3			((STATUS) 0xF0000023)
+#define STATUS_INVALID_PARAMETER_4			((STATUS) 0xF0000024)
+#define STATUS_INVALID_PARAMETER_5			((STATUS) 0xF0000025)
+#define STATUS_INVALID_PARAMETER_6			((STATUS) 0xF0000026)
+#define STATUS_INVALID_PARAMETER_7			((STATUS) 0xF0000027)
+#define STATUS_INVALID_PARAMETER_8			((STATUS) 0xF0000028)
 
 //
 // Warning codes

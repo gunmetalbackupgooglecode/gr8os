@@ -14,6 +14,7 @@ typedef struct CCFILE_CACHED_CLUSTER
 	USHORT Modified : 1;
 	USHORT WriteError : 1;
 	USHORT ClusterUseCount : 13;
+	UCHAR  ClusterOffsetInPage;
 	ULONG ClusterNumber;
 	STATUS Status;
 	PVOID Buffer;
@@ -58,6 +59,7 @@ typedef struct CCFILE_CACHE_MAP
 	ULONG MaxCachedClusters;	// Maximum size of the following array
 	ULONG RebuildCount;
 	ULONG ClusterSize;
+	UCHAR ClustersPerPage;
 	ULONG ShouldRebuild;
 	CCFILE_CACHE_CALLBACKS Callbacks;
 	PCCFILE_CACHED_CLUSTER ClusterCacheMap;	// Array of cached clusters.
@@ -68,7 +70,7 @@ typedef struct CCFILE_CACHE_MAP
 *PCCFILE_CACHE_MAP;
 
 KESYSAPI
-VOID
+STATUS
 KEAPI
 CcInitializeFileCaching(
 	IN PFILE File,
