@@ -10,10 +10,14 @@
 typedef long LONG, *PLONG;
 typedef int INT, *PINT;
 typedef short SHORT, *PSHORT;
-typedef char CHAR, *PCHAR, BOOLEAN, *PBOOLEAN, LOGICAL, *PLOGICAL;
+typedef char CHAR, *PCHAR, *PSTR, BOOLEAN, *PBOOLEAN, LOGICAL, *PLOGICAL;
 typedef unsigned long DWORD, *PDWORD, ULONG, *PULONG, ULONG_PTR, *PULONG_PTR;
 typedef unsigned short WORD, *PWORD, USHORT, *PUSHORT;
 typedef wchar_t WCHAR, *PWCHAR, WSTR, *PWSTR;
+
+typedef const char *PCSTR;
+typedef const wchar_t *PCWSTR;
+
 typedef unsigned char BYTE, *PBYTE, UCHAR, *PUCHAR;
 typedef void VOID, *PVOID, **PPVOID;
 typedef long long LONGLONG, *PLONGLONG, LONG64, *PLONG64;

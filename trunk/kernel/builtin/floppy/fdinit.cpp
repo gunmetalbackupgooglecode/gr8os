@@ -88,7 +88,7 @@ FdRead(
 	ULONG Size = Irp->BufferLength;
 	STATUS Status = STATUS_INVALID_PARAMETER;
 	PVOID Buffer;
-	ULONG LbaSector, RelativeOffset;
+	ULONG  RelativeOffset;
 
 	if (Irp->Flags & IRP_FLAGS_BUFFERED_IO)
 	{
@@ -99,16 +99,18 @@ FdRead(
 		Buffer = Irp->UserBuffer;
 	}
 
+	ULONG Offset;
+
 	if (Irp->CurrentStackLocation->Parameters.ReadWrite.OffsetSpecified)
 	{
-		LbaSector = (ULONG)(Irp->CurrentStackLocation->Parameters.ReadWrite.Offset.LowPart >> FD_SECTOR_SHIFT);
+		Offset = (ULONG)(Irp->CurrentStackLocation->Parameters.ReadWrite.Offset.LowPart);
 	}
 	else
 	{
-		LbaSector = Irp->FileObject->CurrentOffset.LowPart >> FD_SECTOR_SHIFT;
+		Offset = Irp->FileObject->CurrentOffset.LowPart;
 	}
 	
-	RelativeOffset = Irp->CurrentStackLocation->Parameters.ReadWrite.Offset.LowPart % FD_SECTOR_SIZE;
+	RelativeOffset = Offset % FD_SECTOR_SIZE;
 
 	if (RelativeOffset || (Size % FD_SECTOR_SIZE))
 	{
@@ -117,7 +119,7 @@ FdRead(
 
 	Status = CcCacheReadFile (
 		Irp->FileObject,
-		LbaSector,
+		Offset,
 		Buffer,
 		Size
 		);

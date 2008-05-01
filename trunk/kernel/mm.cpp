@@ -370,6 +370,9 @@ MmIsAddressValidEx(
 
 	if (PointerPte->u1.e1.Valid)
 	{
+		if (PointerPte->u1.e1.PteType == PTE_TYPE_VIEW)
+			return PageStatusNormalView;
+
 		return PageStatusNormal;
 	}
 
@@ -1056,6 +1059,58 @@ MmFreePhysicalPages(
 	MI_UNLOCK_PPD();
 
 	Mmd->Flags &= ~MDL_ALLOCATED;
+}
+
+PVOID
+KEAPI
+MmAllocatePage(
+	)
+/*++
+	Internal routine used to allocate one page
+--*/
+{
+	PMMD Mmd;
+	STATUS Status;
+	PVOID Ptr;
+
+	//BUGBUG: Not tested
+
+	Status = MmAllocatePhysicalPages (1, &Mmd);
+	if (!SUCCESS(Status))
+		return 0;
+
+	Ptr = MmMapLockedPages (Mmd, KernelMode, FALSE, FALSE);
+
+	ExFreeHeap (Mmd);
+	return Ptr;
+}
+
+VOID
+KEAPI
+MmFreePage(
+	PVOID Page
+	)
+/*++
+	Internal routine used to free one page
+--*/
+{
+	MMD Mmd;
+	PMMPTE Pte;
+
+	//BUGBUG: Not tested
+
+	Pte = MiGetPteAddress (Page);
+
+	ASSERT (MmIsAddressValidEx (Page) == PTE_TYPE_NORMAL_OR_NOTMAPPED);
+
+	Mmd.MappedVirtual = Mmd.BaseVirtual = Page;
+	Mmd.PageCount = 1;
+	Mmd.PfnList[0] = Pte->u1.e1.PageFrameNumber;
+	Mmd.Flags = MDL_ALLOCATED|MDL_MAPPED;
+	Mmd.Offset = 0;
+	
+	MmUnmapLockedPages (&Mmd);
+	MmFreePhysicalPages (&Mmd);
 }
 
 

@@ -785,7 +785,7 @@ KeStackUnwind(
 
 	for (ULONG i=0; i<40 && syms<10; i++, _esp++)
 	{
-		if ((*_esp & 0xFFFF0000) == Base)
+		if ((*_esp & 0xFFF00000) == Base)
 		{
 			char *sym;
 			ULONG dwsym = *_esp;
