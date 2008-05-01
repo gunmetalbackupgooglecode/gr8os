@@ -315,7 +315,8 @@ enum PAGE_STATUS
 	PageStatusNormal = 1,
 	PageStatusPagedOut = 2,
 	PageStatusTrimmed = 3,
-	PageStatusView = 4
+	PageStatusView = 4,
+	PageStatusNormalView = 5
 
 	//
 	// If this value is > 0, than you can access this page safely.
@@ -636,6 +637,17 @@ KEAPI
 MmReservePhysicalAddressRange(
 	PHYSICAL_ADDRESS PhysStart,
 	PHYSICAL_ADDRESS PhysEnd
+	);
+
+PVOID
+KEAPI
+MmAllocatePage(
+	);
+
+VOID
+KEAPI
+MmFreePage(
+	PVOID Page
 	);
 
 extern PVOID MmAcpiInfo;

@@ -48,7 +48,7 @@ CcInitializeFileCaching(
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 
-	CacheMap->CachedClusters = 0;
+	CacheMap->CachedPages = 0;
 	CacheMap->FileObject = File;
 	CacheMap->ClusterSize = ClusterSize;
 
@@ -58,16 +58,16 @@ CcInitializeFileCaching(
 		CacheMap->ClustersPerPage = (UCHAR)(PAGE_SIZE / ClusterSize);
 	}
 
-	CacheMap->MaxCachedClusters = MIN_CACHED_CLUSTERS;
+	CacheMap->MaxCachedPages = MIN_CACHED_PAGES;
 	CacheMap->RebuildCount = 0;
 	CacheMap->ShouldRebuild = 0;
 	CacheMap->Callbacks = *Callbacks;
 
 	if (IS_FILE_CACHED(File))
 	{
-		CacheMap->ClusterCacheMap = (PCCFILE_CACHED_CLUSTER) ExAllocateHeap (TRUE, MIN_CACHED_CLUSTERS*sizeof(CCFILE_CACHED_CLUSTER));
+		CacheMap->PageCacheMap = (PCCFILE_CACHED_PAGE) ExAllocateHeap (TRUE, MIN_CACHED_PAGES*sizeof(CCFILE_CACHED_PAGE));
 
-		if (CacheMap->ClusterCacheMap == NULL)
+		if (CacheMap->PageCacheMap == NULL)
 		{
 			//
 			// Insufficient resources to allocate cache map.
@@ -83,12 +83,12 @@ CcInitializeFileCaching(
 			return STATUS_INSUFFICIENT_RESOURCES;
 		}
 
-		KeZeroMemory (CacheMap->ClusterCacheMap, MIN_CACHED_CLUSTERS*sizeof(CCFILE_CACHED_CLUSTER));
+		KeZeroMemory (CacheMap->PageCacheMap, MIN_CACHED_PAGES*sizeof(CCFILE_CACHED_PAGE));
 	}
 	else
 	{
-		CacheMap->MaxCachedClusters = 0;
-		CacheMap->ClusterCacheMap = NULL;
+		CacheMap->MaxCachedPages = 0;
+		CacheMap->PageCacheMap = NULL;
 	}
 
 	ExInitializeMutex (&CacheMap->CacheMapLock);
@@ -119,20 +119,20 @@ CcFreeCacheMap(
 
 		ExAcquireMutex (&File->CacheMap->CacheMapLock);
 
-		for (ULONG i=0,j=0; i<File->CacheMap->MaxCachedClusters && j<File->CacheMap->CachedClusters; i++)
+		for (ULONG i=0,j=0; i<File->CacheMap->MaxCachedPages && j<File->CacheMap->CachedPages; i++)
 		{
-			PCCFILE_CACHED_CLUSTER Cluster = &File->CacheMap->ClusterCacheMap[i];
+			PCCFILE_CACHED_PAGE Page = &File->CacheMap->PageCacheMap[i];
 
-			if (Cluster->Cached)
+			if (Page->Cached)
 			{
-				ExFreeHeap (Cluster->Buffer);
-				Cluster->Cached = 0;
+				MmFreePage (Page->Buffer);
+				Page->Cached = 0;
 				j++;
 			}
 		}
 
 		ExReleaseMutex (&File->CacheMap->CacheMapLock);
-		ExFreeHeap (File->CacheMap->ClusterCacheMap);
+		ExFreeHeap (File->CacheMap->PageCacheMap);
 	}
 
 	ExFreeHeap (File->CacheMap);
@@ -150,25 +150,25 @@ CcFreeCacheMap(
 
 STATUS
 KEAPI
-CcpCacheFileCluster(
+CcpCacheFilePage(
 	IN PFILE FileObject,
-	IN ULONG ClusterNumber,
-	IN PVOID ClusterBuffer
+	IN ULONG PageNumber,
+	IN PVOID PageBuffer
 	)
 /*++
-	Add the specified cluster to cache map
+	Add the specified page to cache map
 --*/
 {
 	PCCFILE_CACHE_MAP CacheMap = FileObject->CacheMap;
-	PCCFILE_CACHED_CLUSTER CachedClusters;
+	PCCFILE_CACHED_PAGE CachedPages;
 	STATUS Status = STATUS_UNSUCCESSFUL;
 
 	//ExAcquireMutex (&CacheMap->CacheMapLock);
 
-	CacheMap->CachedClusters ++;
-	if (CacheMap->CachedClusters == CacheMap->MaxCachedClusters)
+	CacheMap->CachedPages ++;
+	if (CacheMap->CachedPages == CacheMap->MaxCachedPages)
 	{
-		if (CacheMap->MaxCachedClusters == MAX_CACHED_CLUSTERS)
+		if (CacheMap->MaxCachedPages == MAX_CACHED_PAGES)
 		{
 			//
 			// Cache map reached its maximum size. Reduce it
@@ -177,61 +177,67 @@ CcpCacheFileCluster(
 			CcpRebuildCacheMap (CacheMap, TRUE);
 		}
 
-		CacheMap->MaxCachedClusters *= 2;
+		CacheMap->MaxCachedPages *= 2;
 
-		CachedClusters = CacheMap->ClusterCacheMap;
-		CacheMap->ClusterCacheMap = (PCCFILE_CACHED_CLUSTER) ExReallocHeap (
-			CacheMap->ClusterCacheMap, 
-			CacheMap->MaxCachedClusters * sizeof(CCFILE_CACHED_CLUSTER));
+		CachedPages = CacheMap->PageCacheMap;
+		CacheMap->PageCacheMap = (PCCFILE_CACHED_PAGE) ExReallocHeap (
+			CacheMap->PageCacheMap, 
+			CacheMap->MaxCachedPages * sizeof(CCFILE_CACHED_PAGE));
 
-		if (CacheMap->ClusterCacheMap == NULL)
+		if (CacheMap->PageCacheMap == NULL)
 		{
 			//
 			// Not enough memory to satisfy the allocation. Reduce cache map again
 			//
 
-			CacheMap->ClusterCacheMap = CachedClusters; // restore old pointer
-			CacheMap->MaxCachedClusters /= 2;
+			CacheMap->PageCacheMap = CachedPages; // restore old pointer
+			CacheMap->MaxCachedPages /= 2;
 
 			CcpRebuildCacheMap (CacheMap, TRUE);
 		}
 		else
 		{
 			// Zero new space
-			KeZeroMemory (	&CacheMap->ClusterCacheMap[CacheMap->MaxCachedClusters/2], 
-							CacheMap->MaxCachedClusters * sizeof(CCFILE_CACHED_CLUSTER) / 2 );
+			KeZeroMemory (	&CacheMap->PageCacheMap[CacheMap->MaxCachedPages/2], 
+							CacheMap->MaxCachedPages * sizeof(CCFILE_CACHED_PAGE) / 2 );
 		}
 	}
 
 	//
-	// Now there is some space to cache one cluster.
+	// Now there is some space to cache one page.
 	//
 
-	for (ULONG i=0; i<CacheMap->MaxCachedClusters; i++)
+	for (ULONG i=0; i<CacheMap->MaxCachedPages; i++)
 	{
-		if (CacheMap->ClusterCacheMap[i].Cached == FALSE)
+		if (CacheMap->PageCacheMap[i].Cached == FALSE)
 		{
-			CacheMap->ClusterCacheMap[i].Cached = TRUE;
-			CacheMap->ClusterCacheMap[i].Modified = FALSE;
-			CacheMap->ClusterCacheMap[i].ClusterNumber = ClusterNumber;
-			CacheMap->ClusterCacheMap[i].ClusterUseCount = 1;
-			CacheMap->ClusterCacheMap[i].Buffer = ExAllocateHeap (TRUE, CacheMap->ClusterSize);
+			CacheMap->PageCacheMap[i].Cached = TRUE;
+			CacheMap->PageCacheMap[i].Modified = FALSE;
+			CacheMap->PageCacheMap[i].PageNumber = PageNumber;
+			CacheMap->PageCacheMap[i].PageUseCount = 1;
 
-			if (CacheMap->ClusterCacheMap[i].Buffer == NULL)
+			//
+			// Recode for MmAllocatePhysicalPages
+			//
+
+			CacheMap->PageCacheMap[i].Buffer = MmAllocatePage ();
+
+
+			if (CacheMap->PageCacheMap[i].Buffer == NULL)
 			{
 				//
-				// Not enough space to cache cluster..
+				// Not enough space to cache page..
 				//
 
-				CacheMap->ClusterCacheMap[i].Cached = FALSE;
+				CacheMap->PageCacheMap[i].Cached = FALSE;
 				Status = STATUS_INSUFFICIENT_RESOURCES;
 			}
 			else
 			{
-				memcpy (CacheMap->ClusterCacheMap[i].Buffer, ClusterBuffer, CacheMap->ClusterSize);
+				memcpy (CacheMap->PageCacheMap[i].Buffer, PageBuffer, PAGE_SIZE);
 
 #ifndef GROSEMU
-				PMMPTE PointerPte = MiGetPteAddress (CacheMap->ClusterCacheMap[i].Buffer);
+				PMMPTE PointerPte = MiGetPteAddress (CacheMap->PageCacheMap[i].Buffer);
 				PointerPte->u1.e1.Dirty = FALSE;
 #endif
 
@@ -246,6 +252,68 @@ CcpCacheFileCluster(
 	return Status;
 }
 
+STATUS
+KEAPI
+CcpActualWritePage(
+	IN PCCFILE_CACHE_MAP CacheMap,
+	IN PCCFILE_CACHED_PAGE Page
+	)
+/*++
+	Performs actual writing of the modified page to the disk.
+--*/
+{
+	PUCHAR pBuffer = (PUCHAR)Page->Buffer;
+	STATUS Status;
+
+	if (CacheMap->Callbacks.ActualWrite == NULL)
+		return STATUS_NOT_SUPPORTED;
+
+
+	for (ULONG i=0; i<CacheMap->ClustersPerPage; i++)
+	{
+		Status = CacheMap->Callbacks.ActualWrite (
+			CacheMap->FileObject, 
+			Page->PageNumber*CacheMap->ClustersPerPage + i,
+			pBuffer + i*CacheMap->ClusterSize, 
+			CacheMap->ClusterSize
+			);
+	}
+
+	return Status;
+}
+
+STATUS
+KEAPI
+CcpActualReadPage(
+	IN PCCFILE_CACHE_MAP CacheMap,
+	IN ULONG PageNumber,
+	IN PVOID Buffer
+	)
+/*++
+	Performs actual writing of the modified page to the disk.
+--*/
+{
+	PUCHAR pBuffer = (PUCHAR)Buffer;
+	STATUS Status;
+
+	if (CacheMap->Callbacks.ActualRead == NULL)
+		return STATUS_NOT_SUPPORTED;
+
+	for (ULONG i=0; i<CacheMap->ClustersPerPage; i++)
+	{
+		Status = CacheMap->Callbacks.ActualRead (
+			CacheMap->FileObject, 
+			PageNumber*CacheMap->ClustersPerPage + i,
+			pBuffer + i*CacheMap->ClusterSize, 
+			CacheMap->ClusterSize
+			);
+
+	}
+
+	return Status;
+}
+
+
 VOID
 KEAPI
 CcpRebuildCacheMap(
@@ -254,19 +322,19 @@ CcpRebuildCacheMap(
 	)
 /*++
 	Rebuild file cache map and force reducing it if need.
-	For any cached cluster the following actions will be performed:
-		1. if use count is too small, try to delete this cluster.
-		2. to delete cluster check if it is modified. If so, try to write it
+	For any cached page the following actions will be performed:
+		1. if use count is too small, try to delete this page.
+		2. to delete page check if it is modified. If so, try to write it
 		   on disk
-	    3. don't delete modified clusters, that failed to be written on disk.
-		4. if cluster has become non-modified and there was no write error, 
-		   delete this cluster from cache map.
+	    3. don't delete modified pages, that failed to be written on disk.
+		4. if page has become non-modified and there was no write error, 
+		   delete this page from cache map.
    This function is usually very unfrequently, frequency of calls is determined by parameter 
     CC_CACHE_MAP_REBUILD_FREQUENCY
 --*/
 {
-	ULONG ClustersDeleted = 0;
-	ULONG UseCountTreshold = CC_CACHED_CLUSTER_USECOUNT_INITIAL_TRESHOLD;
+	ULONG PagesDeleted = 0;
+	ULONG UseCountTreshold = CC_CACHED_PAGE_USECOUNT_INITIAL_TRESHOLD;
 
 	ExAcquireMutex (&CacheMap->CacheMapLock);
 
@@ -274,49 +342,51 @@ CcpRebuildCacheMap(
 
 _rebuild:
 
-	for (ULONG i=0; i<CacheMap->MaxCachedClusters; i++)
+	for (ULONG i=0; i<CacheMap->MaxCachedPages; i++)
 	{
-		if (CacheMap->ClusterCacheMap[i].Cached)
+		if (CacheMap->PageCacheMap[i].Cached)
 		{
 			//
 			// Check use count. If it equals zero, when CacheMap->RebuildCount is greater than 2 or reducing requested,
-			// than delete cached cluster.
+			// than delete cached page.
 			//
 
-			PCCFILE_CACHED_CLUSTER Cluster = &CacheMap->ClusterCacheMap[i];
+			PCCFILE_CACHED_PAGE Page = &CacheMap->PageCacheMap[i];
 
-			CcPrint (("CC: Cached cluster %d, use count %d, modified %d\n",
-				Cluster->ClusterNumber, Cluster->ClusterUseCount, Cluster->Modified));
+			CcPrint (("CC: Cached page %d, use count %d, modified %d\n",
+				Page->PageNumber, Page->PageUseCount, Page->Modified));
 				
-			if (Cluster->ClusterUseCount)
-				Cluster->ClusterUseCount --;
+			if (Page->PageUseCount)
+				Page->PageUseCount --;
 
 			//
-			// Ensure that this cluster was not used recently, it is modified and we are not going
+			// Ensure that this page was not used recently, it is modified and we are not going
 			//  to force reducing of cache map.
-			// If so, write cluster to the disk.
+			// If so, write page to the disk.
 			//
 
-			if ( Cluster->ClusterUseCount <= UseCountTreshold &&
-				 Cluster->Modified &&
-				 CacheMap->RebuildCount >= CC_CACHED_CLUSTER_REBUILD_COUNT_TRESHOLD &&
+			if ( Page->PageUseCount <= UseCountTreshold &&
+				 Page->Modified &&
+				 CacheMap->RebuildCount >= CC_CACHED_PAGE_REBUILD_COUNT_TRESHOLD &&
 				 !ForceReduceMap )
 			{
 				//
-				// It's time to write this cluster to the disk.
-				// Write cluster.
+				// It's time to write this page to the disk.
+				// Write page.
 				//
 
-				CcPrint (("CC: Writing cached cluster %d\n", Cluster->ClusterNumber));
+				CcPrint (("CC: Writing cached page %d\n", Page->PageNumber));
 
 				STATUS Status;
 
-				Status = CacheMap->Callbacks.ActualWrite (
+				/*Status = CacheMap->Callbacks.ActualWrite (
 							  CacheMap->FileObject, 
-							  Cluster->ClusterNumber,
-							  Cluster->Buffer, 
-							  CacheMap->ClusterSize
-							  );
+							  Page->PageNumber,
+							  Page->Buffer, 
+							  CacheMap->PageSize
+							  );*/
+
+				Status = CcpActualWritePage (CacheMap, Page);
 
 				if (!SUCCESS(Status))
 				{
@@ -324,85 +394,87 @@ _rebuild:
 					// Write failed..
 					//
 
-					Cluster->WriteError = 1;
-					Cluster->Status = Status;
+					Page->WriteError = 1;
+					Page->Status = Status;
 
-					CcPrint (("CC: Error while writing cluster %d: %08x\n", Cluster->ClusterNumber, Status));
+					CcPrint (("CC: Error while writing page %d: %08x\n", Page->PageNumber, Status));
 				}
 				else
 				{
-					Cluster->Modified = FALSE;
+					Page->Modified = FALSE;
 				}
 			}
 
-			if ( Cluster->ClusterUseCount <= UseCountTreshold &&
-				 (CacheMap->RebuildCount >= CC_CACHED_CLUSTER_REBUILD_COUNT_TRESHOLD || ForceReduceMap) )
+			if ( Page->PageUseCount <= UseCountTreshold &&
+				 (CacheMap->RebuildCount >= CC_CACHED_PAGE_REBUILD_COUNT_TRESHOLD || ForceReduceMap) )
 			{
 				//
-				// Delete cached cluster
+				// Delete cached page
 				//
 
-				CcPrint (("CC: Deleting unused cached cluster %d\n", Cluster->ClusterNumber));
+				CcPrint (("CC: Deleting unused cached page %d\n", Page->PageNumber));
 
-				if (Cluster->Modified)
+				if (Page->Modified)
 				{
 					//
-					// Write cluster.
+					// Write page.
 					//
 
-					CcPrint (("CC: Writing cached cluster being deleted %d\n", Cluster->ClusterNumber));
+					CcPrint (("CC: Writing cached page being deleted %d\n", Page->PageNumber));
 
 					STATUS Status;
 
-					Status = CacheMap->Callbacks.ActualWrite (
+					/*Status = CacheMap->Callbacks.ActualWrite (
 								  CacheMap->FileObject, 
-								  Cluster->ClusterNumber,
-								  Cluster->Buffer, 
-								  CacheMap->ClusterSize
-								  );
+								  Page->PageNumber,
+								  Page->Buffer, 
+								  CacheMap->PageSize
+								  );*/
 
+					Status = CcpActualWritePage (CacheMap, Page);
+					
 					if (!SUCCESS(Status))
 					{
 						//
-						// Write failed.. cannot delete this cluster
+						// Write failed.. cannot delete this page
 						//
 
-						Cluster->WriteError = 1;
-						Cluster->Status = Status;
+						Page->WriteError = 1;
+						Page->Status = Status;
 
-						CcPrint (("CC: Error while writing cluster %d: %08x\n", Cluster->ClusterNumber, Status));
+						CcPrint (("CC: Error while writing page %d: %08x\n", Page->PageNumber, Status));
 					}
 					else
 					{
-						Cluster->Modified = FALSE;
+						Page->Modified = FALSE;
 					}
 				}
 
-				if ( Cluster->Modified == FALSE &&
-					 Cluster->WriteError == FALSE )
+				if ( Page->Modified == FALSE &&
+					 Page->WriteError == FALSE )
 				{
 					//
-					// We can delete this cached cluster
+					// We can delete this cached page
 					//
 
-					Cluster->Cached = FALSE;
-					ExFreeHeap (Cluster->Buffer);
+					Page->Cached = FALSE;
+					ExFreeHeap (Page->Buffer);
 
-					CacheMap->CachedClusters --;
-					ClustersDeleted ++;
+					CacheMap->CachedPages --;
+					PagesDeleted ++;
 				}
 			}
 		}
 	}
 
-	if (ForceReduceMap && ClustersDeleted == 0)
+	if (ForceReduceMap && PagesDeleted == 0)
 	{
 		//
-		// If cache map reducing requested, but we did not delete any cluster,
+		// If cache map reducing requested, but we did not delete any page,
 		//  raise up use count delete treshold and rebuild cache map again.
 		//
 
-		CcPrint (("CC: Rebuild: no clusters purged, re-rebuild (treshold=%d)\n", UseCountTreshold));
+		CcPrint (("CC: Rebuild: no pages purged, re-rebuild (treshold=%d)\n", UseCountTreshold));
 
 		UseCountTreshold ++;
 		goto _rebuild;
@@ -420,7 +492,7 @@ CcPurgeCacheFile(
 	IN PFILE FileObject
 	)
 /*++
-	Write all modified clusters to the disk.
+	Write all modified pages to the disk.
 --*/
 {
 	STATUS Status = STATUS_SUCCESS;
@@ -430,39 +502,41 @@ CcPurgeCacheFile(
 
 	CcPrint (("CC: Purging cache map %08x\n", CacheMap));
 
-	for (ULONG i=0; i<CacheMap->MaxCachedClusters; i++)
+	for (ULONG i=0; i<CacheMap->MaxCachedPages; i++)
 	{
-		PCCFILE_CACHED_CLUSTER Cluster = &CacheMap->ClusterCacheMap[i];
+		PCCFILE_CACHED_PAGE Page = &CacheMap->PageCacheMap[i];
 
-		if (Cluster->Cached &&
-			Cluster->Modified)
+		if (Page->Cached &&
+			Page->Modified)
 		{
 			//
 			// Write to disk
 			//
 
-			CcPrint (("CC: Writing modified cluster %d\n", Cluster->ClusterNumber));
+			CcPrint (("CC: Writing modified page %d\n", Page->PageNumber));
 
-			Status = CacheMap->Callbacks.ActualWrite (
+			/*Status = CacheMap->Callbacks.ActualWrite (
 						  CacheMap->FileObject, 
-						  Cluster->ClusterNumber,
-						  Cluster->Buffer, 
-						  CacheMap->ClusterSize
-						  );
+						  Page->PageNumber,
+						  Page->Buffer, 
+						  CacheMap->PageSize
+						  );*/
+
+			Status = CcpActualWritePage (CacheMap, Page);
 
 			if (!SUCCESS(Status))
 			{
 				//
-				// Write failed.. cannot delete this cluster
+				// Write failed.. cannot delete this page
 				//
 
-				Cluster->WriteError = 1;
-				Cluster->Status = Status;
+				Page->WriteError = 1;
+				Page->Status = Status;
 				break;
 			}
 			else
 			{
-				Cluster->Modified = FALSE;
+				Page->Modified = FALSE;
 			}
 		}
 	}
@@ -471,72 +545,160 @@ CcPurgeCacheFile(
 	return Status;
 }
 
-KESYSAPI
 STATUS
 KEAPI
-CcCacheReadFile(
-	IN PFILE FileObject,
-	IN ULONG ClusterNumber,
+CcpFindAndRead(
+	IN PCCFILE_CACHE_MAP CacheMap,
+	IN ULONG PageNumber,
+	IN ULONG PageOffset,
 	OUT PVOID Buffer,
 	IN ULONG Size
 	)
 /*++
-	Reads cluster from the cache
+	Find page in cache map. If page exists, satisfy read request by copying.
+	If not, return STATUS_NOT_FOUND.
 --*/
 {
 	STATUS Status = STATUS_NOT_FOUND;
-	PCCFILE_CACHE_MAP CacheMap = FileObject->CacheMap;
 
-	if (FileObject->ReadThrough)
+_repeat_read:
+
+	for (ULONG i=0; i<CacheMap->MaxCachedPages; i++)
 	{
-		return CacheMap->Callbacks.ActualRead (
-			FileObject,
-			ClusterNumber,
-			Buffer,
-			Size
-			);
-	}
-
-	ExAcquireMutex (&CacheMap->CacheMapLock);
-
-	CcPrint (("CC: Cache read requested for the file %08x, cluster %d\n", FileObject, ClusterNumber));
-
-	for (ULONG i=0; i<CacheMap->MaxCachedClusters; i++)
-	{
-		if (CacheMap->ClusterCacheMap[i].Cached &&
-			CacheMap->ClusterCacheMap[i].ClusterNumber == ClusterNumber)
+		if (CacheMap->PageCacheMap[i].Cached &&
+			CacheMap->PageCacheMap[i].PageNumber == PageNumber)
 		{
-			CacheMap->ClusterCacheMap[i].ClusterUseCount ++;
-			memcpy (Buffer, CacheMap->ClusterCacheMap[i].Buffer, Size);
+			CcPrint(("CC: Found cached page %d{%d} (buff=%08x)\n", i, CacheMap->PageCacheMap[i].PageNumber,
+				CacheMap->PageCacheMap[i].Buffer));
+
+			CacheMap->PageCacheMap[i].PageUseCount ++;
+
+			if ( Size <= (PAGE_SIZE-PageOffset) )
+			{
+				memcpy (Buffer, (PUCHAR)CacheMap->PageCacheMap[i].Buffer + PageOffset, Size);
+			}
+			else
+			{
+				memcpy (Buffer, (PUCHAR)CacheMap->PageCacheMap[i].Buffer + PageOffset, (PAGE_SIZE-PageOffset));
+				
+				PageNumber ++;
+				PageOffset = 0;
+				Size -= (PAGE_SIZE-PageOffset);
+				*(ULONG*)&Buffer += (PAGE_SIZE-PageOffset);
+
+				goto _repeat_read;
+			}
+
 			Status = STATUS_SUCCESS;
 
-			CcPrint (("CC: Cache read satisfied from cache for the file %08x, cluster %d\n", FileObject, ClusterNumber));
+			CcPrint (("CC: Cache read satisfied from cache for the file %08x, page %d\n", CacheMap->FileObject, PageNumber));
 
 			break;
 		}
 	}
 
+	return Status;
+}
+
+STATUS
+KEAPI
+CcpActualRead(
+    IN PCCFILE_CACHE_MAP CacheMap,
+	IN ULONG PageNumber,
+	IN ULONG PageOffset,
+	OUT PVOID Buffer,
+	IN ULONG Size,
+	IN BOOLEAN Cache
+	)
+/*++
+	Perform actual reading of page. This function may be recursive
+--*/
+{
+	PVOID TempPage = MmAllocatePage ();
+	STATUS Status;
+
+	Status = CcpActualReadPage (CacheMap, PageNumber, TempPage);
+
+	if (SUCCESS(Status))
+	{
+		if (Size > (PAGE_SIZE-PageOffset))
+		{
+			memcpy (Buffer, (PUCHAR)TempPage + PageOffset, (PAGE_SIZE-PageOffset));
+		}
+		else
+		{
+			memcpy (Buffer, (PUCHAR)TempPage + PageOffset, Size);
+		}
+
+		if (Cache)
+		{
+			CcpCacheFilePage (
+				CacheMap->FileObject,
+				PageNumber,
+				TempPage
+				);
+		}
+	}
+
+	MmFreePage (TempPage);
+
+	Size -= PAGE_SIZE-PageOffset;
+	if ((LONG)Size > 0)
+	{
+		Status = CcpFindAndRead (CacheMap, PageNumber+1, 0, (PUCHAR)Buffer + (PAGE_SIZE-PageOffset), Size);
+
+		if (Status == STATUS_NOT_FOUND)
+		{
+			Status = CcpActualRead (CacheMap, PageNumber+1, 0, (PUCHAR)Buffer + (PAGE_SIZE-PageOffset), Size, Cache);
+		}
+	}
+
+	return Status;
+}
+
+KESYSAPI
+STATUS
+KEAPI
+CcCacheReadFile(
+	IN PFILE FileObject,
+	IN ULONG Offset,
+	OUT PVOID Buffer,
+	IN ULONG Size
+	)
+/*++
+	Read file from the cache
+--*/
+{
+	STATUS Status = STATUS_NOT_FOUND;
+	PCCFILE_CACHE_MAP CacheMap = FileObject->CacheMap;
+	
+	/* -----------hekked by scrat---------- */
+
+	ExAcquireMutex (&CacheMap->CacheMapLock);
+
+	ULONG PageNumber = ALIGN_DOWN (Offset, PAGE_SIZE) / PAGE_SIZE;
+	ULONG PageOffset = Offset & (PAGE_SIZE-1);
+
+	if (FileObject->ReadThrough)
+	{
+		ExReleaseMutex (&CacheMap->CacheMapLock);
+
+		return CcpActualRead (CacheMap, PageNumber, PageOffset, Buffer, Size, FALSE);
+	}
+
+	CcPrint (("CC: Cache read requested for the file %08x, offs=%08x [pg=%05x, ofs=%03x], sz=%08x\n", 
+		FileObject, Offset, PageNumber, PageOffset, Size));
+
+	// Try to satisfy reading from cache
+	Status = CcpFindAndRead (CacheMap, PageNumber, PageOffset, Buffer, Size);
+
 	if (Status == STATUS_NOT_FOUND)
 	{
 		//
-		// Read the cluster
+		// If not, read the pages.
 		//
 
-		Status = CacheMap->Callbacks.ActualRead (
-			FileObject,
-			ClusterNumber,
-			Buffer,
-			Size
-			);
-
-		if (SUCCESS(Status))
-		{
-			Status = CcpCacheFileCluster (
-				FileObject,
-				ClusterNumber,
-				Buffer
-				);
-		}
+		Status = CcpActualRead (CacheMap, PageNumber, PageOffset, Buffer, Size, 1);
 
 		if (SUCCESS(Status))
 		{
@@ -544,6 +706,7 @@ CcCacheReadFile(
 		}
 	}
 
+	// Check if cache map should be rebuilded.
 	BOOLEAN rebuild = FALSE;
 	CacheMap->ShouldRebuild ++;
 	if (CacheMap->ShouldRebuild % CC_CACHE_MAP_REBUILD_FREQUENCY == 0)
@@ -562,22 +725,28 @@ STATUS
 KEAPI
 CcCacheWriteFile(
 	IN PFILE FileObject,
-	IN ULONG ClusterNumber,
+	IN ULONG PageNumber,
 	IN PVOID Buffer,
 	IN ULONG Size
 	)
 /*++
-	Writes cluster to the cache
+	Writes file to the cache
 --*/
 {
 	STATUS Status = STATUS_NOT_FOUND;
 	PCCFILE_CACHE_MAP CacheMap = FileObject->CacheMap;
 
+	//
+	// NOT SUPPORTED YET DUE TO MAJOR CHANGES IN CACHE SUBSYSTEM
+	//
+
+	return STATUS_NOT_SUPPORTED;
+
 	if (FileObject->WriteThrough)
 	{
 		Status = CacheMap->Callbacks.ActualWrite (
 			FileObject,
-			ClusterNumber,
+			PageNumber,
 			Buffer,
 			Size
 			);
@@ -591,14 +760,14 @@ CcCacheWriteFile(
 
 	ExAcquireMutex (&CacheMap->CacheMapLock);
 
-	for (ULONG i=0; i<CacheMap->MaxCachedClusters; i++)
+	for (ULONG i=0; i<CacheMap->MaxCachedPages; i++)
 	{
-		if (CacheMap->ClusterCacheMap[i].Cached &&
-			CacheMap->ClusterCacheMap[i].ClusterNumber == ClusterNumber)
+		if (CacheMap->PageCacheMap[i].Cached &&
+			CacheMap->PageCacheMap[i].PageNumber == PageNumber)
 		{
-			CacheMap->ClusterCacheMap[i].ClusterUseCount ++;
-			memcpy (CacheMap->ClusterCacheMap[i].Buffer, Buffer, Size);
-			CacheMap->ClusterCacheMap[i].Modified = TRUE;
+			CacheMap->PageCacheMap[i].PageUseCount ++;
+			memcpy (CacheMap->PageCacheMap[i].Buffer, Buffer, Size);
+			CacheMap->PageCacheMap[i].Modified = TRUE;
 			Status = STATUS_SUCCESS;
 			break;
 		}
@@ -607,14 +776,14 @@ CcCacheWriteFile(
 	if (Status == STATUS_NOT_FOUND)
 	{
 		//
-		// Write the cluster
+		// Write the page
 		//
 
 		if (FileObject->WriteThrough == FALSE)
 		{
 			Status = CacheMap->Callbacks.ActualWrite (
 				FileObject,
-				ClusterNumber,
+				PageNumber,
 				Buffer,
 				Size
 				);
@@ -622,9 +791,9 @@ CcCacheWriteFile(
 
 		if (SUCCESS(Status))
 		{
-			Status = CcpCacheFileCluster (
+			Status = CcpCacheFilePage (
 				FileObject,
-				ClusterNumber,
+				PageNumber,
 				Buffer
 				);
 		}
