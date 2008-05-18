@@ -308,6 +308,19 @@ CcpActualReadPage(
 			CacheMap->ClusterSize
 			);
 
+		/*
+		IO_STATUS_BLOCK IoStatus;
+		LARGE_INTEGER Offset = {0,0};
+		Offset.LowPart = (PageNumber*CacheMap->ClustersPerPage + i)*CacheMap->ClusterSize;
+
+		Status = IoReadFile (
+			CacheMap->FileObject,
+			pBuffer + i*CacheMap->ClusterSize,
+			CacheMap->ClusterSize,
+			&Offset,
+			IRP_FLAGS_SYNCHRONOUS_IO,
+			&IoStatus);
+		*/
 	}
 
 	return Status;
@@ -679,6 +692,14 @@ CcCacheReadFile(
 	ULONG PageNumber = ALIGN_DOWN (Offset, PAGE_SIZE) / PAGE_SIZE;
 	ULONG PageOffset = Offset & (PAGE_SIZE-1);
 
+	if (FileObject->ReadThrough == 0)
+	{
+		CcPrint (("CC: Cache read requested for the file %08x, offs=%08x [pg=%05x, ofs=%03x], sz=%08x\n", 
+			FileObject, Offset, PageNumber, PageOffset, Size));
+	}
+
+	ASSERT (Size < PAGE_SIZE*20);
+
 	if (FileObject->ReadThrough)
 	{
 		ExReleaseMutex (&CacheMap->CacheMapLock);
@@ -686,8 +707,7 @@ CcCacheReadFile(
 		return CcpActualRead (CacheMap, PageNumber, PageOffset, Buffer, Size, FALSE);
 	}
 
-	CcPrint (("CC: Cache read requested for the file %08x, offs=%08x [pg=%05x, ofs=%03x], sz=%08x\n", 
-		FileObject, Offset, PageNumber, PageOffset, Size));
+	//INT3
 
 	// Try to satisfy reading from cache
 	Status = CcpFindAndRead (CacheMap, PageNumber, PageOffset, Buffer, Size);

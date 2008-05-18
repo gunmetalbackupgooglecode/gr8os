@@ -559,7 +559,22 @@ IoBuildDeviceRequest(
 	Irp->MajorFunction = MajorFunction;
 	Irp->UserBuffer = Buffer;
 	Irp->Flags |= IRP_FLAGS_BUFFERED_IO | IRP_FLAGS_DEALLOCATE_BUFFER;
-	Irp->SystemBuffer = ExAllocateHeap (FALSE, BufferSize);
+	
+	if (BufferSize < PAGE_SIZE)
+	{
+		Irp->SystemBuffer = ExAllocateHeap (FALSE, BufferSize);
+	}
+	else
+	{
+		Irp->SystemBuffer = MmAllocateMemory (BufferSize);
+	}
+
+	if (!Irp->SystemBuffer)
+	{
+		ExFreeHeap (Irp);
+		return NULL;
+	}
+
 	Irp->BufferLength = BufferSize;
 	Irp->UserIosb = IoStatus;
 	Irp->RequestorMode = RequestorMode;
@@ -641,8 +656,9 @@ IoCreateFile(
 	File->ReadAccess = !!(DesiredAccess & FILE_READ_DATA);
 	File->WriteAccess = !!(DesiredAccess & FILE_WRITE_DATA);
 	File->DeleteAccess = !!(DesiredAccess & FILE_DELETE);
+
 	File->ReadThrough = !!(DesiredAccess & FILE_READ_THROUGH);
-	File->WriteThrough = !!(DesiredAccess & FILE_WRITE_THROUGH);
+	File->WriteThrough = !!(DesiredAccess & FILE_WRITE_THROUGH);		
 
 	PIRP Irp = IoBuildDeviceRequest (
 		DeviceObject,
@@ -751,6 +767,7 @@ IoReadFile(
 	OUT PVOID Buffer,
 	IN ULONG Length,
 	IN PLARGE_INTEGER FileOffset OPTIONAL,
+	IN ULONG Flags OPTIONAL,
 	OUT PIO_STATUS_BLOCK IoStatus
 	)
 /*++
@@ -779,6 +796,8 @@ IoReadFile(
 	}
 
 	Irp->Flags |= IRP_FLAGS_INPUT_OPERATION;
+	Irp->Flags |= Flags;
+
 	Irp->FileObject = FileObject;
 	Irp->CurrentStackLocation->DeviceObject = FileObject->DeviceObject;
 
@@ -816,7 +835,6 @@ IoReadFile(
 	return Status;
 }
 
-
 KESYSAPI
 STATUS
 KEAPI
@@ -825,6 +843,7 @@ IoWriteFile(
 	IN PVOID Buffer,
 	IN ULONG Length,
 	IN PLARGE_INTEGER FileOffset OPTIONAL,
+	IN ULONG Flags OPTIONAL,
 	OUT PIO_STATUS_BLOCK IoStatus
 	)
 /*++
@@ -852,6 +871,7 @@ IoWriteFile(
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 
+	Irp->Flags |= Flags;
 	Irp->FileObject = FileObject;
 	Irp->CurrentStackLocation->DeviceObject = FileObject->DeviceObject;
 
@@ -1284,6 +1304,20 @@ IoCompleteRequest(
 					0);
 	}
 
+	if ( Irp->Flags & IRP_FLAGS_TRACE_IRP )
+	{
+		KdPrint(("IRP [Tracing]: %s %s, status %08x, %d bytes being copied [%02x %02x %02x %02x]\n", 
+			(Irp->Flags & IRP_FLAGS_BUFFERED_IO) ? "Buffered I/O" : "",
+			(Irp->Flags & IRP_FLAGS_INPUT_OPERATION) ? "Input Operation" : "",
+			Irp->IoStatus.Status,
+			Irp->IoStatus.Information,
+			((UCHAR*)Irp->SystemBuffer)[0],
+			((UCHAR*)Irp->SystemBuffer)[1],
+			((UCHAR*)Irp->SystemBuffer)[2],
+			((UCHAR*)Irp->SystemBuffer)[3]
+			));
+	}
+
 	if ( (Irp->Flags & (IRP_FLAGS_BUFFERED_IO|IRP_FLAGS_INPUT_OPERATION)) &&
 		 SUCCESS(Irp->IoStatus.Status) )
 	{
@@ -1300,7 +1334,10 @@ IoCompleteRequest(
 
 	if (Irp->Flags & IRP_FLAGS_DEALLOCATE_BUFFER)
 	{
-		ExFreeHeap (Irp->SystemBuffer);
+		if (Irp->BufferLength < PAGE_SIZE)
+			ExFreeHeap (Irp->SystemBuffer);
+		else
+			MmFreeMemory (Irp->SystemBuffer, Irp->BufferLength);
 	}
 
 	Irp->Flags &= ~(IRP_FLAGS_BUFFERED_IO|IRP_FLAGS_DEALLOCATE_BUFFER);

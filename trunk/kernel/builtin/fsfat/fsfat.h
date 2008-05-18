@@ -177,6 +177,9 @@ typedef struct FSFATVCB
 	PUCHAR SecondFat;
 	PUCHAR Fat;			// Points to first fat or second fat
 
+	ULONG SizeOfFatLoaded;
+	ULONG FullFatSize;
+
 	PFSFATDIR_ENT RootDirectory;
 
 	BOOLEAN FirstFatBad;

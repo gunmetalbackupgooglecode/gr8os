@@ -1061,6 +1061,62 @@ MmFreePhysicalPages(
 	Mmd->Flags &= ~MDL_ALLOCATED;
 }
 
+
+PVOID
+KEAPI
+MmAllocateMemory(
+	ULONG MemorySize
+	)
+/*++
+	Internal routine for allocating some memory space for kernel purposes
+--*/
+{
+	PMMD Mmd;
+	STATUS Status;
+	PVOID Ptr;
+
+	//BUGBUG: Not tested
+
+	MemorySize = ALIGN_UP (MemorySize, PAGE_SIZE);
+
+	Status = MmAllocatePhysicalPages (MemorySize >> PAGE_SHIFT, &Mmd);
+	if (!SUCCESS(Status))
+		return 0;
+
+	Ptr = MmMapLockedPages (Mmd, KernelMode, FALSE, FALSE);
+
+	ASSERT (Ptr != NULL);
+
+	ExFreeHeap (Mmd);
+	return Ptr;
+}
+
+
+VOID
+KEAPI
+MmFreeMemory(
+	PVOID Ptr,
+	ULONG MemorySize
+	)
+/*++
+	Internal routine used to free memory allocated by MmAllocateMemory
+--*/
+{
+	PMMD Mmd = MmAllocateMmd (Ptr, MemorySize);
+
+	// BUGBUG: NOT TESTED
+
+	ASSERT (Mmd != NULL);
+
+	MmBuildMmdForNonpagedSpace (Mmd);
+	Mmd->Flags = MDL_ALLOCATED | MDL_MAPPED;
+
+	MmUnmapLockedPages (Mmd);
+	MmFreePhysicalPages (Mmd);
+	MmFreeMmd (Mmd);
+}
+
+
 PVOID
 KEAPI
 MmAllocatePage(
@@ -1069,7 +1125,7 @@ MmAllocatePage(
 	Internal routine used to allocate one page
 --*/
 {
-	PMMD Mmd;
+	/*PMMD Mmd;
 	STATUS Status;
 	PVOID Ptr;
 
@@ -1082,7 +1138,9 @@ MmAllocatePage(
 	Ptr = MmMapLockedPages (Mmd, KernelMode, FALSE, FALSE);
 
 	ExFreeHeap (Mmd);
-	return Ptr;
+	return Ptr;*/
+
+	return MmAllocateMemory (PAGE_SIZE);
 }
 
 VOID
@@ -1094,6 +1152,7 @@ MmFreePage(
 	Internal routine used to free one page
 --*/
 {
+	/*
 	MMD Mmd;
 	PMMPTE Pte;
 
@@ -1111,6 +1170,9 @@ MmFreePage(
 	
 	MmUnmapLockedPages (&Mmd);
 	MmFreePhysicalPages (&Mmd);
+	*/
+
+	MmFreeMemory (Page, PAGE_SIZE);
 }
 
 
@@ -2223,6 +2285,7 @@ MmLoadSystemImage(
 			Hdr,
 			PAGE_SIZE,
 			NULL,
+			0,
 			&IoStatus
 			);
 		if (!SUCCESS(Status))
@@ -2307,6 +2370,7 @@ MmLoadSystemImage(
 				Buffer,
 				Size,
 				&Offset,
+				0,
 				&IoStatus
 				);
 

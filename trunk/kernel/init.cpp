@@ -210,7 +210,7 @@ KiDemoThread(
 
 	KdPrint(("\nRead 1\n\n"));
 
-	Status = IoReadFile (File, Buffer, 512, NULL, &IoStatus);
+	Status = IoReadFile (File, Buffer, 512, NULL, 0, &IoStatus);
 	if (!SUCCESS(Status)) {
 		KeBugCheck (KE_INITIALIZATION_FAILED,
 					__LINE__,
@@ -307,6 +307,7 @@ KiDemoThread(
 	KdPrint(("MmLoadSystemImage: Mapped at %08x, DrvObj %08x, Status %08x\n", ImageBase, DriverObject, Status));	
 	
 
+
 	UNICODE_STRING FileName;
 	RtlInitUnicodeString( &FileName, L"\\Device\\hda0\\boot.ini" );
 
@@ -327,7 +328,7 @@ KiDemoThread(
 	{
 		UCHAR buff[513];
 
-		Status = IoReadFile (File, buff, SECTOR_SIZE, NULL, &IoStatus);
+		Status = IoReadFile (File, buff, SECTOR_SIZE, NULL, 0, &IoStatus);
 		if (!SUCCESS(Status)) {
 			KdPrint(("IoReadFile failed with status %08x\n", Status));
 			INT3
@@ -339,6 +340,7 @@ KiDemoThread(
 	}
 
 	IoCloseFile (File);
+	
 
 	/*
 	RtlInitUnicodeString( &ImagePath, L"\\SystemRoot\\pci.sys" );

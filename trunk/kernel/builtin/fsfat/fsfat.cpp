@@ -87,6 +87,7 @@ FsFatCreateVcb(
 		Vcb->BootSector,
 		SECTOR_SIZE,
 		&Offset,
+		0, //IRP_FLAGS_TRACE_IRP,
 		&IoStatus
 		);
 
@@ -98,8 +99,9 @@ FsFatCreateVcb(
 	}
 
 	PUCHAR buff = (PUCHAR)Vcb->BootSector;
-	FsPrint(("FSFAT: FsFatCreateVcb: Bootsector read: %02x %02x %02x %02x [%s]\n", 
-		buff[0], buff[1], buff[2], buff[3], buff));
+	FsPrint(("FSFAT: FsFatCreateVcb: [read %d bytes] Bootsector read: %02x %02x %02x %02x\n", 
+		IoStatus.Information,
+		buff[0], buff[1], buff[2], buff[3]));
 
 	PFSFAT_HEADER fh = Vcb->FatHeader;
 
@@ -140,9 +142,6 @@ FsFatCreateVcb(
 		FatSectors
 		));
 
-//	if (KiInitializationPhase >= 2)
-//		INT3
-
 	Vcb->Fat1StartSector = (USHORT) (fh->ReservedSectors /*+ fh->HiddenSectors*/);
 	Vcb->Fat2StartSector = Vcb->Fat1StartSector + FatSectors;
 	Vcb->DirStartSector = Vcb->Fat2StartSector + FatSectors;
@@ -159,10 +158,13 @@ FsFatCreateVcb(
 
 	Offset.LowPart = (Vcb->Fat1StartSector) * fh->SectorSize;
 
-	FsPrint(("FSFAT: Reading fat, offset=%08x [F1=%08x, SS=%08x]\n", Offset.LowPart,
-		Vcb->Fat1StartSector, fh->SectorSize));
+	Vcb->FullFatSize = FatSectors * fh->SectorSize;
+	Vcb->SizeOfFatLoaded = Vcb->FullFatSize > PAGE_SIZE*3 ? PAGE_SIZE*3 : Vcb->FullFatSize;
 
-	Vcb->Fat = Vcb->FirstFat = (PUCHAR) ExAllocateHeap (TRUE, FatSectors * fh->SectorSize);
+	FsPrint(("FSFAT: Reading fat hdr, offset=%08x [F1=%08x, SS=%08x, Size=%08x]\n", Offset.LowPart,
+		Vcb->Fat1StartSector, fh->SectorSize, Vcb->SizeOfFatLoaded));
+
+	Vcb->Fat = Vcb->FirstFat = (PUCHAR) ExAllocateHeap (TRUE, Vcb->SizeOfFatLoaded);
 
 	if (!Vcb->FirstFat)
 	{
@@ -174,8 +176,9 @@ FsFatCreateVcb(
 	Status = IoReadFile (
 		Vcb->RawFileObject,
 		Vcb->Fat,
-		FatSectors * fh->SectorSize,
+		Vcb->SizeOfFatLoaded,
 		&Offset,
+		0,
 		&IoStatus
 		);
 
@@ -190,8 +193,9 @@ FsFatCreateVcb(
 		Status = IoReadFile (
 			Vcb->RawFileObject,
 			Vcb->Fat,
-			FatSectors * fh->SectorSize,
+			Vcb->SizeOfFatLoaded,
 			&Offset,
+			0,
 			&IoStatus
 			);
 
@@ -207,6 +211,17 @@ FsFatCreateVcb(
 	}
 
 	FsPrint(("FSFAT: FsFatCreateVcb: FAT loaded\n"));
+
+	if (Vcb->SizeOfFatLoaded < Vcb->FullFatSize)
+	{
+		FsPrint(("FSFAT: Warn: Only part of FAT has been loaded (loaded size=%08x, full size=%08x)\n",
+			Vcb->SizeOfFatLoaded,
+			Vcb->FullFatSize));
+	}
+
+//	if (KiInitializationPhase >= 2)
+//		INT3;
+
 	buff = (PUCHAR)Vcb->Fat;
 	FsPrint(("FSFAT: FAT: %02x %02x %02x %02x [%s]\n", 
 		buff[0], buff[1], buff[2], buff[3], buff));
@@ -241,6 +256,7 @@ FsFatCreateVcb(
 			Vcb->RootDirectory,
 			fh->DirectoryEntries*sizeof(FSFATDIR_ENT),
 			&Offset,
+			0,
 			&IoStatus
 			);
 	}
@@ -821,7 +837,40 @@ FsFatReadFatEntry(
 
 			nByte = (Index*3)/2;
 
-			Cluster = (*(USHORT*)&Fat[nByte]) & 0xFFF;
+			USHORT Buffer;
+
+			if (nByte >= Vcb->SizeOfFatLoaded)
+			{
+				FsPrint(("FSFAT: Reading FAT: Out of loaded part. Reading\n"));
+
+				LARGE_INTEGER Offset = {0,0};
+				Offset.LowPart = nByte;
+
+				STATUS Status;
+				IO_STATUS_BLOCK IoStatus;
+
+				Status = IoReadFile (
+					Vcb->RawFileObject,
+					&Buffer,
+					sizeof(USHORT),
+					&Offset,
+					0,
+					&IoStatus
+					);
+
+				if (!SUCCESS(Status))
+				{
+					FsPrint(("FSFAT: Fatal: FAT cannot be read.\n"));
+					ASSERT (FALSE);
+					return -1;
+				}
+			}
+			else
+			{
+				Buffer = (*(USHORT*)&Fat[nByte]);
+			}
+
+			Cluster = Buffer & 0xFFF;
 		}
 		else
 		{
@@ -829,7 +878,41 @@ FsFatReadFatEntry(
 			
 			nByte = (Index+1)*3/2 - 2;
 
-			Cluster = (*(USHORT*)&Fat[nByte]) >> 4;
+			USHORT Buffer;
+
+			if (nByte >= Vcb->SizeOfFatLoaded)
+			{
+				FsPrint(("FSFAT: Reading FAT: Out of loaded part. Reading\n"));
+
+				LARGE_INTEGER Offset = {0,0};
+				Offset.LowPart = nByte;
+
+				STATUS Status;
+				IO_STATUS_BLOCK IoStatus;
+
+				Status = IoReadFile (
+					Vcb->RawFileObject,
+					&Buffer,
+					sizeof(USHORT),
+					&Offset,
+					0,
+					&IoStatus
+					);
+
+				if (!SUCCESS(Status))
+				{
+					FsPrint(("FSFAT: Fatal: FAT cannot be read.\n"));
+					ASSERT (FALSE);
+					return -1;
+				}
+			}
+			else
+			{
+				Buffer = (*(USHORT*)&Fat[nByte]);
+			}
+
+
+			Cluster = Buffer >> 4;
 		}
 
 	//	KdPrint(("nByte=%08x, FAT=%08x, short=%08x, Cluster=%08x\n", nByte, Fat, *(USHORT*)&Fat[nByte], Cluster));
@@ -998,6 +1081,7 @@ FsFatReadCluster(
 		Buffer,
 		Vcb->ClusterSize,
 		&Offset,
+		0,
 		&IoStatus
 		);
 
