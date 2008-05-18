@@ -650,6 +650,19 @@ MmFreePage(
 	PVOID Page
 	);
 
+PVOID
+KEAPI
+MmAllocateMemory(
+	ULONG MemorySize
+	);
+
+VOID
+KEAPI
+MmFreeMemory(
+	PVOID Ptr,
+	ULONG MemorySize
+	);
+
 extern PVOID MmAcpiInfo;
 
 // end_ddk

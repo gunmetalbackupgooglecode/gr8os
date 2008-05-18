@@ -231,6 +231,25 @@ struct PHYSICAL_IDE_CONTROL_BLOCK
 
 #define HdPrint(x) KiDebugPrint x
 
+#define DUMP_STRUC_FIELD(OBJECT, FNAME, TYPE) HdPrint(( #OBJECT "->" #FNAME " = " TYPE "\n", (OBJECT)->FNAME ));
+
+void DUMP_PCB(PHYSICAL_IDE_CONTROL_BLOCK *OBJECT) 
+{
+	DUMP_STRUC_FIELD (OBJECT, Mask, "%08x");				
+	DUMP_STRUC_FIELD (OBJECT, PhysicalOrPartition, "%d");	
+	if ( (OBJECT)->PhysicalOrPartition == 0 )				
+	{														
+		DUMP_STRUC_FIELD (OBJECT, PartitionStart, "%08x");	
+		DUMP_STRUC_FIELD (OBJECT, PartitionEnd, "%08x");	
+		DUMP_STRUC_FIELD (OBJECT, RelatedPhysical, "%08x");		
+	}														
+	else													
+	{														
+		DUMP_STRUC_FIELD (OBJECT, Channel, "%d");			
+		DUMP_STRUC_FIELD (OBJECT, Device, "%d");			
+	}														
+}
+
 STATUS
 KEAPI
 HdPerformRead(
@@ -255,6 +274,7 @@ HdPerformRead(
 #define DEVICE  (pcb->Device)
 
 //	HdPrint(("HD: performing generic read, pcb=%08x\n", pcb));
+	//DUMP_PCB (pcb);
 
 	if (pcb->Mask != PHYS_IDE_CB_MASK)
 	{
@@ -266,10 +286,18 @@ HdPerformRead(
 	}
 	ASSERT (pcb->Mask == PHYS_IDE_CB_MASK);
 
+//	if (SectorNumber > 70)
+//		INT3;
+
 	if (pcb->PhysicalOrPartition == 0)
 	{
-		//HdPrint(("HD: Recursion for partition\n"));
-		return HdPerformRead (pcb->RelatedPhysical, SectorNumber /*already adjusted by HddRead()*/, Buffer, Size);
+		//HdPrint(("HD: [%08x] Recursion read for partition [%08x -> %08x]\n", FileObject, FileObject->DeviceObject, pcb->RelatedPhysical->DeviceObject));
+
+		//HdPrint(("Dumping related PCB\n"));		
+		//DUMP_PCB ( (PHYSICAL_IDE_CONTROL_BLOCK*)pcb->RelatedPhysical->FsContext2 );
+
+		//return HdPerformRead (pcb->RelatedPhysical, SectorNumber /*already adjusted by HddRead()*/, Buffer, Size);
+		return HdPerformRead (pcb->RelatedPhysical, SectorNumber + pcb->PartitionStart, Buffer, Size);
 	}
 
 //	HdPrint(("HD: performing read IDE[%d:%d], Sector %08x\n", CHANNEL, DEVICE, SectorNumber));
@@ -390,6 +418,23 @@ _retry:
 
 //	HdPrint(("OK\n"));
 
+	/*
+	HdPrint (("Read succedded for [%d:%d], Sector %d, [%02x %02x %02x %02x  %02x %02x %02x %02x]\n",
+		CHANNEL,
+		DEVICE,
+		SectorNumber,
+		((UCHAR*)Buffer)[0],
+		((UCHAR*)Buffer)[1],
+		((UCHAR*)Buffer)[2],
+		((UCHAR*)Buffer)[3],
+		((UCHAR*)Buffer)[4],
+		((UCHAR*)Buffer)[5],
+		((UCHAR*)Buffer)[6],
+		((UCHAR*)Buffer)[7]
+	));
+	*/
+
+
 	return STATUS_SUCCESS;
 }
 
@@ -463,6 +508,8 @@ HdAddDevice(
 	// Read partition table
 	//
 
+	HdPrint(("[~] HDD: Reading partition table\n"));
+
 	PFILE PhysicalFileObject;
 	IO_STATUS_BLOCK IoStatus;
 
@@ -492,6 +539,7 @@ HdAddDevice(
 		Buffer,
 		sizeof(Buffer),
 		NULL,
+		0,
 		&IoStatus
 		);
 	
@@ -595,6 +643,7 @@ HdAddDevice(
 				if (!SUCCESS(Status))
 				{
 					HdPrint(("HDD: IoRequestMount failed : %08x\n", Status));
+					return Status;
 				}
 				else
 				{
@@ -605,7 +654,7 @@ HdAddDevice(
 		}
 	}
 
-	return STATUS_SUCCESS;
+	return Status;
 }
 
 STATUS
@@ -628,6 +677,29 @@ HddCreateClose(
 		CcInitializeFileCaching (Irp->FileObject, SECTOR_SIZE, &Callbacks);
 
 		Irp->FileObject->FsContext2 = (DeviceObject+1); // IDE Drive Control Block
+
+		PHYSICAL_IDE_CONTROL_BLOCK* pcb = (PHYSICAL_IDE_CONTROL_BLOCK*)(DeviceObject+1);
+
+		HdPrint(("IDE Control Block saved: *=%08x, SIGN=%08x[%08x], PhysOrPart=%d\n", pcb, pcb->Mask,PHYS_IDE_CB_MASK, pcb->PhysicalOrPartition));
+		if (pcb->PhysicalOrPartition == 0) // partition
+		{
+			if (!MmIsAddressValid (pcb->RelatedPhysical))
+			{
+				HdPrint(("PCB INVALID [RelatedPhysical=%08]\n", pcb->RelatedPhysical));
+				INT3
+			}
+			if (!MmIsAddressValid (pcb->RelatedPhysical->DeviceObject))
+			{
+				HdPrint(("PCB INVALID [RelatedPhysical=%08x, RPH->DevObj=%08x]\n", pcb->RelatedPhysical->DeviceObject));
+				INT3
+			}
+			
+			HdPrint(("Related physical: File=%08x, Device=%08x", pcb->RelatedPhysical, pcb->RelatedPhysical->DeviceObject));
+
+			pcb = (PHYSICAL_IDE_CONTROL_BLOCK*)(pcb->RelatedPhysical->DeviceObject + 1);
+
+			HdPrint(("PCB=%08x [SIGN=%08x, CH=%d DV=%d]\n", pcb, pcb->Mask, pcb->Channel, pcb->Device));
+		}
 	}
 	else
 	{
@@ -651,7 +723,7 @@ HddRead(
 	ULONG Size = Irp->BufferLength;
 	STATUS Status = STATUS_INVALID_PARAMETER;
 	PVOID Buffer;
-	ULONG LbaSector, RelativeOffset;
+	ULONG Offset;
 
 	if (Irp->Flags & IRP_FLAGS_BUFFERED_IO)
 	{
@@ -664,36 +736,39 @@ HddRead(
 
 	if (Irp->CurrentStackLocation->Parameters.ReadWrite.OffsetSpecified)
 	{
-		LbaSector = (ULONG)(Irp->CurrentStackLocation->Parameters.ReadWrite.Offset.LowPart / SECTOR_SIZE);
+		Offset = (ULONG)(Irp->CurrentStackLocation->Parameters.ReadWrite.Offset.LowPart);
 	}
 	else
 	{
-		LbaSector = Irp->FileObject->CurrentOffset.LowPart / SECTOR_SIZE;
+		Offset = Irp->FileObject->CurrentOffset.LowPart;
 	}
 	
-	RelativeOffset = Irp->CurrentStackLocation->Parameters.ReadWrite.Offset.LowPart % SECTOR_SIZE;
-
-	if (RelativeOffset || (Size % SECTOR_SIZE))
+	if ( (Offset & (SECTOR_SIZE-1)) || (Size % SECTOR_SIZE))
 	{
 		COMPLETE_IRP (Irp, STATUS_DATATYPE_MISALIGNMENT, 0);
 	}
 
 	PHYSICAL_IDE_CONTROL_BLOCK *pcb = (PHYSICAL_IDE_CONTROL_BLOCK*)(DeviceObject+1);
 
+	/*
 	if (pcb->PhysicalOrPartition == 0)
 	{
 		//
 		// Partition on the hark disk.
 		//
 
-		//HdPrint(("HD: Resolving partition [PS=%d]\n", pcb->PartitionStart));
+		HdPrint(("HD: Resolving partition [PS=%d] : Sector %d -> %d\n", pcb->PartitionStart, 
+			Offset/SECTOR_SIZE, 
+			Offset/SECTOR_SIZE + pcb->PartitionStart));
 
-		LbaSector += pcb->PartitionStart;
+//		Offset += pcb->PartitionStart*SECTOR_SIZE;
 	}
+	*/
+
 
 	Status = CcCacheReadFile (
 		Irp->FileObject,
-		LbaSector,
+		Offset,
 		Buffer,
 		Size
 		);
