@@ -3,6 +3,15 @@
 #ifndef _GR8OS_
 #define _GR8OS_
 
+
+#if DBG
+#define OS_DEBUG_VERSION "-debug"
+#else
+#define OS_DEBUG_VERSION
+#endif
+
+#define OS_VERSION "GR8OS Ver 0.1" OS_DEBUG_VERSION
+
 //
 // General types
 //
@@ -12,7 +21,11 @@ typedef int INT, *PINT;
 typedef short SHORT, *PSHORT;
 typedef char CHAR, *PCHAR, *PSTR, BOOLEAN, *PBOOLEAN, LOGICAL, *PLOGICAL;
 typedef unsigned long DWORD, *PDWORD, ULONG, *PULONG, ULONG_PTR, *PULONG_PTR;
-typedef unsigned short WORD, *PWORD, USHORT, *PUSHORT;
+typedef unsigned short WORD, *PWORD, USHORT, *PUSHORT
+#ifdef _DEFINE_WCHART_
+, wchar_t
+#endif
+;
 typedef wchar_t WCHAR, *PWCHAR, WSTR, *PWSTR;
 
 typedef const char *PCSTR;
@@ -28,6 +41,7 @@ typedef ULONG STATUS, *PSTATUS;
 //
 // Notice codes
 //
+#define STATUS_PENDING						((STATUS) 0x00000007)
 #define STATUS_CACHED						((STATUS) 0x00000006)
 #define STATUS_ALREADY_FREE					((STATUS) 0x00000005)
 #define STATUS_FINISH_PARSING				((STATUS) 0x00000004)
@@ -61,6 +75,8 @@ typedef ULONG STATUS, *PSTATUS;
 #define STATUS_BUSY							((STATUS) 0xF0000011)
 #define STATUS_INVALID_FILE_FOR_IMAGE		((STATUS) 0xF0000012)
 #define STATUS_PRIVILEGE_NOT_HELD			((STATUS) 0xF0000013)
+#define STATUS_DELETE_PENDING				((STATUS) 0xF0000014)
+#define STATUS_IN_PAGE_ERROR				((STATUS) 0xF0000015)
 
 #define STATUS_INVALID_PARAMETER_1			((STATUS) 0xF0000021)
 #define STATUS_INVALID_PARAMETER_2			((STATUS) 0xF0000022)
@@ -75,7 +91,7 @@ typedef ULONG STATUS, *PSTATUS;
 // Warning codes
 //
 
-#define STATUS_PENDING						((STATUS) 0x80000003)
+#define STATUS_END_OF_FILE					((STATUS) 0x80000001)
 
 #define SUCCESS(Status) ((LONG)(Status)>=0)
 
@@ -221,7 +237,7 @@ LARGE_INTEGER __inline RtlMakeLargeInteger(ULONG Low, ULONG High)
 #define OB_TRACE_REF_DEREF		0
 
 // Trace file caching
-#define CC_TRACE_CACHING		0
+#define CC_TRACE_CACHING		1
 
 // Trace operations with mutexes
 #define EX_TRACE_MUTEXES		0
@@ -237,6 +253,15 @@ LARGE_INTEGER __inline RtlMakeLargeInteger(ULONG Low, ULONG High)
 
 // Trace FS FAT reading
 #define FSFAT_TRACE_READING			0
+
+// Hang on bugcheck
+#define KE_HANG_ON_BUGCHECK			1
+
+// Disable cache rebuilding
+#define CC_DISABLE_CACHE_REBUILDING	1
+
+// Extended info on quiet bugcheck
+#define KE_QUIET_BUGCHECK_EXTENDED	0
 
 
 // begin_ddk

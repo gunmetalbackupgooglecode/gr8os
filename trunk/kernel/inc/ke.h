@@ -298,10 +298,37 @@ extern PCB Pcb0;
 #pragma pack()
 
 #if DBG
-#define ASSERT(x) if(!(x)) KeAssertionFailed( #x, __FILE__, __LINE__ );
+#define ASSERT(x) if(!(x)) KeAssertionFailed( #x, __FILE__, __LINE__, __FUNCTION__ );
+#define ASSERT_EQUAL(x,y) if((x)!=(y)) KeAssertionEqualFailed ( #x, (ULONG)x, #y, (ULONG)y, __FILE__, __LINE__, __FUNCTION__ );
 #else
-#define ASSERT(x)
+#define ASSERT(x) ;
+#define ASSERT_EQUAL(x,y) ;
 #endif
+
+KESYSAPI
+VOID
+KEAPI
+KeAssertionFailed(
+	PCHAR Message,
+	PCHAR FileName,
+	ULONG Line,
+	PCHAR Function
+	);
+
+KESYSAPI
+VOID
+KEAPI
+KeAssertionEqualFailed(
+	PCHAR Name1,
+	ULONG Value1,
+	PCHAR Name2,
+	ULONG Value2,
+	PCHAR FileName,
+	ULONG Line,
+	PCHAR Function
+	);
+
+
 
 KESYSAPI
 BOOLEAN
@@ -325,12 +352,10 @@ KeReleaseLock(
 	);
 
 KESYSAPI
-VOID
+BOOLEAN
 KEAPI
-KeAssertionFailed(
-	PCHAR Message,
-	PCHAR FileName,
-	ULONG Line
+KeChangeWpState(
+	BOOLEAN Wp
 	);
 
 KESYSAPI
@@ -897,5 +922,39 @@ KEFASTAPI
 InterlockedIncrement(
 	PLONG Long
 );
+
+KESYSAPI
+VOID
+KEAPI
+KePrintActiveConsole(
+	PSTR OutString
+	);
+
+VOID
+KEAPI
+KiInitializeOnScreenStatusLine(
+	);
+
+KESYSAPI
+VOID
+KEAPI
+KeSetOnScreenStatus(
+	PSTR Status
+	);
+
+VOID
+KEAPI
+KiMoveLoadingProgressBar(
+	UCHAR Percent
+	);
+
+VOID
+KEFASTAPI
+KiWriteCharAttribute(
+	ULONG Pos,
+	UCHAR Attribute
+	);
+
+extern UCHAR KiKeyboardStatusByte;
 
 // end_ddk

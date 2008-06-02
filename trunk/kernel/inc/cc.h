@@ -29,14 +29,16 @@ typedef STATUS (KEAPI *PCCFILE_CACHE_READ)(
 	IN PFILE FileObject,
 	IN ULONG PageNumber,
 	OUT PVOID Buffer,
-	IN ULONG Size
+	IN ULONG Size,
+	OUT PULONG nBytesRead
 	);
 
 typedef STATUS (KEAPI *PCCFILE_CACHE_WRITE)(
 	IN PFILE FileObject,
 	IN ULONG PageNumber,
 	IN PVOID Buffer,
-	IN ULONG Size
+	IN ULONG Size,
+	OUT PULONG nBytesWritten
 	);
 
 
@@ -107,17 +109,30 @@ CcCacheReadFile(
 	IN PFILE FileObject,
 	IN ULONG Offset,
 	OUT PVOID Buffer,
-	IN ULONG Size
+	IN ULONG Size,
+	OUT PULONG nBytesRead
 	);
+
+/*
+KESYSAPI
+STATUS
+KEAPI
+CcRequestCachedPage(
+	IN PFILE FileObject,
+	IN ULONG PageNumber,
+	OUT PVOID *Buffer
+	);
+*/
 
 KESYSAPI
 STATUS
 KEAPI
-xCcCacheWriteFile(
+CcCacheWriteFile(
 	IN PFILE FileObject,
-	IN ULONG PageNumber,
+	IN ULONG Offset,
 	IN PVOID Buffer,
-	IN ULONG Size
+	IN ULONG Size,
+	OUT PULONG nBytesWritten
 	);
 
 KESYSAPI

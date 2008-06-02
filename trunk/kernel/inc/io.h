@@ -91,6 +91,7 @@ typedef STATUS (KEAPI *PIRP_HANDLER)(PDEVICE DeviceObject, PIRP Irp);
 
 #define IRP_MN_MOUNT	1
 #define IRP_MN_DISMOUNT	2
+#define IRP_MN_REQUEST_CACHED_PAGE	3
 
 struct DRIVER
 {
@@ -234,8 +235,8 @@ struct FILE
 	PDEVICE DeviceObject;
 	PVOID FsContext;
 	PVOID FsContext2;
-	union
-	{
+	//union
+	//{
 		ULONG DesiredAccess UNIMPLEMENTED;
 		struct
 		{
@@ -248,12 +249,13 @@ struct FILE
 			BOOLEAN ReadThrough;
 			BOOLEAN WriteThrough;
 		};
-	};
+	//};
 	UNICODE_STRING RelativeFileName;
 	LARGE_INTEGER CurrentOffset;
 	STATUS FinalStatus;
 	EVENT Event;
 	PCCFILE_CACHE_MAP CacheMap;
+	LOCKED_LIST MappingList;
 };
 #pragma pack()
 
