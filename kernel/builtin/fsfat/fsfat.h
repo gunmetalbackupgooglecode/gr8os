@@ -248,3 +248,13 @@ FsFatReadCluster(
 	ULONG Cluster,
 	PVOID Buffer
 	);
+
+STATUS
+KEAPI
+FsFatPerformRead(
+	IN PFILE FileObject,
+	IN ULONG SectorNumber,
+	OUT PVOID Buffer,
+	IN ULONG Size,
+	OUT PULONG nBytesRead
+	);

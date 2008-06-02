@@ -121,7 +121,8 @@ FdRead(
 		Irp->FileObject,
 		Offset,
 		Buffer,
-		Size
+		Size,
+		&Size
 		);
 
 	COMPLETE_IRP (Irp, Status, Size);

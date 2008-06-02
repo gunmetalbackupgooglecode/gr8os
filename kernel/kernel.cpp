@@ -35,6 +35,20 @@ KiWriteChar(
 	__asm retn
 }
 
+__declspec(naked)
+VOID
+KEFASTAPI
+KiWriteCharAttribute(
+	ULONG Pos,
+	UCHAR Attribute
+	)
+{
+	__asm shl ecx, 1
+	__asm inc ecx
+	__asm mov byte ptr gs:[ecx], dl
+	__asm retn
+}
+
 KESYSAPI
 PDPC_QUEUE
 KEAPI
@@ -359,13 +373,33 @@ KEAPI
 KeAssertionFailed(
 	PCHAR Message,
 	PCHAR FileName,
-	ULONG Line
+	ULONG Line,
+	PCHAR Function
 	)
 /*++
 	Display message about the failed assertion
 --*/
 {
-	sprintf( MmDebugBuffer, "KE: Assertion failed for <%s> in file %s at line %d\n", Message, FileName, Line );
+	sprintf( MmDebugBuffer, "KE: Assertion failed for <%s> in function %s, file %s at line %d\n", Message, Function, FileName, Line );
+	KiDebugPrintRaw (MmDebugBuffer);
+	INT3
+}
+
+KESYSAPI
+VOID
+KEAPI
+KeAssertionEqualFailed(
+	PCHAR Name1,
+	ULONG Value1,
+	PCHAR Name2,
+	ULONG Value2,
+	PCHAR FileName,
+	ULONG Line,
+	PCHAR Function
+	)
+{
+	sprintf( MmDebugBuffer, "KE: Assertion failed for <%s == %s> (%s = %08x, %s = %08x) in function %s, file %s at line %d\n", 
+		Name1, Name2, Name1, Value1, Name2, Value2, Function, FileName, Line );
 	KiDebugPrintRaw (MmDebugBuffer);
 	INT3
 }
@@ -662,6 +696,44 @@ KeWaitForSingleObject(
 }
 
 
+KESYSAPI
+BOOLEAN
+KEAPI
+KeChangeWpState(
+	BOOLEAN Wp
+	)
+/*++
+	Change state of CR0.WP bit
+--*/
+{
+	ULONG _Or = 0;
+	ULONG _And = 0xFFFFFFFF;
+	ULONG OldCR0;
+
+	if (Wp)
+	{
+		_Or = 0x10000;
+	}
+	else
+	{
+		_And = 0xFFFEFFFF;
+	}
+
+	__asm
+	{
+		mov eax, cr0
+
+		mov [OldCR0], eax
+
+		or  eax, [_Or]
+		and eax, [_And]
+		mov cr0, eax
+	}
+
+	return ((OldCR0 & 0x10000) == 0x10000);
+}
+
+
 
 
 PCHAR KeBugCheckDescriptions[] = {
@@ -783,7 +855,7 @@ KeStackUnwind(
 	bool first = true;
 	int syms = 0;
 
-	for (ULONG i=0; i<40 && syms<10; i++, _esp++)
+	for (ULONG i=0; i<130 && syms<20; i++, _esp++)
 	{
 		if ((*_esp & 0xFFF00000) == Base)
 		{
@@ -834,7 +906,6 @@ KeBugCheck(
 	if (StopCode < MAXIMUM_BUGCHECK)
 		szCode = KeBugCheckDescriptions[StopCode];
 
-
 	PVOID Arguments[5] = {
 		(PVOID) StopCode,
 		(PVOID) Argument1,
@@ -877,6 +948,29 @@ KeBugCheck(
 		break;
 	}
 
+#if KE_HANG_ON_BUGCHECK
+
+#if KE_QUIET_BUGCHECK_EXTENDED
+	KdPrint(("** STOP [%08x] %s :\n** (%08x %s,%08x %s,%08x %s,%08x %s)\n", StopCode, szCode, 
+		Argument1, KiBugCheckDescriptions[0],
+		Argument2, KiBugCheckDescriptions[1],
+		Argument3, KiBugCheckDescriptions[2],
+		Argument4, KiBugCheckDescriptions[3]
+		));
+	KeStackUnwind (KiBugCheckMessage, _ebp);
+	KiDebugPrintRaw (KiBugCheckMessage);
+#else
+	KdPrint(("*** STOP [%08x] %s : (%08x, %08x, %08x, %08x)\n", StopCode, szCode, 
+		Argument1,
+		Argument2,
+		Argument3,
+		Argument4
+		));
+#endif
+	INT3
+
+#endif
+
 	sprintf(KiBugCheckMessage, 
 		"\n"
 		" Fatal system error occurred and gr8os has been shut down to prevent damage\n"
@@ -889,10 +983,8 @@ KeBugCheck(
 		"  %08x %s\n"
 		"  %08x %s\n"
 		"\n"
-		" If this is the first time you see this stop error screen, restart the system\n"
 		" If this screen appears again try to follow these steps:\n"
 		"  - Disable any newly installed hardware or system software.\n"
-		"  - Disable some BIOS options like caching or shadowing\n"
 		"  - Try to boot in the debugging mode and examine the system manually\n"
 		"\n"
 		,
@@ -917,4 +1009,22 @@ KeBugCheck(
 	{
 		KD_WAKE_UP_DEBUGGER_BP();
 	}
+}
+
+
+//
+// Console
+//
+
+KESYSAPI
+VOID
+KEAPI
+KePrintActiveConsole(
+	PSTR OutString
+	)
+/*++
+	Used by console virtual device driver to out text to the current console
+--*/
+{
+	KiDebugPrintRaw (OutString);
 }

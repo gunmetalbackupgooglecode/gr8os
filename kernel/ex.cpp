@@ -93,7 +93,7 @@ ExpChecksumBlock (
 	Environment: heap lock held.
 --*/
 {
-	return (ULONG)( (ULONG)Block->PaddingSize + (ULONG)Block->BlockType + (ULONG)Block->Size + (ULONG)Block->Cookie);
+	return (ULONG)( (ULONG)Block->PaddingSize + (ULONG)Block->BlockType + (ULONG)Block->Size + (ULONG)Block->Cookie) ^ (ULONG)Block;
 }
 
 VOID
@@ -594,6 +594,8 @@ ExFreeHeap(
 
 	PEHEAP_BLOCK Block = CONTAINING_RECORD (Ptr, EHEAP_BLOCK, Data);
 
+	ExpCheckBlockValid (Block);
+
 	if (Block->BlockType == HEAP_BLOCK_LOCKED)
 	{
 		KeBugCheck (EX_KERNEL_HEAP_FAILURE,
@@ -608,10 +610,8 @@ ExFreeHeap(
 					HEAP_DOUBLE_FREEING,
 					0,
 					(ULONG) Block,
-					0);
+					Block->BlockType);
 	}
-
-	ExpCheckBlockValid (Block);
 
 	//
 	// Now we're ready to free the block.
@@ -621,7 +621,7 @@ ExFreeHeap(
 	ExpReleaseHeapLock (OldState);
 }
 
-#if EX_TRACE_HEAP
+#if EX_TRACE_HEAP && 0
 VOID
 KEAPI
 ExpDumpBlockData(
@@ -930,7 +930,7 @@ ExLockHeapBlock(
 					(ULONG) Block,
 					0);
 	}
-	else if (Block->BlockType == HEAP_BLOCK_FREE)
+	else if (Block->BlockType == HEAP_BLOCK_FREE || Block->BlockType == FREED_PADDING)
 	{
 		KeBugCheck (EX_KERNEL_HEAP_FAILURE,
 					HEAP_FREE_BLOCK_LOCKING,
@@ -1184,6 +1184,10 @@ ExInitializeMutex(
 }
 
 
+ULONG ExMutexAcquirementsGlobalCounter = 0;
+ULONG ExMutexSatisfactionsGlobalCounter = 0;
+
+
 KESYSAPI
 VOID
 KEAPI
@@ -1228,6 +1232,8 @@ ExAcquireMutex(
 #if EX_TRACE_MUTEXES
 	KiDebugPrint("--> EX: Waiting for mutex %08x\n", Mutex);
 #endif
+
+	InterlockedIncrement ((PLONG)&ExMutexAcquirementsGlobalCounter);
 
 	WaitBlock = &Thread->WaitBlocks[0];
 	WaitBlock->BackLink = Thread;
@@ -1296,6 +1302,8 @@ ExAcquireMutex(
 #if EX_TRACE_MUTEXES
 	KiDebugPrint("--> EX: Wait satisfied for mutex %08x\n", Mutex);
 #endif
+
+	InterlockedIncrement ((PLONG)&ExMutexSatisfactionsGlobalCounter);
 
 	Mutex->Header.SignaledState = 0;
 	PspUnlockSchedulerDatabase ();

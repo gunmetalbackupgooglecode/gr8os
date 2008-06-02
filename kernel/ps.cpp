@@ -550,7 +550,6 @@ PspCreateProcess(
 	// Empty threads list head
 	InitializeListHead (&Process->ThreadListHead);
 
-	ExInitializeMutex (&InitialSystemProcess.ObjectTable.TableLock);
 	//
 	// Lock scheduler database, insert process into process list and unlock DB
 	//
@@ -563,6 +562,13 @@ PspCreateProcess(
 
 	// Set number of threads
 	Process->NumberOfThreads = 0;
+
+	ExInitializeMutex (&Process->ObjectTable.TableLock);
+	Process->ObjectTable.HandleTable = (POBJECT_HANDLE) ExAllocateHeap (FALSE, sizeof(OBJECT_HANDLE)*OB_INITIAL_HANDLES);
+	ASSERT (Process->ObjectTable.HandleTable);
+
+	memset (Process->ObjectTable.HandleTable, 0, sizeof(OBJECT_HANDLE)*OB_INITIAL_HANDLES);
+	Process->ObjectTable.CurrentSize = OB_INITIAL_HANDLES;
 }
 
 KESYSAPI
@@ -614,6 +620,10 @@ PspInitSystem(
 	ExInitializeMutex (&SystemThread.IrpListLock);
 
 	ExInitializeMutex (&InitialSystemProcess.ObjectTable.TableLock);
+	InitialSystemProcess.ObjectTable.HandleTable = (POBJECT_HANDLE) ExAllocateHeap (FALSE, sizeof(OBJECT_HANDLE)*OB_INITIAL_HANDLES);
+	ASSERT (InitialSystemProcess.ObjectTable.HandleTable);
+	memset (InitialSystemProcess.ObjectTable.HandleTable, 0, sizeof(OBJECT_HANDLE)*OB_INITIAL_HANDLES);
+	InitialSystemProcess.ObjectTable.CurrentSize = OB_INITIAL_HANDLES;
 
 	InsertTailList (&InitialSystemProcess.ThreadListHead, &SystemThread.ProcessThreadListEntry);
 	InsertTailList (&PsReadyListHead, &SystemThread.SchedulerListEntry);

@@ -66,6 +66,7 @@ EXPORTS
 	KiOutPortD
 	KeAllocateGdtDescriptor
 	KeAssertionFailed
+	KeAssertionEqualFailed
 	KeBugCheck
 	KeDispatchException
 	_except_handler3
@@ -96,6 +97,13 @@ EXPORTS
 	InterlockedCompareExchange
 	KiConnectInterrupt
 	_KiEoiHelper@0
+	KePrintActiveConsole
+	KiKeyboardStatusByte
+	KeAcquireLock
+	KeReleaseLock
+	KeReleaseIrqState
+	KeSetOnScreenStatus
+	KeChangeWpState
 	
 	;
 	; Io
@@ -133,6 +141,7 @@ EXPORTS
 	CcInitializeFileCaching
 	CcFreeCacheMap
 	CcCacheReadFile
+	;CcRequestCachedPage
 	CcCacheWriteFile
 	CcPurgeCacheFile
 		
@@ -157,6 +166,7 @@ EXPORTS
 	ObReferenceObjectByHandle
 	ObLockObject
 	ObUnlockObject
+	ObIsObjectGoingAway
 	
 	ObDirectoryObjectType
 	IoDeviceObjectType
@@ -191,6 +201,7 @@ EXPORTS
 	MmAcpiInfo
 	MmCreateFileMapping
 	MmMapViewOfFile
+	MmUnmapViewOfFile
 	
 	;
 	; Processes

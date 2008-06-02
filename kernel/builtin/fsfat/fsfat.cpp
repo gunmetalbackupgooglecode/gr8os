@@ -559,6 +559,15 @@ FsFatFsControl(
 			}
 
 			break;
+
+		default:
+
+			//
+			// Pass down. Maybe it is IRP_MN_REQUEST_CACHED_PAGE or something else.
+			//
+
+			IoSkipCurrentIrpStackLocation (Irp);
+			return IoCallDriver (RealDevice, Irp);
 		}
 	}
 
@@ -672,13 +681,13 @@ FsFatCreate(
 
 			ULONG numEntries = fh->DirectoryEntries ? fh->DirectoryEntries : (((ULONG)fh->SectorsPerCluster*(ULONG)fh->SectorSize)/(ULONG)sizeof(FSFATDIR_ENT));
 
-			KdPrint(("CREAT: %d entries\n", numEntries));
+			//KdPrint(("CREAT: %d entries\n", numEntries));
 
 			for (ULONG i=0; i<numEntries; i++)
 			{
 				PFSFATDIR_ENT dirent = &dev->Vcb.RootDirectory[i];
 
-				KdPrint(("CREAT: [%s] %s\n", dosname, dirent->Filename));
+				//KdPrint(("CREAT: [%s] %s\n", dosname, dirent->Filename));
 
 				if (!strncmp (dosname, dirent->Filename, 11))
 				{
@@ -701,13 +710,26 @@ FsFatCreate(
 					//
 
 					PFSFATFCB Fcb = (PFSFATFCB) ExAllocateHeap (TRUE, sizeof(FSFATFCB));
+
+					if (Fcb == NULL)
+					{
+						Status = STATUS_INSUFFICIENT_RESOURCES;
+						goto finally;
+					}
+
 					Fcb->Vcb = &dev->Vcb;
 					Fcb->DirEnt = dirent;
 
 					// Save FCB pointer
 					Irp->FileObject->FsContext = Fcb;
 
-					Status = STATUS_SUCCESS;
+
+					//BUGBUG: Replace SECTOR_SIZE with call to IRP_FSCTL with IRP_MN_QUERY_DEVICE_PROPERTIES (SectorSize)
+					//BUGBUG: Add FsFatPerformWrite
+
+					CCFILE_CACHE_CALLBACKS Callbacks = { FsFatPerformRead, NULL };
+					Status = CcInitializeFileCaching (Irp->FileObject, dev->Vcb.ClusterSize, &Callbacks);
+
 					goto finally;
 				}
 			}
@@ -771,9 +793,16 @@ FsFatClose(
 			// The one thing we should do - delete file control block. Do it
 			
 			PFSFATFCB Fcb = (PFSFATFCB) Irp->FileObject->FsContext;
+
+			ASSERT (Fcb != NULL);
+
 			ExFreeHeap (Fcb);
 			Irp->FileObject->FsContext = NULL;
 			
+			// Also delete cached information
+
+			CcFreeCacheMap (Irp->FileObject);
+
 			Status = STATUS_SUCCESS;
 		}
 	}
@@ -1088,28 +1117,121 @@ FsFatReadCluster(
 	return Status;
 }
 
-ULONG
-KEAPI
-FsFatSEHandler(
-	PEXCEPTION_ARGUMENTS Args,
-	PCONTEXT_FRAME ContextFrame
-	)
-{
-	KdPrint(("FSFAT: Caught exception %08x\n", Args->ExceptionCode));
-	
-	KeBugCheck (KERNEL_MODE_EXCEPTION_NOT_HANDLED,
-				Args->ExceptionCode,
-				ContextFrame->Eip,
-				0,
-				0
-				);
-}
-
 #if FSFAT_TRACE_READING
 #define FrPrint(x) KiDebugPrint x
 #else
 #define FrPrint(x)
 #endif
+
+STATUS
+KEAPI
+FsFatPerformRead(
+	IN PFILE FileObject,
+	IN ULONG SectorNumber,	// actually it is the cluster number
+	OUT PVOID Buffer,
+	IN ULONG Size,
+	OUT PULONG nBytesRead
+	)
+/*++
+	Perform actual reading for file
+--*/
+{
+	//
+	// Handle file reading.
+	//
+
+	KdPrint(("FSFAT: Performing read [File=%08x, Cluster#=%08x, Size=%08x]\n", FileObject, SectorNumber, Size));
+
+	__try
+	{
+
+		PFSFATFCB Fcb = (PFSFATFCB) FileObject->FsContext;
+		PFSFATVCB Vcb = (PFSFATVCB) &((PFSFAT_VOLUME_OBJECT)FileObject->DeviceObject)->Vcb;
+
+		if( Size == 0 )
+			return STATUS_SUCCESS;
+
+		ULONG Cluster = FsFatFileClusterByPos (Vcb,
+			Fcb->DirEnt->StartCluster | (Fcb->DirEnt->StartClusterHigh<<16),
+			SectorNumber // actually it is a cluster number
+			);
+
+		if (Cluster == -1)
+		{
+			//
+			// Reading truncated because the end-of-file occurred.
+			//
+
+			//KdPrint(("FSFAT: End-of-file occurred, read truncated\n"));
+
+			return STATUS_END_OF_FILE;
+		}
+		else if (Cluster == -2)
+		{
+			//
+			// Bad cluster found.
+			//
+
+			KdPrint(("FSFAT: Bad cluster #%d in file\n", SectorNumber));
+			
+			return STATUS_PARTIAL_COMPLETION;
+		}
+		else if (Cluster == -3)
+		{
+			//
+			// Reserved cluster found.
+			//
+
+			KdPrint(("FSFAT: Reserved cluster #%d in file\n", SectorNumber));
+			
+			return STATUS_PARTIAL_COMPLETION;
+		}
+
+		FrPrint(("FSFAT: Reading cluster #%d: %08x (offset %08x)\n", SectorNumber, Cluster, SectorNumber*Vcb->ClusterSize));
+
+		if (Cluster < 2)
+		{
+			KdPrint(("FSFAT: Internal check failed (Cluster<2)\n"));
+			
+			return STATUS_INVALID_PARAMETER;
+		}
+
+		STATUS Status = FsFatReadCluster (Vcb, Cluster, Buffer);
+
+		*nBytesRead = Vcb->ClusterSize;
+
+		if (FsFatFileClusterByPos (Vcb,
+			Fcb->DirEnt->StartCluster | (Fcb->DirEnt->StartClusterHigh<<16),
+			Cluster) == -1)
+		{
+			//
+			// This is the last cluster.
+			//
+
+			*nBytesRead = Fcb->DirEnt->FileSize % Vcb->ClusterSize;
+		}
+
+		if (!SUCCESS(Status))
+		{
+			KdPrint(("FSFAT: Reading cluster %08x failed with status %08x\n", Cluster, Status));
+			return Status;
+		}
+
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER)
+	{
+		KdPrint(("FSFAT: Caught exception %08x\n", GetExceptionCode()));
+		
+		KeBugCheck (KERNEL_MODE_EXCEPTION_NOT_HANDLED,
+					GetExceptionCode(),
+					NULL,
+					0,
+					0
+					);
+	}
+
+	return STATUS_SUCCESS;
+}
 
 STATUS
 KEAPI
@@ -1150,127 +1272,31 @@ FsFatRead(
 		}
 		else
 		{
-			//
-			// Handle file reading.
-			//
+			PVOID Buffer;
+			ULONG Offset;
 
-			__asm
+			if (Irp->Flags & IRP_FLAGS_BUFFERED_IO)
 			{
-				push dword ptr fs:[0]
-
-				push FsFatSEHandler
-				push dword ptr fs:[0]
-				mov fs:[0], esp
+				Buffer = Irp->SystemBuffer;
+			}
+			else if (Irp->Flags & IRP_FLAGS_NEITHER_IO)
+			{
+				Buffer = Irp->UserBuffer;
 			}
 
-			PFSFATFCB Fcb = (PFSFATFCB) Irp->FileObject->FsContext;
-			PFSFATVCB Vcb = (PFSFATVCB) &((PFSFAT_VOLUME_OBJECT)DeviceObject)->Vcb;
-
-			ULONG Length = Irp->BufferLength;
-			ULONG FilePos = Irp->CurrentStackLocation->Parameters.ReadWrite.Offset.LowPart;
-			if (Irp->BufferLength + FilePos >= Fcb->DirEnt->FileSize)
+			if (Irp->CurrentStackLocation->Parameters.ReadWrite.OffsetSpecified)
 			{
-				Length = Fcb->DirEnt->FileSize - FilePos;
+				Offset = (ULONG)(Irp->CurrentStackLocation->Parameters.ReadWrite.Offset.LowPart);
+			}
+			else
+			{
+				Offset = Irp->FileObject->CurrentOffset.LowPart;
 			}
 
-			ULONG AlignedPos = ALIGN_DOWN(FilePos, Vcb->ClusterSize) / Vcb->ClusterSize;
-			ULONG AlignedSize = ALIGN_UP (FilePos+Length, Vcb->ClusterSize)/Vcb->ClusterSize - AlignedPos + 1;
-
-			if ( (AlignedSize + AlignedPos)*Vcb->ClusterSize >= ALIGN_UP(Fcb->DirEnt->FileSize,Vcb->ClusterSize) )
-			{
-				AlignedSize --;
-			}
-
-			PVOID InternalBuffer = ExAllocateHeap (TRUE, AlignedSize*Vcb->ClusterSize);
-			PUCHAR iBufferPos = (PUCHAR)InternalBuffer;
-
-			FrPrint(("Pos=%08x, Len=%08x, AlignedPos = %08x, AlignedSize = %08x\n", FilePos, Length, AlignedPos, AlignedSize));
-
-			if( AlignedSize == 0 )
-				Status = STATUS_SUCCESS;
-
-			for (ULONG i=AlignedPos; i<AlignedPos+AlignedSize; i++)
-			{
-				ULONG Cluster = FsFatFileClusterByPos (Vcb,
-					Fcb->DirEnt->StartCluster | (Fcb->DirEnt->StartClusterHigh<<16),
-					i
-					);
-
-				if (Cluster == -1)
-				{
-					//
-					// Reading truncated because the end-of-file occurred.
-					//
-					KdPrint(("FSFAT: End-of-file occurred, read truncated\n"));
-
-					//
-					// This is the internal fault
-					//
-
-					Status = STATUS_INTERNAL_FAULT;
-					ExFreeHeap (InternalBuffer);
-					goto finally;
-				}
-				else if (Cluster == -2)
-				{
-					//
-					// Bad cluster found.
-					//
-
-					KdPrint(("FSFAT: Bad cluster #%d in file\n", i));
-					Status = STATUS_PARTIAL_COMPLETION;
-					ExFreeHeap (InternalBuffer);
-					goto finally;
-				}
-				else if (Cluster == -3)
-				{
-					//
-					// Reserved cluster found.
-					//
-
-					KdPrint(("FSFAT: Reserved cluster #%d in file\n", i));
-					Status = STATUS_PARTIAL_COMPLETION;
-					ExFreeHeap (InternalBuffer);
-					goto finally;
-				}
-
-				FrPrint(("FSFAT: Reading cluster #%d: %08x (offset %08x)\n", i, Cluster, i*Vcb->ClusterSize));
-
-				if (Cluster < 2)
-				{
-					KdPrint(("FSFAT: Internal check failed (Cluster<2)\n"));
-					Status = STATUS_INVALID_PARAMETER;
-					ExFreeHeap (InternalBuffer);
-					goto finally;
-				}
-
-				Status = FsFatReadCluster (Vcb, Cluster, iBufferPos);
-
-				if (!SUCCESS(Status))
-				{
-					KdPrint(("FSFAT: Reading cluster %08x failed with status %08x\n", Cluster, Status));
-					ExFreeHeap (InternalBuffer);
-					goto finally;
-				}
-
-				iBufferPos += Vcb->ClusterSize;
-			}
-
-			memcpy (
-				Irp->SystemBuffer,
-				(PUCHAR)InternalBuffer + (FilePos - AlignedPos*Vcb->ClusterSize),
-				Length
-				);
-
-			Status = STATUS_SUCCESS;
-			ExFreeHeap (InternalBuffer);
-			Read = Length;
-
-			__asm pop dword ptr fs:[0];
+			Status = CcCacheReadFile (Irp->FileObject, Offset, Buffer, Irp->BufferLength, &Read);
 		}
 	}
 
-finally:
 	COMPLETE_IRP (Irp, Status, Read);
 }
 

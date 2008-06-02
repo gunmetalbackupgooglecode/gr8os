@@ -35,6 +35,22 @@ void HdRead ( UCHAR channel, void *buffer, ULONG len)
 	}
 }
 
+void HdWrite ( UCHAR channel, void *buffer, ULONG len)
+{
+	volatile USHORT Port = (channel ? IDE_CHANNEL_2_BASE : IDE_CHANNEL_1_BASE);
+	__asm
+	{
+		push edi
+		pushfd
+		cld
+		mov  edi, [buffer]
+		mov  dx, [Port]
+		mov  ecx, [len]
+		rep  outsw
+		popfd
+		pop  edi
+	}
+}
 
 void HdWritePort( UCHAR channel, UCHAR offset, UCHAR Value )
 {
@@ -46,6 +62,12 @@ USHORT HdReadPortW( UCHAR channel, UCHAR offset )
 {
 	volatile USHORT Port = (channel ? IDE_CHANNEL_2_BASE : IDE_CHANNEL_1_BASE);
 	return KiInPortW (Port+offset);
+}
+
+VOID HdWritePortW( UCHAR channel, UCHAR offset, USHORT Value )
+{
+	volatile USHORT Port = (channel ? IDE_CHANNEL_2_BASE : IDE_CHANNEL_1_BASE);
+	return KiOutPortW (Port+offset, Value);
 }
 
 void HdControlChannel( UCHAR channel, UCHAR byte )
@@ -138,6 +160,7 @@ IDE_STATE HdGetState(UCHAR ch)
 
 #define IDE_CMD_READ		0x20
 #define IDE_CMD_READDNOERR	0x21
+#define IDE_CMD_WRITE		0x30
 #define IDE_IDENTIFY_DEVICE	0xEC
 #define IDE_SLEEP			0xE6
 
@@ -256,7 +279,8 @@ HdPerformRead(
 	IN PFILE FileObject,
 	IN ULONG SectorNumber,
 	OUT PVOID Buffer,
-	IN ULONG Size
+	IN ULONG Size,
+	OUT PULONG nBytesWritten
 	)
 {
 	ULONG Timeout;
@@ -297,7 +321,7 @@ HdPerformRead(
 		//DUMP_PCB ( (PHYSICAL_IDE_CONTROL_BLOCK*)pcb->RelatedPhysical->FsContext2 );
 
 		//return HdPerformRead (pcb->RelatedPhysical, SectorNumber /*already adjusted by HddRead()*/, Buffer, Size);
-		return HdPerformRead (pcb->RelatedPhysical, SectorNumber + pcb->PartitionStart, Buffer, Size);
+		return HdPerformRead (pcb->RelatedPhysical, SectorNumber + pcb->PartitionStart, Buffer, Size, nBytesWritten);
 	}
 
 //	HdPrint(("HD: performing read IDE[%d:%d], Sector %08x\n", CHANNEL, DEVICE, SectorNumber));
@@ -434,10 +458,174 @@ _retry:
 	));
 	*/
 
+	*nBytesWritten = Size;
 
 	return STATUS_SUCCESS;
 }
 
+
+
+STATUS
+KEAPI
+HdPerformWrite(
+	IN PFILE FileObject,
+	IN ULONG SectorNumber,
+	OUT PVOID Buffer,
+	IN ULONG Size,
+	OUT PULONG nBytesWritten
+	)
+{
+	ULONG Timeout;
+
+	if (!MmIsAddressValid(FileObject))
+	{
+		HdPrint(("FileObject=%08x\n", FileObject));
+	}
+	ASSERT (MmIsAddressValid(FileObject));
+	ASSERT (MmIsAddressValid(FileObject->DeviceObject));
+
+	PHYSICAL_IDE_CONTROL_BLOCK *pcb = (PHYSICAL_IDE_CONTROL_BLOCK*)(FileObject->FsContext2);
+
+#define CHANNEL (pcb->Channel)
+#define DEVICE  (pcb->Device)
+
+	if (pcb->Mask != PHYS_IDE_CB_MASK)
+	{
+		HdPrint(("pcb->Mask=%08x\n", pcb->Mask));
+
+		UNICODE_STRING name;
+		STATUS Status = ObQueryObjectName (FileObject->DeviceObject, &name);
+		HdPrint(("device name %S\n", name.Buffer));
+	}
+	ASSERT (pcb->Mask == PHYS_IDE_CB_MASK);
+
+	if (pcb->PhysicalOrPartition == 0)
+	{
+		return HdPerformWrite (pcb->RelatedPhysical, SectorNumber + pcb->PartitionStart, Buffer, Size, nBytesWritten);
+	}
+
+	HdPrint(("HD: performing write IDE[%d:%d], Sector %08x\n", CHANNEL, DEVICE, SectorNumber));
+
+	ASSERT (CHANNEL < 2);
+	ASSERT (DEVICE < 2);
+
+	IDE_PORT_6 port6 = {0};
+	port6.AddressingMode = 1;
+	port6.Reserved1 = 1;
+	port6.Reserved2 = 1;
+	port6.Dev = DEVICE;
+
+	HdWritePort (CHANNEL, 6, *(UCHAR*)&port6);
+
+_retry:
+
+	Timeout = 1000000;
+
+	while (HdGetState(CHANNEL).Busy && Timeout>0)
+		Timeout--;
+
+	if (Timeout==0)
+	{
+		HdPrint(("TIMEDOUT\n"));
+		return STATUS_DEVICE_NOT_READY;
+	}
+
+	Timeout = 1000000;
+	while (!(HdGetState(CHANNEL).Busy == 0 && HdGetState(CHANNEL).DeviceReady == 1) && Timeout > 0)
+	{
+		Timeout --;
+	}
+
+	if (Timeout==0)
+	{
+		HdPrint(("TIMEDOUT\n"));
+
+		HdControlChannel (CHANNEL, 4);
+		for (int i=0; i<1000000; i++) __asm nop;
+		HdControlChannel (CHANNEL, 0);
+
+		goto _retry;
+
+		return STATUS_DEVICE_NOT_READY;
+	}
+
+	ASSERT ( (SectorNumber & 0xFF000000) == 0 );
+
+	HdPulsedIrq[CHANNEL] = 0;
+
+	HdWritePort (CHANNEL, 2, 1);								// 1 cluster
+	HdWritePort (CHANNEL, 3, SectorNumber & 0xFF);
+	HdWritePort (CHANNEL, 4, (SectorNumber >> 8) & 0xFF);
+	HdWritePort (CHANNEL, 5, (SectorNumber >> 16) & 0xFF);
+
+	HdWritePort (CHANNEL, 7, IDE_CMD_WRITE);
+
+
+	Timeout = 1000000;
+	while (HdGetState(CHANNEL).Busy && Timeout > 0)
+		Timeout --;
+
+	if (Timeout==0)
+	{
+		HdPrint(("TIMEDOUT\n"));
+		return STATUS_DEVICE_NOT_READY;
+	}
+
+	if (HdGetState(CHANNEL).DeviceFailure)
+	{
+		HdPrint(("FAILED\n"));
+		return STATUS_INTERNAL_FAULT;
+	}
+
+	if (HdGetState(CHANNEL).Error)
+	{
+		UCHAR err = HdReadPort (CHANNEL, 1);
+		HdPrint(("ERROR [%02x]\n", err));
+		return STATUS_UNSUCCESSFUL;
+	}
+
+
+	while (!HdPulsedIrq[CHANNEL]);
+	HdPulsedIrq[CHANNEL] = 0;
+
+	if (Timeout==0)
+	{
+		HdPrint(("TIMEDOUT\n"));
+		return STATUS_DEVICE_NOT_READY;
+	}
+
+	if (HdGetState(CHANNEL).DeviceFailure)
+	{
+		HdPrint(("FAILED\n"));
+		return STATUS_INTERNAL_FAULT;
+	}
+
+	if (HdGetState(CHANNEL).Error)
+	{
+		HdPrint(("ERROR\n"));
+		return STATUS_UNSUCCESSFUL;
+	}
+
+	HdWrite (CHANNEL, Buffer, ALIGN_UP(Size, SECTOR_SIZE)/2);
+
+	HdPrint (("HDD: Write succedded for [%d:%d], Sector %d, [%02x %02x %02x %02x  %02x %02x %02x %02x]\n",
+		CHANNEL,
+		DEVICE,
+		SectorNumber,
+		((UCHAR*)Buffer)[0],
+		((UCHAR*)Buffer)[1],
+		((UCHAR*)Buffer)[2],
+		((UCHAR*)Buffer)[3],
+		((UCHAR*)Buffer)[4],
+		((UCHAR*)Buffer)[5],
+		((UCHAR*)Buffer)[6],
+		((UCHAR*)Buffer)[7]
+	));
+
+	*nBytesWritten = Size;
+
+	return STATUS_SUCCESS;
+}
 
 UNICODE_STRING DeviceName;
 
@@ -673,8 +861,10 @@ HddCreateClose(
 		// Initialize caching for the hdd (support only read-only access)
 		//
 
-		CCFILE_CACHE_CALLBACKS Callbacks = { HdPerformRead, NULL };
+		CCFILE_CACHE_CALLBACKS Callbacks = { HdPerformRead, HdPerformWrite };
 		CcInitializeFileCaching (Irp->FileObject, SECTOR_SIZE, &Callbacks);
+
+		KdPrint(("HDD CREAT: Irp->File->CacheMap %08x\n", Irp->FileObject->CacheMap));
 
 		Irp->FileObject->FsContext2 = (DeviceObject+1); // IDE Drive Control Block
 
@@ -715,7 +905,7 @@ HddCreateClose(
 
 STATUS
 KEAPI
-HddRead(
+HddReadWrite(
 	PDEVICE DeviceObject,
 	PIRP Irp
 	)
@@ -765,16 +955,67 @@ HddRead(
 	}
 	*/
 
-
-	Status = CcCacheReadFile (
-		Irp->FileObject,
-		Offset,
-		Buffer,
-		Size
-		);
+	if (Irp->MajorFunction == IRP_READ)
+	{
+		Status = CcCacheReadFile (
+			Irp->FileObject,
+			Offset,
+			Buffer,
+			Size,
+			&Size
+			);
+	}
+	else
+	{
+		Status = CcCacheWriteFile (
+			Irp->FileObject,
+			Offset,
+			Buffer,
+			Size,
+			&Size
+			);
+	}
 
 	COMPLETE_IRP (Irp, Status, Size);
 }
+
+
+#if 0
+STATUS
+KEAPI
+HddFsControl(
+	PDEVICE DeviceObject,
+	PIRP Irp
+	)
+/*++
+	Handle IRP_FSCTL
+--*/
+{
+	switch (Irp->MinorFunction)
+	{
+	case IRP_MN_REQUEST_CACHED_PAGE:
+		{
+			PHYSICAL_IDE_CONTROL_BLOCK *pcb = (PHYSICAL_IDE_CONTROL_BLOCK*)(Irp->FileObject->FsContext2);
+
+			ASSERT (MmIsAddressValid (pcb));
+			ASSERT (pcb->Mask == PHYS_IDE_CB_MASK);
+
+			ULONG PageNumber = 
+
+			if (pcb->PhysicalOrPartition == 0)
+			{
+				
+				
+			}
+		}
+		break;
+
+	default:
+
+		COMPLETE_IRP (Irp, STATUS_NOT_SUPPORTED, 0);
+	}
+}
+#endif
 
 
 STATUS
@@ -810,8 +1051,10 @@ DriverEntry(
 	HdPrint(("%s\n", (Presence[3] ? "TRUE" : "FALSE")));
 
 	DriverObject->IrpHandlers[IRP_CREATE] =
-	DriverObject->IrpHandlers[IRP_CLOSE] = HddCreateClose;
-	DriverObject->IrpHandlers[IRP_READ]  = HddRead;
+	DriverObject->IrpHandlers[IRP_CLOSE]  = HddCreateClose;
+	DriverObject->IrpHandlers[IRP_READ]   = 
+	DriverObject->IrpHandlers[IRP_WRITE]  = HddReadWrite;
+	//DriverObject->IrpHandlers[IRP_FSCTL]  = HddFsControl;
 
 	//
 	// Create four device objects
