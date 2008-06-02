@@ -588,7 +588,7 @@ typedef struct _IMAGE_THUNK_DATA32 {
 typedef IMAGE_THUNK_DATA * PIMAGE_THUNK_DATA;
 
 #define IMAGE_ORDINAL_FLAG32 0x80000000
-#define IMAGE_ORDINAL(Ordinal) (Ordinal & 0xffff)
+#define IMAGE_ORDINAL(Ordinal) ((USHORT)(Ordinal & 0xffff))
 #define IMAGE_SNAP_BY_ORDINAL(Ordinal) ((Ordinal & IMAGE_ORDINAL_FLAG32) != 0)
 
 typedef struct _IMAGE_IMPORT_DESCRIPTOR {

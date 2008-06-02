@@ -175,6 +175,7 @@ extern POBJECT_TYPE IoDeviceObjectType;
 extern POBJECT_TYPE IoDriverObjectType;
 //extern POBJECT_TYPE KeEventObjectType;
 extern POBJECT_TYPE MmExtenderObjectType;
+extern POBJECT_TYPE MmFileMappingObjectType;
 //extern POBJECT_TYPE PsThreadObjectType;
 //extern POBJECT_TYPE PsProcessObjectType;
 
@@ -192,6 +193,7 @@ typedef struct OBJECT_SYMBOLIC_LINK
 
 #define OBJ_PERMANENT			0x00000001
 #define OBJ_DELETE_PENDING		0x00000002
+#define OBJ_DELETE_IN_PROGRESS	0x00000004
 
 typedef struct OBJECT_HEADER
 {
@@ -334,6 +336,13 @@ ObDereferenceObjectEx(
 	ULONG Count
 	);
 
+KESYSAPI
+BOOLEAN
+KEAPI
+ObIsObjectGoingAway(
+	PVOID Object
+	);
+
 // end_ddk
 
 STATUS
@@ -349,6 +358,16 @@ ObpDeleteObject(
 	);
 
 // begin_ddk
+
+/*
+KESYSAPI
+BOOLEAN
+KEAPI
+ObIsObjectGoingAway(
+	PVOID Object
+	);
+*/
+
 
 KESYSAPI
 STATUS
@@ -419,6 +438,7 @@ struct OBJECT_HANDLE
 #define ObLockObjectTable() ExAcquireMutex (&PsGetCurrentProcess()->ObjectTable.TableLock)
 #define ObUnlockObjectTable() ExReleaseMutex (&PsGetCurrentProcess()->ObjectTable.TableLock)
 
+#define OB_INITIAL_HANDLES	128
 #define OB_MAX_HANDLES	65536
 
 // begin_ddk

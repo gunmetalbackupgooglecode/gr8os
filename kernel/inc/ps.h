@@ -20,7 +20,8 @@ typedef enum PROCESSOR_MODE
 {
 	KernelMode = 0,
 	DriverMode = 1,
-	UserMode = 3
+	UserMode = 3,
+	MaximumMode = 4
 } *PPROCESSOR_MODE;
 
 struct CONTEXT_FRAME;
@@ -154,6 +155,7 @@ typedef struct OBJECT_HANDLE *POBJECT_HANDLE;
 typedef struct OBJECT_TABLE
 {
 	MUTEX TableLock;
+	ULONG CurrentSize;
 	POBJECT_HANDLE HandleTable;
 } *POBJECT_TABLE;
 

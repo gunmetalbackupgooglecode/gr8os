@@ -140,8 +140,8 @@ typedef union MMPTE {
 			struct
 			{
 				ULONG Valid : 1; // =0
-				ULONG PagingFileNumber : 4;
 				ULONG Protection : 3;
+				ULONG PagingFileNumber : 4;
 				ULONG Reserved : 1;
 				ULONG PteType : 2;
 				ULONG Reserved2 : 1;
@@ -158,8 +158,8 @@ typedef union MMPTE {
 				ULONG PteType : 2;
 				ULONG Reserved2 : 1;
 
-				ULONG FileDescriptorNumber : 15;
-				ULONG Reserved3 : 5;
+				ULONG FileDescriptorNumber : 16;
+				ULONG Reserved3 : 4;
 			} e3;
 
 			// Trimmed
@@ -207,17 +207,19 @@ typedef ULONG PHYSICAL_ADDRESS;
 
 
 // Owner, Write, Valid
-#define MiWriteValidKernelPte(PTE) (*(ULONG*)(PTE)) = 5
+#define MiWriteValidKernelPte(PTE) (*(ULONG*)(PTE)) = 7
 
 #define MiWriteTrimmedPte(PTE) { \
-	(PTE)->u1.e1.Valid = 0; \
-	(PTE)->u1.e1.PteType = PTE_TYPE_TRIMMED; \
+	(PTE)->u1.e4.Valid = 0; \
+	(PTE)->u1.e4.PteType = PTE_TYPE_TRIMMED; \
 }
 
 #define MiWritePagedoutPte(PTE) { \
 	(PTE)->u1.e1.Valid = 0; \
 	(PTE)->u1.e1.PteType = PTE_TYPE_PAGEDOUT; \
 }
+
+#define MiZeroPte(PTE) *(ULONG*)PTE = 0;
 
 #define MiNextPte(PTE) (PMMPTE)((ULONG_PTR)PTE+4)
 
@@ -261,6 +263,21 @@ MmMapPhysicalPagesInRange(
 
 VOID
 KEAPI
+MiDisplayMappings(
+	);
+
+// end_ddk
+
+ULONG
+KEAPI
+MiIsAddressValidEx(
+	IN PMMPTE PointerPte
+	);
+
+// begin_ddk
+
+VOID
+KEAPI
 MiUnmapPhysicalPages(
 	PVOID VirtualAddress,
 	ULONG PageCount
@@ -290,7 +307,8 @@ VOID
 KEAPI
 MmAccessFault(
 	PVOID VirtualAddress,
-	PVOID FaultingAddress
+	PVOID FaultingAddress,
+	ULONG ErrorCode
 	);
 
 // begin_ddk
@@ -377,6 +395,13 @@ extern MMPAGING_FILE MmPagingFile[MAX_PAGE_FILES];
 #pragma pack(1)
 
 typedef struct MMPPD *PMMPPD;
+
+VOID
+KEAPI
+MiChangePageLocation(
+	PMMPPD Ppd,
+	UCHAR NewLocation
+	);
 
 typedef struct MMWORKING_SET_ENTRY
 {
@@ -760,11 +785,13 @@ typedef struct EXTENDER
 
 	LIST_ENTRY ExtenderListEntry;
 
+#ifndef GROSEMU
 	PEXCALLBACK CreateThread;
 	PEXCALLBACK TerminateThread;
 	PEXCALLBACK CreateProcess;
 	PEXCALLBACK TerminateProcess;
 	PEXCALLBACK BugcheckDispatcher;
+#endif
 
 } *PEXTENDER;
 
@@ -816,6 +843,19 @@ extern MMSYSTEM_MODE MmSystemMode;
 #define MM_WRITECOPY			5
 #define MM_EXECUTE_WRITECOPY	6
 #define MM_GUARD				7
+#define MM_MAXIMUM_PROTECTION	7
+
+UCHAR
+KEAPI
+MiFileAccessToPageProtection(
+	ULONG GrantedAccess
+	);
+
+ULONG
+KEAPI
+MiPageProtectionToGrantedAccess(
+	UCHAR Protection
+	);
 
 typedef struct MAPPED_FILE
 {
@@ -824,14 +864,19 @@ typedef struct MAPPED_FILE
 	PROCESSOR_MODE TargetMode;
 	LOCKED_LIST ViewList;
 	UCHAR StrongestProtection;
+	LIST_ENTRY FileMappingsEntry;
 } *PMAPPED_FILE;
+
+typedef ULONG  HANDLE, *PHANDLE;
 
 typedef struct MAPPED_VIEW
 {
 	LIST_ENTRY ViewListEntry;
 	LARGE_INTEGER StartOffsetInFile;
 	ULONG ViewSize;
+	PVOID StartVa;
 	PMMPTE StartPte;
+	HANDLE hMapping;
 	PMAPPED_FILE Mapping;
 	UCHAR Protection;
 } *PMAPPED_VIEW;
@@ -840,18 +885,17 @@ KESYSAPI
 STATUS
 KEAPI
 MmCreateFileMapping(
-	OUT PMAPPED_FILE *Mapping,
 	IN PFILE FileObject,
 	IN PROCESSOR_MODE MappingMode,
-	IN UCHAR StrongestProtection
+	IN UCHAR StrongestProtection,
+	OUT PHANDLE MappingHandle
 	);
 
 KESYSAPI
 STATUS
 KEAPI
 MmMapViewOfFile(
-	OUT PMAPPED_VIEW *View,
-	IN PMAPPED_FILE Mapping,
+	IN HANDLE hMapping,
 	IN ULONG OffsetStart,
 	IN ULONG OffsetStartHigh,
 	IN ULONG ViewSize,
@@ -859,3 +903,17 @@ MmMapViewOfFile(
 	IN OUT PVOID *VirtualAddress
 	);
 
+STATUS
+KEAPI
+// WARN: Environment: mapping list locked.
+MiUnmapViewOfFile(
+	IN PMAPPED_VIEW View
+	);
+
+KESYSAPI
+STATUS
+KEAPI
+MmUnmapViewOfFile(
+	IN HANDLE hMapping,
+	IN PVOID VirtualAddress
+	);

@@ -263,6 +263,9 @@ ExReleaseMutex(
 	PMUTEX Mutex
 	);
 
+extern ULONG ExMutexAcquirementsGlobalCounter;
+extern ULONG ExMutexSatisfactionsGlobalCounter;
+
 //
 // Callbacks
 //
