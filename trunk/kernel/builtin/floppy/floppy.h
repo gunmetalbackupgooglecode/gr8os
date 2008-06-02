@@ -17,7 +17,8 @@ FdPerformRead(
 	IN PFILE FileObject,
 	IN ULONG ClusterNumber,
 	OUT PVOID Buffer,
-	IN ULONG Size
+	IN ULONG Size,
+	OUT PULONG nBytesRead
 	);
 
 STATUS

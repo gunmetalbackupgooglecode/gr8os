@@ -137,6 +137,29 @@ IopDeleteFile(
 
 	KdPrint(("IopDeleteFile\n"));
 
+	ExAcquireMutex (&FileObject->MappingList.Lock);
+
+	if (!IsListEmpty (&FileObject->MappingList.ListEntry))
+	{
+		PMAPPED_FILE Mapping = CONTAINING_RECORD (FileObject->MappingList.ListEntry.Flink, MAPPED_FILE, FileMappingsEntry), NextMapping;
+
+		while (Mapping != CONTAINING_RECORD (&FileObject->MappingList.ListEntry, MAPPED_FILE, FileMappingsEntry))
+		{
+			KdPrint(("IopDeleteFile: deleting pending file mapping for file object of [%S] : Mapping=%08x\n",
+				FileObject->RelativeFileName.Buffer,
+				Mapping));
+
+			ASSERT (OBJECT_TO_OBJECT_HEADER(Mapping)->ReferenceCount == 1);
+
+			ObpDeleteObject (Mapping);
+
+			NextMapping = CONTAINING_RECORD (Mapping, MAPPED_FILE, FileMappingsEntry);
+
+		}
+	}
+
+	ExReleaseMutex (&FileObject->MappingList.Lock);
+
 	ObDereferenceObject (FileObject->DeviceObject);
 	ExFreeHeap (FileObject->RelativeFileName.Buffer);
 }
@@ -503,7 +526,7 @@ IoBuildDeviceIoControlRequest(
 		return Irp;
 	
 	//
-	// BUGBUG: select i/o type from device flags
+	// BUGBUG: select i/o type from device flags & ctl code (!)
 	//
 
 	Irp->MajorFunction = IRP_IOCTL;
@@ -658,7 +681,9 @@ IoCreateFile(
 	File->DeleteAccess = !!(DesiredAccess & FILE_DELETE);
 
 	File->ReadThrough = !!(DesiredAccess & FILE_READ_THROUGH);
-	File->WriteThrough = !!(DesiredAccess & FILE_WRITE_THROUGH);		
+	File->WriteThrough = !!(DesiredAccess & FILE_WRITE_THROUGH);	
+
+	InitializeLockedList (&File->MappingList);
 
 	PIRP Irp = IoBuildDeviceRequest (
 		DeviceObject,
@@ -1316,6 +1341,15 @@ IoCompleteRequest(
 			((UCHAR*)Irp->SystemBuffer)[2],
 			((UCHAR*)Irp->SystemBuffer)[3]
 			));
+	}
+
+	if ( (Irp->Flags & IRP_FLAGS_INPUT_OPERATION) && Irp->IoStatus.Information > Irp->BufferLength )
+	{
+		KdPrint((" -->IO: Warn: IoCompleteRequest detected possible fault\n -->IO: Irp->IoStatus.Information (%x) > Irp->BufferLength (%x)\n",
+			Irp->IoStatus.Information,
+			Irp->BufferLength));
+
+		Irp->IoStatus.Information = Irp->BufferLength;
 	}
 
 	if ( (Irp->Flags & (IRP_FLAGS_BUFFERED_IO|IRP_FLAGS_INPUT_OPERATION)) &&

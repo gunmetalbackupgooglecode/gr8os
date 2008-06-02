@@ -579,6 +579,8 @@ ObLockObject(
 	Caller can safely access the object
 --*/
 {
+	ASSERT (ObIsObjectGoingAway(Object) == FALSE);
+
 	ExAcquireMutex ( &OBJECT_TO_OBJECT_HEADER(Object)->ObjectLock );
 }
 
@@ -592,6 +594,8 @@ ObUnlockObject(
 	This function unlocks the object after use
 --*/
 {
+	ASSERT (ObIsObjectGoingAway(Object) == FALSE);
+
 	ExReleaseMutex ( &OBJECT_TO_OBJECT_HEADER(Object)->ObjectLock );
 }
 
@@ -613,6 +617,8 @@ ObpDeleteObjectInternal(
 
 	if( ObjectHeader->ReferenceCount != 0)
 		return STATUS_IN_USE;
+
+	ObjectHeader->Flags |= OBJ_DELETE_IN_PROGRESS;
 
 	//
 	// Delete object from the directory
@@ -677,13 +683,26 @@ ObpDeleteObject(
 		//
 
 		ObDereferenceObject (Object);
-		return STATUS_SUCCESS;
+		return STATUS_PENDING;
 	}
 
 	ObDereferenceObject (Object);
 
 	//ObpDeleteObjectInternal (Object);
 	return STATUS_SUCCESS;
+}
+
+KESYSAPI
+BOOLEAN
+KEAPI
+ObIsObjectGoingAway(
+	PVOID Object
+	)
+/*++
+	Check that object is going away
+--*/
+{
+	return (OBJECT_TO_OBJECT_HEADER(Object)->Flags & OBJ_DELETE_IN_PROGRESS) == 1;
 }
 
 KESYSAPI
@@ -1110,26 +1129,35 @@ ObpCreateHandle(
 	)
 /*++
 	Create new handle for the specified object with the appropriate access rights
+
+	Return value:
+		Positive value on success
+		INVALID_HANDLE_VALUE if there is no free entries for the new handle.
 --*/
 {
 	POBJECT_HANDLE ObjectTable = ObGetCurrentThreadObjectTable ();
 	PTHREAD Thread = PsGetCurrentThread();
 
+	ASSERT (ObjectTable != NULL);
+
 	ObLockObjectTable();
 
-	for (int i=0; i<OB_MAX_HANDLES; i++)
+	for (ULONG i=0; i<PsGetCurrentProcess()->ObjectTable.CurrentSize; i++)
 	{
-		if (ObjectTable->Object == NULL)
+		if (ObjectTable[i].Object == NULL)
 		{
-			ObjectTable->Object = Object;
-			ObjectTable->GrantedAccess = GrantedAccess;
-			ObjectTable->Owner = Thread;
+			ObjectTable[i].Object = Object;
+			ObjectTable[i].GrantedAccess = GrantedAccess;
+			ObjectTable[i].Owner = Thread;
 
 			ObUnlockObjectTable();
 
-			return (HANDLE)i;
+			return (HANDLE)(i+1);
 		}
 	}
+
+	// TODO: expand table
+	KdPrint(("ObpCreateHandle: handle table full, to do: expand table\n")); ASSERT (FALSE);
 
 	ObUnlockObjectTable();
 
@@ -1255,7 +1283,7 @@ ObpDeleteHandle(
 
 	if (!AlreadyLocked) ObLockObjectTable();
 
-	POBJECT_HANDLE ObjHandle = &ObjectTable[(ULONG)Handle];
+	POBJECT_HANDLE ObjHandle = &ObjectTable[(ULONG)Handle - 1];
 
 	if (ObjHandle->Object == NULL)
 	{
@@ -1290,7 +1318,7 @@ ObpMapHandleToPointer(
 
 	ObLockObjectTable();
 
-	POBJECT_HANDLE ObjHandle = &ObjectTable[(ULONG)Handle];
+	POBJECT_HANDLE ObjHandle = &ObjectTable[(ULONG)Handle - 1];
 
 	if (ObjHandle->Object == NULL)
 	{

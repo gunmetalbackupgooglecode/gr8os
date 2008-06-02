@@ -255,6 +255,10 @@
 			>
 		</File>
 		<File
+			RelativePath=".\pci.res"
+			>
+		</File>
+		<File
 			RelativePath=".\pci_vend.h"
 			>
 		</File>

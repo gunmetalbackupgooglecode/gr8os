@@ -292,6 +292,9 @@ KiDemoThread(
 	PVOID ImageBase = 0;
 	PDRIVER DriverObject = 0;
 
+	KeSetOnScreenStatus ("Loading device drivers [hdd.sys]");
+	KiMoveLoadingProgressBar (5);
+
 	RtlInitUnicodeString( &ImagePath, L"\\SystemRoot\\hdd.sys" );
 	RtlInitUnicodeString( &DriverName, L"\\Driver\\hdd" );
 
@@ -304,9 +307,10 @@ KiDemoThread(
 		(PVOID*) &DriverObject
 		);
 
-	KdPrint(("MmLoadSystemImage: Mapped at %08x, DrvObj %08x, Status %08x\n", ImageBase, DriverObject, Status));	
+	KdPrint(("MmLoadSystemImage: hdd.sys Mapped at %08x, DrvObj %08x, Status %08x\n", ImageBase, DriverObject, Status));	
 	
 
+	KeSetOnScreenStatus ("Reading boot.ini");
 
 	UNICODE_STRING FileName;
 	RtlInitUnicodeString( &FileName, L"\\Device\\hda0\\boot.ini" );
@@ -337,10 +341,35 @@ KiDemoThread(
 		buff[IoStatus.Information] = 0;
 
 		KdPrint(("Read: \n%s\n", buff));
+		//KdPrint(("Read: OK\n"));
 	}
 
-	IoCloseFile (File);
-	
+	KdPrint(("\nExMutexAcquirementsGlobalCounter = %08x\nExMutexSatisfactionsGlobalCounter = %08x\n",
+		ExMutexAcquirementsGlobalCounter,
+		ExMutexSatisfactionsGlobalCounter
+		));
+
+	//IoCloseFile (File);
+
+
+
+	KeSetOnScreenStatus ("Loading device drivers [keyboard.sys]");
+	KiMoveLoadingProgressBar (6);
+
+	RtlInitUnicodeString( &ImagePath, L"\\SystemRoot\\keyboard.sys" );
+	RtlInitUnicodeString( &DriverName, L"\\Driver\\keyboard" );
+
+	Status = MmLoadSystemImage (
+		&ImagePath,
+		&DriverName,
+		DriverMode,
+		FALSE,
+		&ImageBase,
+		(PVOID*) &DriverObject
+		);
+
+	KdPrint(("MmLoadSystemImage: keyboard.sys Mapped at %08x, DrvObj %08x, Status %08x\n", ImageBase, DriverObject, Status));	
+
 
 	/*
 	RtlInitUnicodeString( &ImagePath, L"\\SystemRoot\\pci.sys" );
@@ -404,6 +433,74 @@ KiDemoThread(
 
 	// Fall through counter thread code.
 	//PsCounterThread( (PVOID)( 80*5 + 35 ) );
+
+	KeSetOnScreenStatus ("Loading device drivers [console.sys]");
+	KiMoveLoadingProgressBar (6);
+
+	RtlInitUnicodeString( &ImagePath, L"\\SystemRoot\\console.sys" );
+	RtlInitUnicodeString( &DriverName, L"\\Driver\\console" );
+
+	Status = MmLoadSystemImage (
+		&ImagePath,
+		&DriverName,
+		DriverMode,
+		FALSE,
+		&ImageBase,
+		(PVOID*) &DriverObject
+		);
+
+	KdPrint(("MmLoadSystemImage: console.sys Mapped at %08x, DrvObj %08x, Status %08x\n", ImageBase, DriverObject, Status));	
+
+
+
+	KeSetOnScreenStatus ("Testing file mapping");
+	KiMoveLoadingProgressBar (10);
+
+	KdPrint(("all ok\n"));
+	KdPrint(("Testing file mapping\n"));
+
+	HANDLE hMapping;
+	
+	Status = MmCreateFileMapping (
+		File,
+		KernelMode,
+		MM_READONLY,
+		&hMapping
+		);
+
+	KdPrint(("MmCreateFileMapping for [boot.ini] : %08x\n", Status));
+
+	PVOID VirtualAddress = NULL;
+
+	Status = MmMapViewOfFile (
+		hMapping,
+		0,
+		0,
+		PAGE_SIZE,
+		MM_READONLY,
+		&VirtualAddress
+		);
+
+	KdPrint(("MmMapViewOfFile for [hMapping=%04x] : %08x [VA=%08x]\n", hMapping, Status, VirtualAddress));
+
+
+//	MiDisplayMappings ();
+
+	char buf[100];
+
+	memcpy (buf, VirtualAddress, 99);
+	buf[99] = 0;
+
+	KdPrint(("-->buf : %s\n", buf));
+
+	MiDisplayMappings ();
+
+	INT3
+
+	IoCloseFile (File);
+
+	KeSetOnScreenStatus ("Loaded");
+	INT3
 }
 
 VOID KEAPI InitCreateThreadCallback(PTHREAD Thread, PVOID StartRoutine, PVOID StartContext)
@@ -474,6 +571,9 @@ KiInitSystem(
 	PLOADER_ARGUMENTS LdrArgs
 	)
 {
+	KiInitializeOnScreenStatusLine();
+	KeSetOnScreenStatus ("Loading");
+
 	KiLoaderBlock = *LdrArgs;
 
 	KiDebugPrint( "KERNEL: Got execution. Starting with %d megabytes of RAM on board\n", LdrArgs->PhysicalMemoryPages / 256);
@@ -485,6 +585,7 @@ KiInitSystem(
 	}
 
 	KiDebugPrintRaw( "INIT: Initializing kernel\n" );
+	KeSetOnScreenStatus ("Initializing kernel (phase0)");
 
 	//
 	// Phase0: Low-level initialization
@@ -584,6 +685,8 @@ KiInitSystem(
 		*(ULONG*)((ULONG)SF_Entry+4),
 		*(ULONG*)SF_Entry );
 
+	KiMoveLoadingProgressBar (1);
+
 	KiDebugPrintRaw( "KE: Passed initialization\n" );
 
 	// Initialize threads
@@ -605,6 +708,8 @@ KiInitSystem(
 	// Phase 1: Initializing high-level subsystems
 	//
 
+	KeSetOnScreenStatus ("Initializing kernel (phase1)");
+	KiMoveLoadingProgressBar (2);
 
 	InitializeLockedList (&KeBugcheckDispatcherCallbackList);
 
@@ -627,7 +732,10 @@ KiInitSystem(
 	// Phase 2: Finalizing high-level initialization
 	//
 
+	KeSetOnScreenStatus ("Initializing kernel (phase2)");
 	KiInitializationPhase = 2;
+
+	KiMoveLoadingProgressBar (3);
 
 	MmInitSystem( );
 	KiDebugPrintRaw( "MM: Finalized initialization\n" );
@@ -641,6 +749,8 @@ KiInitSystem(
 	//
 	// Start demo threads
 	//
+
+	KiMoveLoadingProgressBar (4);
 
 	// Create two additional threads
 	KeInitializeEvent (&ev, SynchronizationEvent, 0);

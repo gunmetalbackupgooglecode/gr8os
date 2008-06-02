@@ -238,6 +238,7 @@ exGP_handler:
     jmp  general_exception
 
 exPF_handler:
+	mov  edx, [esp]
     mov  [esp], ebp
     mov  ebp, esp
    
@@ -250,9 +251,9 @@ exPF_handler:
     mov  eax, cr2     ; replace error code with CR2 value
     mov  ecx, [ebp+4]
 
-extrn '_MmAccessFault@8' as MmAccessFault
+extrn '_MmAccessFault@12' as MmAccessFault
 
-    invoke MmAccessFault, eax, ecx
+    invoke MmAccessFault, eax, ecx, edx
     
     popad
     pop  ds

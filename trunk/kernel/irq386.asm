@@ -273,6 +273,7 @@ KiEoiHelper:
 ascii	 db 0,0,'1234567890-=',0,0,'qwertyuiop[]',0,0,'asdfghjkl;',"'`",0,'\zxcvbnm,./',0,'*',0,' ',0, 0,0,0,0,0,0,0,0,0,0, 0,0, '789-456+1230.', 0,0
 asc_shft db 0,0,'!@#$%^&*()_+',0,0,'QWERTYUIOP{}',0,0,'ASDFGHJKL:"~',0,'|ZXCVBNM<>?',0,'*',0,' ',0, 0,0,0,0,0,0,0,0,0,0, 0,0, '789-456+1230.', 0,0
 
+public kbrd_status_byte as '_KiKeyboardStatusByte'
 kbrd_status_byte db 0
 
 
@@ -454,7 +455,7 @@ __syscall_print_bugcheck:
 	xor  eax, eax
 	mov  ah, bl
 	xor  edi, edi
-	mov  ecx, 80*25
+	mov  ecx, 80*24
 	cld
 	rep  stosw
 	

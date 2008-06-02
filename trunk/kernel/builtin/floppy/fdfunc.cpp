@@ -188,7 +188,8 @@ FdPerformRead(
 	IN PFILE FileObject,
 	IN ULONG ClusterNumber,
 	OUT PVOID Buffer,
-	IN ULONG Size
+	IN ULONG Size,
+	OUT PULONG nBytesRead
 	)
 {
 	ULONG LbaSector = /* Sector to cluster */ ClusterNumber;
@@ -319,6 +320,8 @@ FdPerformRead(
 	}
 
 	FdMotorOff (0);
+
+	*nBytesRead = Size;
 
 	return Status;
 }

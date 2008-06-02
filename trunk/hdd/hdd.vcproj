@@ -246,6 +246,10 @@
 				/>
 			</FileConfiguration>
 		</File>
+		<File
+			RelativePath=".\hdd.res"
+			>
+		</File>
 	</Files>
 	<Globals>
 	</Globals>

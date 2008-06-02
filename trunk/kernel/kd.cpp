@@ -18,7 +18,7 @@ ULONG KiScreenX = 0;
 ULONG KiScreenY = 0;
 
 ULONG KiXResolution = 80;
-ULONG KiYResolution = 25;
+ULONG KiYResolution = 24;
 
 BOOLEAN KiFirstPrint = TRUE;
 BOOLEAN KiUseBochsLogging  = FALSE;
@@ -94,6 +94,9 @@ KiPutChar(
 	if (KiScreenY == KiYResolution)
 	{
 		// Scroll
+
+		for (int i=0; i<80; i++)
+			KiWriteCharAttribute (i, 7);
 
 		/*
 		memmove_far (
@@ -185,6 +188,81 @@ KiDebugPrint(
 		KeReleaseLock (&DebugPrintLock);
 	}
 }
+
+//
+// KeSetOnScreenStatus
+//
+
+VOID
+KEAPI
+KiInitializeOnScreenStatusLine(
+	)
+{
+	for (int i=0; i<80; i++)
+	{
+		KiWriteChar (KiXResolution*24 + i, ' ');
+
+		KiWriteCharAttribute (KiXResolution*24 + i, 0x8B);
+	}
+}
+
+UCHAR ProgressBar = 0;
+
+KESYSAPI
+VOID
+KEAPI
+KeSetOnScreenStatus(
+	PSTR Status
+	)
+/*++
+	Displays status string
+--*/
+{
+	char buffer[81];
+	int i;
+
+	if (ProgressBar < 10)
+	{
+		sprintf (buffer, " [  __________   " OS_VERSION "  |  %s", Status);
+	}
+	else
+	{
+		sprintf (buffer, " [   " OS_VERSION "   |  %s", Status);
+	}
+
+	//sprintf (buffer, "0123456789abcdef0123456789   |   Status: %s", Status);
+
+	ASSERT (strlen(buffer) <= 80);
+
+	for (i=0; i<strlen(buffer); i++)
+	{
+		KiWriteChar (KiXResolution*24 + i, buffer[i]);
+	}
+
+	for ( ; i<78; i++)
+	{
+		KiWriteChar (KiXResolution*24 + i, ' ');
+	}
+
+	KiWriteChar (KiXResolution*24 + i, ']');
+	KiWriteChar (KiXResolution*24 + i + 1, ' ');
+}
+
+VOID
+KEAPI
+KiMoveLoadingProgressBar(
+	UCHAR Percent
+	)
+{
+	for (int i=4; i<4+Percent; i++)
+	{
+		KiWriteChar (KiXResolution*24 + i, (char)219);
+	}
+
+	ProgressBar = Percent;
+}
+
+
 
 LOCK KdDebugLock ;
 BOOLEAN KdDebuggerEnabled = 0;

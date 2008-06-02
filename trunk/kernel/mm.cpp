@@ -246,20 +246,51 @@ MiMapPageToHyperSpace(
 
 char MmDebugBuffer[1024];
 
+union PF_ERROR_CODE
+{
+	struct
+	{
+		ULONG ProtectionFault : 1;
+		ULONG WriteFault : 1;
+		ULONG User : 1;
+		ULONG Reserved : 29;
+	} e1;
+	ULONG Raw;
+};
+
 VOID
 KEAPI
 MmAccessFault(
-	PVOID VirtualAddress,
-	PVOID FaultingAddress
+	IN PVOID VirtualAddress,
+	IN PVOID FaultingAddress,
+	IN ULONG ErrorCode
 	)
 /*++
 	Resolve access fault
 --*/
 {
-	sprintf( MmDebugBuffer, "MM: Page fault at %08x, referring code: %08x\n", VirtualAddress, FaultingAddress );
-	KiDebugPrintRaw( MmDebugBuffer );
+	PF_ERROR_CODE Err;
+	Err.Raw = ErrorCode;
 
 	PMMPTE PointerPte = MiGetPteAddress (VirtualAddress);
+
+	KdPrint(( "MM: Page fault at %08x, referring code: %08x [ErrCode=%x] P=%d,W=%d,O=%d\n", 
+		VirtualAddress, FaultingAddress, ErrorCode,
+		PointerPte->u1.e1.Valid,
+		PointerPte->u1.e1.Write,
+		PointerPte->u1.e1.Owner));
+
+	if (Err.e1.WriteFault)
+	{
+		//
+		// #PF occurred because of protection violation
+		//
+
+		if (PointerPte->u1.e1.Valid == 1)
+		{
+			goto bugcheck;
+		}
+	}
 
 	switch (PointerPte->u1.e1.PteType)
 	{
@@ -267,10 +298,6 @@ MmAccessFault(
 		{
 			sprintf( MmDebugBuffer, "MM: Access violation in %08x [invalid page]\n", VirtualAddress );
 			KiDebugPrintRaw( MmDebugBuffer );
-
-			__asm lea esi, [MmDebugBuffer]
-			__asm xor ax, ax
-			__asm int 0x30
 
 			break;
 		}
@@ -280,43 +307,159 @@ MmAccessFault(
 			sprintf( MmDebugBuffer, "MM: Access violation in %08x [paging not supported]\n", VirtualAddress );
 			KiDebugPrintRaw( MmDebugBuffer );
 
-			__asm lea esi, [MmDebugBuffer]
-			__asm xor ax, ax
-			__asm int 0x30
-
 			break;
 		}
 
 	case PTE_TYPE_TRIMMED:
 		{
-			sprintf( MmDebugBuffer, "MM: Access violation in %08x [trimming not supported]\n", VirtualAddress );
+			sprintf( MmDebugBuffer, "MM: Access violation in %08x [trimming detected : PFN=%05x]\n", 
+				VirtualAddress, PointerPte->u1.e4.PageFrameNumber );
 			KiDebugPrintRaw( MmDebugBuffer );
 
-			__asm lea esi, [MmDebugBuffer]
-			__asm xor ax, ax
-			__asm int 0x30
+			PMMPPD Ppd = MmPfnPpd (PointerPte->u1.e1.PageFrameNumber);
 
-			break;
+			MI_LOCK_PPD();
+			ExAcquireMutex (&MmPageDatabaseLock);
+
+			PointerPte->u1.e1.Write = (PointerPte->u1.e4.Protection == MM_READWRITE || PointerPte->u1.e4.Protection == MM_EXECUTE_READWRITE);
+			PointerPte->u1.e1.Valid = 1;
+
+			MiChangePageLocation (Ppd, ActiveAndValid);
+
+			ExReleaseMutex (&MmPageDatabaseLock);
+			MI_UNLOCK_PPD();
+
+			MmInvalidateTlb (VirtualAddress);
+
+			KdPrint(("MM: #PF: Resolved for trimming\n"));
+
+			return;
 		}
 
 	case PTE_TYPE_VIEW:
 		{
-			sprintf( MmDebugBuffer, "MM: Access violation in %08x [views not supported]\n", VirtualAddress );
+			sprintf( MmDebugBuffer, "MM: Access violation in %08x [view detected : FileDescriptor=%04x]\n", 
+				VirtualAddress, PointerPte->u1.e3.FileDescriptorNumber );
+
 			KiDebugPrintRaw( MmDebugBuffer );
 
-			__asm lea esi, [MmDebugBuffer]
-			__asm xor ax, ax
-			__asm int 0x30
+			//
+			// Find the appropriate MAPPED_FILE
+			//
 
-			break;
+			PMAPPED_FILE Mapping;
+			STATUS Status;
+
+			Status = ObpMapHandleToPointer ( (HANDLE)PointerPte->u1.e3.FileDescriptorNumber, -1, (PVOID*)&Mapping, FALSE);
+			if (!SUCCESS(Status))
+			{
+				KdPrint(("MM: #PF: Invalid view [ObpMapHandleToPointer returned status %08x for mapping handle]\n", Status));
+				
+				goto bugcheck;
+			}
+
+			//
+			// Find the appropriate MAPPED_VIEW
+			//
+
+			ExAcquireMutex (&Mapping->ViewList.Lock);
+
+			PMAPPED_VIEW View = CONTAINING_RECORD (Mapping->ViewList.ListEntry.Flink, MAPPED_VIEW, ViewListEntry);
+
+			while ( View != CONTAINING_RECORD (&Mapping->ViewList.ListEntry, MAPPED_VIEW, ViewListEntry) )
+			{
+				if ( VirtualAddress >= View->StartVa &&
+					 (ULONG)VirtualAddress < ((ULONG)View->StartVa + View->ViewSize) )
+				{
+					//
+					// This is our view.
+					//
+
+					KdPrint(("MM: #PF: Found view for the pagefault: %08x-%08x\n",
+						View->StartVa,
+						(ULONG)View->StartVa + View->ViewSize - 1));
+
+					PCCFILE_CACHE_MAP CacheMap = Mapping->FileObject->CacheMap;
+					ASSERT (CacheMap != NULL);
+
+					ULONG PageNumber = (ALIGN_DOWN((ULONG)VirtualAddress,PAGE_SIZE) - (ULONG)View->StartVa) / PAGE_SIZE;
+
+					ExAcquireMutex (&CacheMap->CacheMapLock);
+
+					for (ULONG i=0; i<CacheMap->MaxCachedPages; i++)
+					{
+						if (CacheMap->PageCacheMap[i].Cached &&
+							CacheMap->PageCacheMap[i].PageNumber == PageNumber)
+						{
+							KdPrint(("MM: #PF: Found cached page for the view. Mapping it\n"));
+
+							PMMPTE TempPte = MiGetPteAddress (CacheMap->PageCacheMap[i].Buffer);
+
+							ASSERT (TempPte->u1.e1.Valid == 1);
+
+							ExAcquireMutex (&MmPageDatabaseLock);
+
+							PointerPte->u1.e1.Valid = 1;
+							PointerPte->u1.e1.Write = (View->Protection == MM_READWRITE || View->Protection == MM_EXECUTE_READWRITE);
+							
+							// Notice: PointerPte->u1.e1.PteType  is still PTE_TYPE_VIEW !!
+
+							PointerPte->u1.e1.Owner = (Mapping->TargetMode == KernelMode);
+							PointerPte->u1.e1.PageFrameNumber = TempPte->u1.e1.PageFrameNumber;
+
+							PointerPte->u1.e1.Dirty = 0;
+							PointerPte->u1.e1.Accessed = 0;
+
+							KdPrint(("MM: #PF: Write=%d, Owner=%d, PFN=%x, Protection=%d, Mode=%d\n", PointerPte->u1.e1.Write, PointerPte->u1.e1.Owner,
+								PointerPte->u1.e1.PageFrameNumber, View->Protection, Mapping->TargetMode));
+
+							MmInvalidateTlb (VirtualAddress);
+
+							ExReleaseMutex (&MmPageDatabaseLock);
+
+							ExReleaseMutex (&CacheMap->CacheMapLock);
+
+							KdPrint(("MM: #PF: Resolved cached page for view\n"));
+
+							ExReleaseMutex (&Mapping->ViewList.Lock);
+
+							return;
+						}
+					}
+					
+					ExReleaseMutex (&CacheMap->CacheMapLock);
+
+					KdPrint(("MM: #PF: Cached page not found, performing actual reading\n"));
+
+					//
+					// UNIMPLEMENTED
+					//
+
+					KdPrint(("UNIMPLEMENTED YET\n"));
+					ASSERT (FALSE);
+
+					ExReleaseMutex (&Mapping->ViewList.Lock);
+
+					return;
+				}
+
+				View = CONTAINING_RECORD (View->ViewListEntry.Flink, MAPPED_VIEW, ViewListEntry);
+			}
+
+			ExReleaseMutex (&Mapping->ViewList.Lock);
+
+			KdPrint(("MM: #PF: Can't find MAPPED_VIEW for the faulted view\n"));
+
+			INT3
 		}
 	}
 
+bugcheck:
 	KeBugCheck (KERNEL_MODE_EXCEPTION_NOT_HANDLED,
 				STATUS_ACCESS_VIOLATION,
 				(ULONG)VirtualAddress,
 				(ULONG)FaultingAddress,
-				0
+				Err.e1.WriteFault
 				);
 	
 	KiStopExecution( );
@@ -356,18 +499,15 @@ MmIsAddressValid(
 	return PointerPte->u1.e1.Valid;
 }
 
-KESYSAPI
 ULONG
 KEAPI
-MmIsAddressValidEx(
-	IN PVOID VirtualAddress
+MiIsAddressValidEx(
+	IN PMMPTE PointerPte
 	)
 /*++
 	This function checks that specified virtual address is valid and determines the page type
 --*/
 {
-	PMMPTE PointerPte = MiGetPteAddress (VirtualAddress);
-
 	if (PointerPte->u1.e1.Valid)
 	{
 		if (PointerPte->u1.e1.PteType == PTE_TYPE_VIEW)
@@ -396,6 +536,21 @@ MmIsAddressValidEx(
 				(ULONG)PointerPte,
 				PointerPte->u1.e1.PteType,
 				0);
+}
+
+KESYSAPI
+ULONG
+KEAPI
+MmIsAddressValidEx(
+	IN PVOID VirtualAddress
+	)
+/*++
+	This function checks that specified virtual address is valid and determines the page type
+--*/
+{
+	PMMPTE PointerPte = MiGetPteAddress (VirtualAddress);
+
+	return MiIsAddressValidEx (PointerPte);
 }
 
 
@@ -457,6 +612,13 @@ MmInitSystemPhase1(
 
 	// Describe first meg, PTEs, PPDs and heap.
 	ULONG InitialPageCount = 0x3000;
+	
+	//
+	// Set CR0.WP = 1
+	//
+
+	KeChangeWpState (TRUE);
+
 
 	//
 	// Create system working set
@@ -499,11 +661,11 @@ MmInitSystemPhase1(
 		{ 0xC0000000, 0xCFFFFFFF }
 	};
 
-	for ( int i=0; i<2; i++ )
+	for ( int j=0; i<2; i++ )
 	{
-		KdPrint(("MI: Initializing range 0x%08x - 0x%08x\n", VirtualAddresses[i][0], VirtualAddresses[i][1]));
+		KdPrint(("MI: Initializing range 0x%08x - 0x%08x\n", VirtualAddresses[j][0], VirtualAddresses[j][1]));
 
-		for (ULONG VirtualAddress = VirtualAddresses[i][0]; VirtualAddress < VirtualAddresses[i][1]; VirtualAddress += PAGE_SIZE)
+		for (ULONG VirtualAddress = VirtualAddresses[j][0]; VirtualAddress < VirtualAddresses[j][1]; VirtualAddress += PAGE_SIZE)
 		{
 			PMMPTE Pte = MiGetPteAddress (VirtualAddress);
 
@@ -621,6 +783,56 @@ MmInitSystemPhase1(
 
 
 POBJECT_TYPE MmExtenderObjectType;
+POBJECT_TYPE MmFileMappingObjectType;
+
+VOID
+KEAPI
+MiDeleteMapping(
+	IN POBJECT_HEADER Object
+	)
+/*++
+	See remarks to the PDELETE_OBJECT_ROUTINE typedef for the general explanations
+	 of the type of such routines.
+
+	This routine is called when the file mapping object is being deleted.
+	We should dereference the corresponding file object
+--*/
+{
+	PMAPPED_FILE FileMapping = OBJECT_HEADER_TO_OBJECT (Object, MAPPED_FILE);
+
+	KdPrint(("MiDeleteMapping\n"));
+
+	ExAcquireMutex (&FileMapping->ViewList.Lock);
+
+	if (!IsListEmpty (&FileMapping->ViewList.ListEntry))
+	{
+		//
+		// There are some unmapped views.
+		//
+
+		PMAPPED_VIEW View = CONTAINING_RECORD (FileMapping->ViewList.ListEntry.Flink, MAPPED_VIEW, ViewListEntry), NextView;
+
+		while ( View != CONTAINING_RECORD (&FileMapping->ViewList.ListEntry, MAPPED_VIEW, ViewListEntry) )
+		{
+			KdPrint(("Unmapping not unmapped view: VA=%08x, Size=%08x\n", View->StartVa, View->ViewSize));
+
+			NextView = CONTAINING_RECORD (View->ViewListEntry.Flink, MAPPED_VIEW, ViewListEntry);
+
+			MiUnmapViewOfFile (View);
+
+			View = NextView;
+		}
+	}
+
+	ExReleaseMutex (&FileMapping->ViewList.Lock);
+
+	if (!ObIsObjectGoingAway(FileMapping->FileObject))
+	{
+		InterlockedRemoveEntryList (&FileMapping->FileObject->MappingList, &FileMapping->FileMappingsEntry);
+	}
+
+	ObDereferenceObject (FileMapping->FileObject);
+}
 
 VOID
 KEAPI
@@ -662,9 +874,77 @@ MmInitSystemPhase2(
 					0);
 	}
 
+
+	RtlInitUnicodeString( &Name, L"File Mapping" );
+
+	Status = ObCreateObjectType (
+		&MmFileMappingObjectType, 
+		&Name,
+		NULL,
+		NULL,
+		NULL,
+		MiDeleteMapping,
+		NULL,
+		OB_OBJECT_OWNER_MM);
+
+	if (!SUCCESS(Status))
+	{
+		KeBugCheck (MM_INITIALIZATION_FAILED,
+					__LINE__,
+					Status,
+					0,
+					0);
+	}
+
 	ExInitializeMutex (&MmExtenderList.Lock);
 }
 
+static
+char*
+MiPageStatuses[] = {
+	"PageStatusFree",
+	"PageStatusNormal",
+	"PageStatusPagedOut",
+	"PageStatusTrimmed",
+	"PageStatusView",
+	"PageStatusNormalView"
+};
+
+VOID
+KEAPI
+MiDisplayMappings(
+	)
+/*++
+	Display page mappings of the current process.
+--*/
+{
+	PVOID VirtualAddress = (PVOID) MM_USERMODE_AREA;
+
+	ExAcquireMutex (&MmPageDatabaseLock);
+
+	while (VirtualAddress < MM_HYPERSPACE_START)
+	{
+		ULONG ps;
+
+		if ( (ps=MmIsAddressValidEx(VirtualAddress)) != PageStatusFree)
+		{
+			PVOID TempVa = (PVOID)( (ULONG)VirtualAddress + PAGE_SIZE );
+
+			while (TempVa < MM_HYPERSPACE_START && MmIsAddressValidEx (TempVa) == ps)
+				*(ULONG*)&TempVa += PAGE_SIZE;
+
+			KdPrint(("%08x - %08x : %s\n", VirtualAddress, (ULONG)TempVa-1, MiPageStatuses[ps]));
+
+			VirtualAddress = TempVa;
+		}
+		else
+		{
+			*(ULONG*)&VirtualAddress += PAGE_SIZE;
+		}
+	}
+
+	ExReleaseMutex (&MmPageDatabaseLock);
+}
 
 VOID
 KEAPI
@@ -1576,6 +1856,50 @@ MmUnmapLockedPages(
 	Mmd->Flags &= ~MDL_MAPPED;
 }
 
+
+VOID
+KEAPI
+MmTrimPage(
+	IN PVOID VirtualAddress
+	)
+/*++
+	Write transition PTE
+--*/
+{
+	MI_LOCK_PPD ();
+	ExAcquireMutex (&MmPageDatabaseLock);
+
+	PMMPTE Pte = MiGetPteAddress (VirtualAddress);
+
+	ASSERT (Pte->u1.e1.Valid == 1);
+
+	PMMPPD Ppd = MmPfnPpd (Pte->u1.e1.PageFrameNumber);
+
+	ASSERT (Ppd->PageLocation == ActiveAndValid);
+
+	if (Pte->u1.e1.Dirty == 1)
+	{
+		Ppd->Modified = 1;
+
+		MiChangePageLocation (Ppd, ModifiedPageList);
+
+		KdPrint(("MM: Page at VA %08x moved to modified page list\n", VirtualAddress));
+	}
+	else
+	{
+		MiChangePageLocation (Ppd, StandbyPageList);
+
+		KdPrint(("MM: Page at VA %08x moved to standby page list\n", VirtualAddress));
+	}
+
+	MiWriteTrimmedPte (Pte);
+	Pte->u1.e4.Protection = (Pte->u1.e1.Write ? MM_READWRITE : MM_READONLY);
+
+	ExReleaseMutex (&MmPageDatabaseLock);
+	MI_UNLOCK_PPD ();
+}
+
+
 #if 0
 VOID
 KEAPI
@@ -2479,14 +2803,47 @@ MiFileAccessToPageProtection(
 	return MM_NOACCESS;
 }
 
+ULONG
+KEAPI
+MiPageProtectionToGrantedAccess(
+	UCHAR Protection
+	)
+/*++
+	Convert page protection to file access
+--*/
+{
+	ASSERT (Protection >= MM_NOACCESS && Protection <= MM_GUARD);
+
+	Protection &= MM_MAXIMUM_PROTECTION; // select first three bits.
+
+	switch (Protection)
+	{
+	case MM_NOACCESS:		
+	case MM_GUARD:
+		return 0;
+
+	case MM_READONLY:
+	case MM_EXECUTE_READONLY:	
+	case MM_WRITECOPY:
+	case MM_EXECUTE_WRITECOPY:
+		return FILE_READ_DATA;
+
+	case MM_READWRITE:
+	case MM_EXECUTE_READWRITE:	
+		return FILE_READ_DATA|FILE_WRITE_DATA;
+	}
+
+	return 0; // prevent compiler warning.
+}
+
 KESYSAPI
 STATUS
 KEAPI
 MmCreateFileMapping(
-	OUT PMAPPED_FILE *Mapping,
 	IN PFILE FileObject,
 	IN PROCESSOR_MODE MappingMode,
-	IN UCHAR StrongestProtection
+	IN UCHAR StrongestProtection,
+	OUT PHANDLE MappingHandle
 	)
 /*++
 	Create file mapping to the specified file object at target processor mode.
@@ -2495,19 +2852,12 @@ MmCreateFileMapping(
 	Pointer to the MAPPED_FILE is returned.
 --*/
 {
+	STATUS Status;
+
 	if (FileObject->CacheMap == NULL)
 	{
 		//
 		// File should be cached if the caller wants us to map it
-		//
-
-		return STATUS_INVALID_PARAMETER_2;
-	}
-
-	if (FileObject->CacheMap->ClusterSize != PAGE_SIZE)
-	{
-		//
-		// Caching cluster size should equal system page size.
 		//
 
 		return STATUS_INVALID_PARAMETER_2;
@@ -2526,11 +2876,24 @@ MmCreateFileMapping(
 	//
 	// Allocate space for the structure
 	//
-	PMAPPED_FILE MappedFile = (PMAPPED_FILE) ExAllocateHeap (TRUE, sizeof(MAPPED_FILE));
-	if (!MappedFile)
-	{
-		return STATUS_INSUFFICIENT_RESOURCES;
-	}
+
+	PMAPPED_FILE MappedFile;
+	
+	Status = ObCreateObject (	(PVOID*)&MappedFile, 
+								sizeof(MAPPED_FILE), 
+								MmFileMappingObjectType,
+								NULL,
+								OB_OBJECT_OWNER_MM
+							);
+
+	if (!SUCCESS(Status))
+		return Status;
+
+//	MappedFile = (PMAPPED_FILE) ExAllocateHeap (TRUE, sizeof(MAPPED_FILE));
+//	if (!MappedFile)
+//	{
+//		return STATUS_INSUFFICIENT_RESOURCES;
+//	}
 
 	// File cannot go away until all its views are unmapped.
 	ObReferenceObject (FileObject);
@@ -2540,22 +2903,178 @@ MmCreateFileMapping(
 	MappedFile->TargetMode = MappingMode;
 	InitializeLockedList (&MappedFile->ViewList);
 
-	*Mapping = MappedFile;
+	//
+	// Insert into locked list of file mappings for this file
+	//
+
+	InterlockedInsertTailList (&FileObject->MappingList, &MappedFile->FileMappingsEntry);
+
+	HANDLE hMapping = ObpCreateHandle (MappedFile, MiPageProtectionToGrantedAccess (StrongestProtection));
+	if (hMapping == INVALID_HANDLE_VALUE)
+	{
+		//ExFreeHeap (MappedFile);
+		ObpDeleteObject (MappedFile);
+		ObDereferenceObject (FileObject);
+
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+	//
+	// Return
+	//
+
+	*MappingHandle = hMapping;
 
 	return STATUS_SUCCESS;
 }
+
+PVOID MiStartAddressesForProcessorModes[MaximumMode] = {
+	(PVOID) MM_CRITICAL_AREA,		// ring0
+	(PVOID) MM_DRIVER_AREA,			// ring1
+	(PVOID) NULL,					// unused
+	(PVOID) MM_USERMODE_AREA		// ring3
+};
+
+PVOID MiEndAddressesForProcessorModes[MaximumMode] = {
+	(PVOID) MM_CRITICAL_AREA_END,		// ring0
+	(PVOID) MM_DRIVER_AREA_END,			// ring1
+	(PVOID) NULL,						// unused
+	(PVOID) MM_USERMODE_AREA_END		// ring3
+};
+
+STATUS
+KEAPI
+MiFindAndReserveVirtualAddressesForFileView(
+	IN PVOID StartAddress OPTIONAL,
+	IN PROCESSOR_MODE MappingMode,
+	IN ULONG ViewPages,
+	OUT PVOID *RealAddress
+	)
+/*++
+	(Optionally) Find and reserve virtual address range for file view.
+	Real address will be stored in *RealAddress on success.
+
+	Environment: MmPageDatabaseLock held
+--*/
+{
+	ASSERT (MiStartAddressesForProcessorModes[MappingMode] != NULL);
+	ASSERT (MiEndAddressesForProcessorModes[MappingMode] != NULL);
+
+	if (StartAddress)
+	{
+		//
+		// Caller has already chosen some virtual address for the view, check if it does really meet the requirements.
+		//
+
+		if (StartAddress < MiStartAddressesForProcessorModes[MappingMode] ||
+			StartAddress >= MiEndAddressesForProcessorModes[MappingMode])
+		{
+			return STATUS_INVALID_PARAMETER;
+		}
+
+		//
+		// Check that this address range is really free
+		//
+
+		for ( PVOID va = StartAddress; (ULONG)va < (ULONG)StartAddress + ViewPages*PAGE_SIZE; *(ULONG*)&va += PAGE_SIZE )
+		{
+			if (MmIsAddressValidEx (va) != PageStatusFree)
+				return STATUS_INVALID_PARAMETER;
+		}
+
+		*RealAddress = StartAddress;
+		return STATUS_SUCCESS;
+	}
+	else
+	{
+		//
+		// Find the appropriate address range
+		//
+
+		for ( PVOID va = MiStartAddressesForProcessorModes[MappingMode];
+			  va < MiEndAddressesForProcessorModes[MappingMode];
+			  *(ULONG*)&va += PAGE_SIZE )
+		{
+			if (MmIsAddressValidEx (va) == PageStatusFree)
+			{
+				bool free = true;
+				ULONG i;
+
+				//
+				// Check that all pages are free
+				//
+
+				for (i=1; i<ViewPages; i++)
+				{
+					free &= (MmIsAddressValidEx ((PVOID)((ULONG)va + i*PAGE_SIZE)) == PageStatusFree);
+				}
+
+				if (free)
+				{
+					//
+					// Found range of free pages.
+					//
+
+					PMMPTE PointerPte = MiGetPteAddress (va);
+					for (i=0; i<ViewPages; i++)
+					{
+						MiZeroPte (PointerPte);
+
+						PointerPte->u1.e3.PteType = PTE_TYPE_VIEW;	// file view
+						PointerPte->u1.e3.FileDescriptorNumber = 0;	// not mapped yet
+						PointerPte->u1.e3.Protection = 0;			// not protected yet
+						
+						PointerPte = MiNextPte (PointerPte);
+					}
+
+					// Return
+
+					*RealAddress = va;
+					return STATUS_SUCCESS;
+
+				} // if(free)
+
+			} // if (MmIsAddressValidEx(..) == PageStatusFree)
+
+		} // for (..)
+
+		return STATUS_INSUFFICIENT_RESOURCES;
+
+	} // if (StartAddress == NULL)
+}
+
+
+VOID
+KEAPI
+MiInitializeViewPages (
+	IN OUT PMAPPED_VIEW View
+	)
+/*++
+	Initialize properly view pages
+--*/
+{
+	PMMPTE PointerPte = View->StartPte;
+
+	for (ULONG i=0; i < View->ViewSize/PAGE_SIZE; i++)
+	{
+		PointerPte->u1.e3.FileDescriptorNumber = (USHORT) View->hMapping;
+		PointerPte->u1.e3.Protection = View->Protection;
+
+		PointerPte = MiNextPte (PointerPte);
+	}
+}
+	
 
 KESYSAPI
 STATUS
 KEAPI
 MmMapViewOfFile(
-	OUT PMAPPED_VIEW *pView,
-	IN PMAPPED_FILE Mapping,
+	IN HANDLE hMapping,
 	IN ULONG OffsetStart,
 	IN ULONG OffsetStartHigh,
 	IN ULONG ViewSize,
 	IN UCHAR Protection,
-	IN OUT PVOID *VirtualAddress
+	IN OUT PVOID *VirtualAddress // on input optinally contains desired VA, on output - real mapped VA of view.
 	)
 /*++
 	Map view of the specified file, which is already being mapped (MmCreateFileMapping should be called before this call)
@@ -2564,22 +3083,116 @@ MmMapViewOfFile(
 	Virtual address is returned in *VirtualAddress
 --*/
 {
+	PMAPPED_FILE Mapping;
+	STATUS Status;
+	
+	Status = ObpMapHandleToPointer (hMapping, -1 /*any access*/, (PVOID*)&Mapping, FALSE);
+
+	if (!SUCCESS(Status))
+		return Status;
+
+	if (ObIsObjectGoingAway(Mapping))
+		return STATUS_DELETE_PENDING;
+
 	if (Mapping->StrongestProtection < Protection)
 	{
 		return STATUS_ACCESS_DENIED;
 	}
 
-	/*
+	PMMPTE StartPte;
+	PVOID va;
+
+	ExAcquireMutex (&MmPageDatabaseLock);
+
+	ViewSize = ALIGN_UP (ViewSize, PAGE_SIZE);
+
+	//
+	// Find and reserve virtual address range for file view
+	//
+
+	Status = MiFindAndReserveVirtualAddressesForFileView (
+		*VirtualAddress, 
+		Mapping->TargetMode,
+		ViewSize/PAGE_SIZE, 
+		&va);
+
+	if (!SUCCESS(Status))
+	{
+		ExReleaseMutex (&MmPageDatabaseLock);
+		return Status;
+	}
+
+	StartPte = MiGetPteAddress (va);
+
 	//
 	// Allocate space for the structure
 	//
+
 	PMAPPED_VIEW View = (PMAPPED_VIEW) ExAllocateHeap (TRUE, sizeof(MAPPED_VIEW));
 	if (!View)
 	{
+		ExReleaseMutex (&MmPageDatabaseLock);
 		return STATUS_INSUFFICIENT_RESOURCES;
 	}
-	*/
 
+	View->StartOffsetInFile.LowPart = OffsetStart;
+	View->StartOffsetInFile.HighPart = OffsetStartHigh;
+	View->ViewSize = ViewSize;
+	View->StartPte = StartPte;
+	View->StartVa = va;
+	View->Mapping = Mapping;
+	View->hMapping = hMapping; // save handle
+	View->Protection = Protection & MM_MAXIMUM_PROTECTION;
 
-	return STATUS_NOT_IMPLEMENTED;
+	//
+	// Insert structure
+	//
+
+	InterlockedInsertTailList (&Mapping->ViewList, &View->ViewListEntry);
+
+	//
+	// Initialize view properly
+	//
+
+	MiInitializeViewPages (View);
+
+	//
+	// Return
+	//
+
+	*VirtualAddress = va;
+
+	ExReleaseMutex (&MmPageDatabaseLock);
+
+	return STATUS_SUCCESS;
 }
+
+STATUS
+KEAPI
+MiUnmapViewOfFile(
+	IN PMAPPED_VIEW View
+	)
+/*++
+	Internal routine used to unmap view of file
+	
+	Environment: mapping list locked.
+--*/
+{
+	return STATUS_NOT_SUPPORTED;
+}
+
+
+KESYSAPI
+STATUS
+KEAPI
+MmUnmapViewOfFile(
+	IN HANDLE hMapping,
+	IN PVOID VirtualAddress
+	)
+/*++
+	Unmap the specified view of file
+--*/
+{
+	return STATUS_NOT_SUPPORTED;
+}
+
