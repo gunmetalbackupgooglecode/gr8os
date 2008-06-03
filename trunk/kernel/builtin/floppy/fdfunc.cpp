@@ -321,7 +321,10 @@ FdPerformRead(
 
 	FdMotorOff (0);
 
-	*nBytesRead = Size;
+	if (SUCCESS(Status))
+	{
+		*nBytesRead = Size;
+	}
 
 	return Status;
 }

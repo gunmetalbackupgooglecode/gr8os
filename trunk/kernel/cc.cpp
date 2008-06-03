@@ -313,6 +313,8 @@ CcpActualReadPage(
 			&BytesRead
 			);
 
+		//KdPrint(("Actual read %04x\n", BytesRead));
+
 		/*
 		IO_STATUS_BLOCK IoStatus;
 		LARGE_INTEGER Offset = {0,0};
@@ -574,19 +576,22 @@ CcPurgeCacheFile(
 	return Status;
 }
 
+//#define Cc2Print KdPrint
+#define Cc2Print(x) __asm nop;
+
 STATUS
 KEAPI
 CcpFindAndReadWrite(
 	IN PCCFILE_CACHE_MAP CacheMap,
-	IN ULONG PageNumber,
-	IN ULONG PageOffset,
+	IN ULONG *PageNumber,
+	IN ULONG *PageOffset,
 	IN BOOLEAN WriteOperation,
-	OUT PVOID Buffer OPTIONAL,
-	IN ULONG Size,
+	OUT PVOID *Buffer OPTIONAL,
+	IN ULONG *Size,
 	OUT PULONG nBytesRead
 	)
 /*++
-	Find page in cache map. If page exists, satisfy read request by copying.
+	Find page in cache map. If page exists, satisfy read/write request by copying.
 	If not, return STATUS_NOT_FOUND.
 --*/
 {
@@ -599,7 +604,7 @@ _repeat_read:
 	for (ULONG i=0; i<CacheMap->MaxCachedPages; i++)
 	{
 		if (CacheMap->PageCacheMap[i].Cached &&
-			CacheMap->PageCacheMap[i].PageNumber == PageNumber)
+			CacheMap->PageCacheMap[i].PageNumber == *PageNumber)
 		{
 			CcPrint(("CC: Found cached page %d{%d} (buff=%08x)\n", i, CacheMap->PageCacheMap[i].PageNumber,
 				CacheMap->PageCacheMap[i].Buffer));
@@ -616,36 +621,48 @@ _repeat_read:
 
 			CacheMap->PageCacheMap[i].PageUseCount ++;
 
-			if ( Size <= (PAGE_SIZE-PageOffset) )
+			if ( *Size <= (PAGE_SIZE-*PageOffset) )
 			{
 				if (!WriteOperation)
 				{
-					memcpy (Buffer, (PUCHAR)CacheMap->PageCacheMap[i].Buffer + PageOffset, Size);
+					memcpy (*Buffer, (PUCHAR)CacheMap->PageCacheMap[i].Buffer + *PageOffset, *Size);
 				}
 				else
 				{
-					memcpy ((PUCHAR)CacheMap->PageCacheMap[i].Buffer + PageOffset, Buffer, Size);
+					memcpy ((PUCHAR)CacheMap->PageCacheMap[i].Buffer + *PageOffset, *Buffer, *Size);
 				}
 
-				(*nBytesRead) += Size;
+				if (CacheMap->FileObject->RelativeFileName.Length > 0)
+					Cc2Print(("[. [%04x] +%04x] ", (*nBytesRead), *Size));
+
+				(*nBytesRead) += *Size;
 			}
 			else
 			{
+				ULONG readpart = PAGE_SIZE - (*PageOffset);
+
 				if (!WriteOperation)
 				{
-					memcpy (Buffer, (PUCHAR)CacheMap->PageCacheMap[i].Buffer + PageOffset, (PAGE_SIZE-PageOffset));
+					memcpy (*Buffer, (PUCHAR)CacheMap->PageCacheMap[i].Buffer + *PageOffset, readpart);
 				}
 				else
 				{
-					memcpy ((PUCHAR)CacheMap->PageCacheMap[i].Buffer + PageOffset, Buffer, (PAGE_SIZE-PageOffset));
+					memcpy ((PUCHAR)CacheMap->PageCacheMap[i].Buffer + *PageOffset, *Buffer, readpart);
 				}
 
-				(*nBytesRead) += (PAGE_SIZE-PageOffset);
+				if (CacheMap->FileObject->RelativeFileName.Length > 0)
+					Cc2Print(("[* [%04x] +%04x] ", (*nBytesRead), readpart));
+
+				(*nBytesRead) += readpart;
 				
-				PageNumber ++;
-				PageOffset = 0;
-				Size -= (PAGE_SIZE-PageOffset);
-				*(ULONG*)&Buffer += (PAGE_SIZE-PageOffset);
+				//KdPrint((" find and r/w: old loop [PN=%x, PO=%x, Size=%x]\n", *PageNumber, *PageOffset, *Size));
+
+				(*PageNumber) ++;
+				*PageOffset = 0;
+				(*Size) -= readpart;
+				(*(ULONG*)Buffer) += readpart;
+
+				//KdPrint((" find and r/w: new loop [PN=%x, PO=%x, Size=%x]\n", *PageNumber, *PageOffset, *Size));
 
 				goto _repeat_read;
 			}
@@ -658,7 +675,7 @@ _repeat_read:
 			}
 
 			CcPrint (("CC: Cache %s satisfied from cache for the file %08x, page %d\n", 
-				WriteOperation ? "write" : "read", CacheMap->FileObject, PageNumber));
+				WriteOperation ? "write" : "read", CacheMap->FileObject, *PageNumber));
 
 			break;
 		}
@@ -685,6 +702,9 @@ CcpActualRead(
 	PVOID TempPage = MmAllocatePage ();
 	STATUS Status;
 
+	if (CacheMap->FileObject->RelativeFileName.Length > 0)
+		Cc2Print(("CC: CcpActualRead: PN=%04x,POffs=%03x,Size=%04x, Read=%04x\n", PageNumber, PageOffset, Size, *nBytesRead));
+
 	Status = CcpActualReadPage (CacheMap, PageNumber, TempPage);
 
 	if (SUCCESS(Status))
@@ -696,6 +716,9 @@ CcpActualRead(
 				memcpy (Buffer, (PUCHAR)TempPage + PageOffset, (PAGE_SIZE-PageOffset));
 			}
 
+			if (CacheMap->FileObject->RelativeFileName.Length > 0)
+				Cc2Print(("[$ [%04x] +%04x] ", *nBytesRead, (PAGE_SIZE-PageOffset)));
+
 			(*nBytesRead) += (PAGE_SIZE-PageOffset);
 		}
 		else
@@ -704,6 +727,9 @@ CcpActualRead(
 			{
 				memcpy (Buffer, (PUCHAR)TempPage + PageOffset, Size);
 			}
+
+			if (CacheMap->FileObject->RelativeFileName.Length > 0)	
+				Cc2Print(("[^ [%04x] +%04x] ", *nBytesRead, Size));
 
 			(*nBytesRead) += Size;
 		}
@@ -730,11 +756,14 @@ CcpActualRead(
 			NewBuffer = NULL;
 		}
 
-		Status = CcpFindAndReadWrite (CacheMap, PageNumber+1, 0, FALSE, NewBuffer, Size, nBytesRead);
+		PageNumber ++;
+		PageOffset = 0;
+
+		Status = CcpFindAndReadWrite (CacheMap, &PageNumber, &PageOffset, FALSE, &NewBuffer, &Size, nBytesRead);
 
 		if (Status == STATUS_NOT_FOUND)
 		{
-			Status = CcpActualRead (CacheMap, PageNumber+1, 0, NewBuffer, Size, nBytesRead, Cache);
+			Status = CcpActualRead (CacheMap, PageNumber, PageOffset, NewBuffer, Size, nBytesRead, Cache);
 		}
 	}
 
@@ -789,11 +818,14 @@ CcpActualWrite(
 	{
 		PVOID NewBuffer = (PUCHAR)Buffer + (PAGE_SIZE-PageOffset);
 
-		Status = CcpFindAndReadWrite (CacheMap, PageNumber+1, 0, TRUE, NewBuffer, Size, nBytesWritten);
+		PageNumber ++;
+		PageOffset = 0;
+
+		Status = CcpFindAndReadWrite (CacheMap, &PageNumber, &PageOffset, TRUE, &NewBuffer, &Size, nBytesWritten);
 
 		if (Status == STATUS_NOT_FOUND)
 		{
-			Status = CcpActualWrite (CacheMap, PageNumber+1, 0, NewBuffer, Size, nBytesWritten);
+			Status = CcpActualWrite (CacheMap, PageNumber, PageOffset, NewBuffer, Size, nBytesWritten);
 		}
 	}
 
@@ -832,6 +864,8 @@ CcCacheReadFile(
 
 	ASSERT (Size < PAGE_SIZE*20);
 
+	
+
 	if (FileObject->ReadThrough)
 	{
 		ExReleaseMutex (&CacheMap->CacheMapLock);
@@ -842,7 +876,7 @@ CcCacheReadFile(
 	//INT3
 
 	// Try to satisfy reading from cache
-	Status = CcpFindAndReadWrite (CacheMap, PageNumber, PageOffset, FALSE, Buffer, Size, nBytesRead);
+	Status = CcpFindAndReadWrite (CacheMap, &PageNumber, &PageOffset, FALSE, &Buffer, &Size, nBytesRead);
 
 	if (Status == STATUS_NOT_FOUND)
 	{
@@ -947,7 +981,7 @@ CcCacheWriteFile(
 	//INT3
 
 	// Try to satisfy writing to cache
-	Status = CcpFindAndReadWrite (CacheMap, PageNumber, PageOffset, TRUE, Buffer, Size, nBytesWritten);
+	Status = CcpFindAndReadWrite (CacheMap, &PageNumber, &PageOffset, TRUE, &Buffer, &Size, nBytesWritten);
 
 	if (Status == STATUS_NOT_FOUND)
 	{

@@ -1140,7 +1140,7 @@ FsFatPerformRead(
 	// Handle file reading.
 	//
 
-	KdPrint(("FSFAT: Performing read [File=%08x, Cluster#=%08x, Size=%08x]\n", FileObject, SectorNumber, Size));
+	//KdPrint(("FSFAT: Performing read [File=%08x, Cluster#=%08x, Size=%08x]\n", FileObject, SectorNumber, Size));
 
 	__try
 	{
@@ -1200,9 +1200,7 @@ FsFatPerformRead(
 
 		*nBytesRead = Vcb->ClusterSize;
 
-		if (FsFatFileClusterByPos (Vcb,
-			Fcb->DirEnt->StartCluster | (Fcb->DirEnt->StartClusterHigh<<16),
-			Cluster) == -1)
+		if (FsFatReadFatEntry (Vcb, Cluster) >= FATTBL(LastClusterStart))
 		{
 			//
 			// This is the last cluster.

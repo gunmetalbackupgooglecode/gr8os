@@ -237,7 +237,7 @@ LARGE_INTEGER __inline RtlMakeLargeInteger(ULONG Low, ULONG High)
 #define OB_TRACE_REF_DEREF		0
 
 // Trace file caching
-#define CC_TRACE_CACHING		1
+#define CC_TRACE_CACHING		0
 
 // Trace operations with mutexes
 #define EX_TRACE_MUTEXES		0
