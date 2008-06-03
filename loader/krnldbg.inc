@@ -10,11 +10,16 @@ DbgPrintLn:
        push eax
 
        mov  dx, BOCHS_LOGGER_PORT
+       in   al, dx
+       cmp  dl, al
+       jnz  DPL10
+
        mov  al, 0dh
        out  dx, al
        mov  al, 0ah
        out  dx, al
 
+   DPL10:
        pop  eax
        pop  edx
        ret

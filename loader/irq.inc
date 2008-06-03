@@ -168,7 +168,9 @@ InitializeLApic:
 	jnz  @F
 
 	invoke DbgPrintRaw, "No APIC on board"
-	int3
+	mov  byte [0x800b8000 + 320], 'X'
+	mov  byte [0x800b8000 + 322], '1'
+	;int3
 
 	xor  eax, eax
 	retn

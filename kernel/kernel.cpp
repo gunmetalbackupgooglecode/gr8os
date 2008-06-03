@@ -918,12 +918,15 @@ KeBugCheck(
 	// Process callback list w/o locking - we CANNOT wait here.
 	// Also, interrupts are already masked off
 	//
-	ExpProcessCallbackList (
-		&KeBugcheckDispatcherCallbackList.ListEntry,
-		5,
-		Arguments
-		);
 
+	if (KiInitializationPhase >= 2)
+	{
+		ExpProcessCallbackList (
+			&KeBugcheckDispatcherCallbackList.ListEntry,
+			5,
+			Arguments
+			);
+	}
 
 	char *KiBugCheckDescriptions[4] = { "", "", "", "" };
 

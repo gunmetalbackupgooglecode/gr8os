@@ -524,6 +524,32 @@ PROTECTED_ENTRY:
     xor  ax, ax
     mov  fs, ax
 
+    mov byte [gs:0], 'B'
+    mov byte [gs:2], 'o'
+    mov byte [gs:4], 'o'
+    mov byte [gs:6], 't'
+    mov byte [gs:8], 'i'
+    mov byte [gs:10], 'n'
+    mov byte [gs:12], 'g'
+    mov byte [gs:14], ' '
+    mov byte [gs:16], 'i'
+    mov byte [gs:18], 'n'
+    mov byte [gs:20], ' '
+    mov byte [gs:22], 'p'
+    mov byte [gs:24], 'r'
+    mov byte [gs:26], 'o'
+    mov byte [gs:28], 't'
+    mov byte [gs:30], 'e'
+    mov byte [gs:32], 'c'
+    mov byte [gs:34], 't'
+    mov byte [gs:36], 'e'
+    mov byte [gs:38], 'd'
+    mov byte [gs:40], ' '
+    mov byte [gs:42], 'm'
+    mov byte [gs:44], 'o'
+    mov byte [gs:46], 'd'
+    mov byte [gs:48], 'e'
+
     ;
     ; Calculate memory size
     ;
@@ -629,6 +655,8 @@ buffer equ (buffer or 0x80000000)
 
     mov  [Pcb0 + PCB.Self], Pcb0
 
+    mov  byte [0x800b8000 + 160], '.'
+
     ; Load IDTR
     lidt fword [IDTR]
 
@@ -647,6 +675,8 @@ buffer equ (buffer or 0x80000000)
     mov  bx, 2820h
     call redirect_IRQ
 
+    mov  byte [0x800b8000 + 162], '.'
+
     call ClearDpcQueue
     invoke InsertQueueDpc, my_dpc, msg
 
@@ -661,12 +691,16 @@ buffer equ (buffer or 0x80000000)
     mov  ax, KGDT_TSS
     ltr  ax
 
+    mov  byte [0x800b8000 + 164], '.'
+
     ;
     ; Init PICs
     ;
 
     call InitializeLApic
     call InitializeIOApic
+
+    mov  byte [0x800b8000 + 166], 'x'
 
     ; Enable interrupts.
     in	 al, 70h
@@ -727,6 +761,8 @@ buffer equ (buffer or 0x80000000)
     add  eax, 0x1000
     shr  eax, 12
 
+    mov  byte [0x800b8000 + 168], '.'
+
     ; Map kernel
     invoke MiMapPhysicalPages, 0x80100000, KernelStart, eax
 
@@ -735,6 +771,8 @@ buffer equ (buffer or 0x80000000)
     add  eax, 4 + sizeof.IMAGE_FILE_HEADER
     mov  eax, [eax + IMAGE_OPTIONAL_HEADER.AddressOfEntryPoint]
     add  eax, 0x80100000
+
+    mov  byte [0x800b8000 + 170], '.'
 
     push LoaderBlock
     call eax
