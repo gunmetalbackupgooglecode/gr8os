@@ -313,7 +313,7 @@ KiDemoThread(
 	KeSetOnScreenStatus ("Reading boot.ini");
 
 	UNICODE_STRING FileName;
-	RtlInitUnicodeString( &FileName, L"\\Device\\hda0\\boot.ini" );
+	RtlInitUnicodeString( &FileName, L"\\Global\\B:\\boot.ini" );
 
 	Status = IoCreateFile (
 		&File,
@@ -494,6 +494,9 @@ KiDemoThread(
 	KdPrint(("-->buf : %s\n", buf));
 
 	MiDisplayMappings ();
+
+	extern POBJECT_DIRECTORY ObGlobalObjectDirectory;
+	ObpDumpDirectory (ObGlobalObjectDirectory, 0);
 
 	INT3
 

@@ -967,6 +967,8 @@ HddReadWrite(
 	}
 	else
 	{
+		ASSERT (FALSE);
+		/*
 		Status = CcCacheWriteFile (
 			Irp->FileObject,
 			Offset,
@@ -974,6 +976,7 @@ HddReadWrite(
 			Size,
 			&Size
 			);
+		*/
 	}
 
 	COMPLETE_IRP (Irp, Status, Size);
@@ -1065,6 +1068,8 @@ DriverEntry(
 
 	if (Presence[1])
 		HdAddDevice (DriverObject, 1);
+
+	INT3
 
 	if (Presence[2])
 		HdAddDevice (DriverObject, 2);

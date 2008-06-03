@@ -296,26 +296,37 @@ MmAccessFault(
 	{
 	case PTE_TYPE_NORMAL_OR_NOTMAPPED:
 		{
-			sprintf( MmDebugBuffer, "MM: Access violation in %08x [invalid page]\n", VirtualAddress );
-			KiDebugPrintRaw( MmDebugBuffer );
+			KdPrint(( "MM: Access violation in %08x [invalid page]\n", VirtualAddress ));
+
+			if (MmIsAddressValid(FaultingAddress))
+			{
+				KdPrint((" [EIP]: %08x: %02x %02x %02x  %02x %02x %02x\n",
+					FaultingAddress,
+					((UCHAR*)FaultingAddress)[0],
+					((UCHAR*)FaultingAddress)[1],
+					((UCHAR*)FaultingAddress)[2],
+					((UCHAR*)FaultingAddress)[3],
+					((UCHAR*)FaultingAddress)[4],
+					((UCHAR*)FaultingAddress)[5]
+				));
+			}
+
 
 			break;
 		}
 
 	case PTE_TYPE_PAGEDOUT:
 		{
-			sprintf( MmDebugBuffer, "MM: Access violation in %08x [paging not supported]\n", VirtualAddress );
-			KiDebugPrintRaw( MmDebugBuffer );
+			KdPrint(( "MM: Access violation in %08x [paging not supported]\n", VirtualAddress ));
 
 			break;
 		}
 
 	case PTE_TYPE_TRIMMED:
 		{
-			sprintf( MmDebugBuffer, "MM: Access violation in %08x [trimming detected : PFN=%05x]\n", 
-				VirtualAddress, PointerPte->u1.e4.PageFrameNumber );
-			KiDebugPrintRaw( MmDebugBuffer );
-
+			KdPrint(( "MM: Access violation in %08x [trimming detected : PFN=%05x]\n", 
+				VirtualAddress, PointerPte->u1.e4.PageFrameNumber ));
+			
 			PMMPPD Ppd = MmPfnPpd (PointerPte->u1.e1.PageFrameNumber);
 
 			MI_LOCK_PPD();
@@ -338,10 +349,9 @@ MmAccessFault(
 
 	case PTE_TYPE_VIEW:
 		{
-			sprintf( MmDebugBuffer, "MM: Access violation in %08x [view detected : FileDescriptor=%04x]\n", 
-				VirtualAddress, PointerPte->u1.e3.FileDescriptorNumber );
+			KdPrint(( "MM: Access violation in %08x [view detected : FileDescriptor=%04x]\n", 
+				VirtualAddress, PointerPte->u1.e3.FileDescriptorNumber ));
 
-			KiDebugPrintRaw( MmDebugBuffer );
 
 			//
 			// Find the appropriate MAPPED_FILE
@@ -2652,6 +2662,8 @@ MmLoadSystemImage(
 		Hdr = NULL;
 		MiGetHeaders (Image, &FileHeader, &OptHeader, &SectHeader);
 
+		LdrPrint(("LDR: Allocated space at %08x\n", Image));
+
 		//
 		// Go read sections from the file
 		//
@@ -2681,7 +2693,7 @@ MmLoadSystemImage(
 			strncpy (sname, (char*)SectHeader[Section].Name, 8);
 			sname[8] = 0;
 
-			LdrPrint (("LDR: Reading section %s: %08x, size %08x\n", sname, VaStart, Size));
+			LdrPrint (("LDR: Reading section %s: %08x, Raw %08x, size %08x\n", sname, VaStart, SectHeader[Section].PointerToRawData, Size));
 #endif
 
 			LARGE_INTEGER Offset = {0};
@@ -2697,6 +2709,10 @@ MmLoadSystemImage(
 				0,
 				&IoStatus
 				);
+
+			LdrPrint(("LDR: Read %08x bytes\n", IoStatus.Information));
+
+			ASSERT_EQUAL (IoStatus.Information, Size);
 
 			if (!SUCCESS(Status))
 			{
