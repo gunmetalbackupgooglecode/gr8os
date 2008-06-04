@@ -497,6 +497,7 @@ KiDemoThread(
 
 	extern POBJECT_DIRECTORY ObGlobalObjectDirectory;
 	ObpDumpDirectory (ObGlobalObjectDirectory, 0);
+	ObpDumpDirectory (IoDeviceDirectory, 0);
 
 	INT3
 

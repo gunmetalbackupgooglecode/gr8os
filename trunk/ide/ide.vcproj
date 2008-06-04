@@ -2,7 +2,7 @@
 <VisualStudioProject
 	ProjectType="Visual C++"
 	Version="9,00"
-	Name="hdd"
+	Name="ide"
 	ProjectGUID="{27A67058-A316-408D-BA5D-BFA39D24448F}"
 	TargetFrameworkVersion="131072"
 	>
@@ -42,7 +42,7 @@
 				MkTypLibCompatible="true"
 				SuppressStartupBanner="true"
 				TargetEnvironment="1"
-				TypeLibraryName=".\Release/hdd.tlb"
+				TypeLibraryName=".\Release/ide.tlb"
 				HeaderFileName=""
 			/>
 			<Tool
@@ -55,7 +55,7 @@
 				BufferSecurityCheck="false"
 				EnableFunctionLevelLinking="true"
 				UsePrecompiledHeader="0"
-				PrecompiledHeaderFile=".\Release/hdd.pch"
+				PrecompiledHeaderFile=".\Release/ide.pch"
 				AssemblerListingLocation=".\Release/"
 				ObjectFile=".\Release/"
 				ProgramDataBaseFileName=".\Release/"
@@ -80,7 +80,7 @@
 				Name="VCLinkerTool"
 				AdditionalOptions="/DRIVER /ALIGN:32 /subsystem:native /safeseh:no"
 				AdditionalDependencies="ntoskrnl.lib hal.lib ndis.lib"
-				OutputFile="Release/hdd.sys"
+				OutputFile="Release/ide.sys"
 				LinkIncremental="1"
 				SuppressStartupBanner="true"
 				GenerateManifest="false"
@@ -141,7 +141,7 @@
 				MkTypLibCompatible="true"
 				SuppressStartupBanner="true"
 				TargetEnvironment="1"
-				TypeLibraryName=".\Release/hdd.tlb"
+				TypeLibraryName=".\Release/ide.tlb"
 				HeaderFileName=""
 			/>
 			<Tool
@@ -155,7 +155,7 @@
 				BufferSecurityCheck="false"
 				EnableFunctionLevelLinking="true"
 				UsePrecompiledHeader="0"
-				PrecompiledHeaderFile=".\Debug/hdd.pch"
+				PrecompiledHeaderFile=".\Debug/ide.pch"
 				AssemblerListingLocation=".\Debug/"
 				ObjectFile=".\Debug/"
 				ProgramDataBaseFileName=".\Debug/"
@@ -182,7 +182,7 @@
 				Name="VCLinkerTool"
 				AdditionalOptions="/ALIGN:32 /subsystem:native /safeseh:no /DRIVER"
 				AdditionalDependencies="kernel.lib $(NOINHERIT)"
-				OutputFile="Debug/hdd.sys"
+				OutputFile="Debug/ide.sys"
 				LinkIncremental="1"
 				SuppressStartupBanner="true"
 				AdditionalLibraryDirectories="D:\Soft\gr8os"
@@ -223,7 +223,7 @@
 	</References>
 	<Files>
 		<File
-			RelativePath="hdd.cpp"
+			RelativePath="ide.cpp"
 			>
 			<FileConfiguration
 				Name="Release|Win32"
@@ -247,7 +247,7 @@
 			</FileConfiguration>
 		</File>
 		<File
-			RelativePath=".\hdd.res"
+			RelativePath=".\ide.res"
 			>
 		</File>
 	</Files>
