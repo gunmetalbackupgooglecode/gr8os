@@ -1,6 +1,6 @@
 Microsoft Visual Studio Solution File, Format Version 10.00
 # Visual C++ Express 2008
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "hdd", "hdd.vcproj", "{27A67058-A316-408D-BA5D-BFA39D24448F}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ide", "ide.vcproj", "{27A67058-A316-408D-BA5D-BFA39D24448F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

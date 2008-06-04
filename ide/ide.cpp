@@ -1,7 +1,7 @@
 //
 // Kernel-Mode driver for GR8OS
 //
-//  Generic Hard Disk  read/write driver
+//  Generic IDE  read/write driver
 //
 
 #include "common.h"
@@ -12,13 +12,13 @@
 #define IDE_CHANNEL_1_CONTROL	0x3F6
 #define IDE_CHANNEL_2_CONTROL	0x376
 
-UCHAR HdReadPort( UCHAR channel, UCHAR offset )
+UCHAR IdeReadPort( UCHAR channel, UCHAR offset )
 {
 	volatile USHORT Port = (channel ? IDE_CHANNEL_2_BASE : IDE_CHANNEL_1_BASE);
 	return KiInPort (Port+offset);
 }
 
-void HdRead ( UCHAR channel, void *buffer, ULONG len)
+void IdeRead ( UCHAR channel, void *buffer, ULONG len)
 {
 	volatile USHORT Port = (channel ? IDE_CHANNEL_2_BASE : IDE_CHANNEL_1_BASE);
 	__asm
@@ -35,7 +35,7 @@ void HdRead ( UCHAR channel, void *buffer, ULONG len)
 	}
 }
 
-void HdWrite ( UCHAR channel, void *buffer, ULONG len)
+void IdeWrite ( UCHAR channel, void *buffer, ULONG len)
 {
 	volatile USHORT Port = (channel ? IDE_CHANNEL_2_BASE : IDE_CHANNEL_1_BASE);
 	__asm
@@ -52,25 +52,25 @@ void HdWrite ( UCHAR channel, void *buffer, ULONG len)
 	}
 }
 
-void HdWritePort( UCHAR channel, UCHAR offset, UCHAR Value )
+void IdeWritePort( UCHAR channel, UCHAR offset, UCHAR Value )
 {
 	volatile USHORT Port = (channel ? IDE_CHANNEL_2_BASE : IDE_CHANNEL_1_BASE);
 	KiOutPort (Port+offset, Value);
 }
 
-USHORT HdReadPortW( UCHAR channel, UCHAR offset )
+USHORT IdeReadPortW( UCHAR channel, UCHAR offset )
 {
 	volatile USHORT Port = (channel ? IDE_CHANNEL_2_BASE : IDE_CHANNEL_1_BASE);
 	return KiInPortW (Port+offset);
 }
 
-VOID HdWritePortW( UCHAR channel, UCHAR offset, USHORT Value )
+VOID IdeWritePortW( UCHAR channel, UCHAR offset, USHORT Value )
 {
 	volatile USHORT Port = (channel ? IDE_CHANNEL_2_BASE : IDE_CHANNEL_1_BASE);
 	return KiOutPortW (Port+offset, Value);
 }
 
-void HdControlChannel( UCHAR channel, UCHAR byte )
+void IdeControlChannel( UCHAR channel, UCHAR byte )
 {
 	volatile USHORT Port = (channel ? IDE_CHANNEL_1_CONTROL : IDE_CHANNEL_2_CONTROL);
 	KiOutPort (Port, byte);
@@ -78,7 +78,7 @@ void HdControlChannel( UCHAR channel, UCHAR byte )
 
 
 //
-//   IDE HDD ports map:
+//   IDE IDE ports map:
 //
 // ========================================================
 //  Port              CHS       LBA         R        W
@@ -140,9 +140,9 @@ typedef struct IDE_STATE
 	UCHAR Busy : 1;					// BSY
 } *PIDE_STATE;
 
-IDE_STATE HdGetState(UCHAR ch)
+IDE_STATE IdeGetState(UCHAR ch)
 {
-	volatile UCHAR st = HdReadPort (ch, 7);
+	volatile UCHAR st = IdeReadPort (ch, 7);
 	return *(PIDE_STATE)&st;
 }
 
@@ -167,43 +167,43 @@ IDE_STATE HdGetState(UCHAR ch)
 #pragma pack()
 
 
-BOOLEAN HdPulsedIrq[2] = { 0, 0 };
+BOOLEAN IdePulsedIrq[2] = { 0, 0 };
 
 __declspec(naked)
 VOID
-Hd0ProcessIrq()
+Ide0ProcessIrq()
 {
-//	HdPrint(("~~~~~~~ HDD0 IRQ ~~~~~~~\n"));
-	HdPulsedIrq[0] = 1;
+//	IdePrint(("~~~~~~~ IDE0 IRQ ~~~~~~~\n"));
+	IdePulsedIrq[0] = 1;
 
 	__asm jmp KiEoiHelper;
 }
 
 __declspec(naked)
 VOID
-Hd1ProcessIrq()
+Ide1ProcessIrq()
 {
-//	HdPrint(("~~~~~~~ HDD1 IRQ ~~~~~~~\n"));
-	HdPulsedIrq[1] = 1;
+//	IdePrint(("~~~~~~~ IDE1 IRQ ~~~~~~~\n"));
+	IdePulsedIrq[1] = 1;
 
 	__asm jmp KiEoiHelper;
 }
 
 BOOLEAN
 KEAPI
-HdCheckDevicePresence(
+IdeCheckDevicePresence(
 	UCHAR Channel,
 	UCHAR Device
 	)
 {
 	const ULONG DefTimeout = 10000;
 	ULONG Timeout = DefTimeout;
-	while (HdGetState(Channel).Busy && Timeout>0)
+	while (IdeGetState(Channel).Busy && Timeout>0)
 		Timeout--;
 
 	if (Timeout==0)
 	{
-		//HdControlChannel (Channel, 1);
+		//IdeControlChannel (Channel, 1);
 		return 0;
 	}
 
@@ -211,10 +211,10 @@ HdCheckDevicePresence(
 	port6.Reserved1 = 1;
 	port6.Reserved2 = 1;
 	port6.Dev = Device;
-	HdWritePort (Channel, 6, *(UCHAR*)&port6);
+	IdeWritePort (Channel, 6, *(UCHAR*)&port6);
 
 	Timeout = DefTimeout;
-	while (!(HdGetState(Channel).Busy == 0 && HdGetState(Channel).DeviceReady == 1) && Timeout > 0)
+	while (!(IdeGetState(Channel).Busy == 0 && IdeGetState(Channel).DeviceReady == 1) && Timeout > 0)
 		Timeout --;
 
 	if (Timeout==0)
@@ -222,7 +222,7 @@ HdCheckDevicePresence(
 		if (Device)
 		{
 			port6.Dev = 0;
-			HdWritePort (Channel, 6, *(UCHAR*)&port6);
+			IdeWritePort (Channel, 6, *(UCHAR*)&port6);
 		}
 		return 0;
 	}
@@ -231,6 +231,8 @@ HdCheckDevicePresence(
 }
 
 #define PHYS_IDE_CB_MASK	'_IDE'
+
+struct IDE_DEVICE_IDENTIFICATION;
 
 struct PHYSICAL_IDE_CONTROL_BLOCK
 {
@@ -242,6 +244,7 @@ struct PHYSICAL_IDE_CONTROL_BLOCK
 		{
 			UCHAR Channel;
 			UCHAR Device;
+			IDE_DEVICE_IDENTIFICATION *Identification;
 		};
 		struct
 		{
@@ -252,9 +255,9 @@ struct PHYSICAL_IDE_CONTROL_BLOCK
 	};
 };
 
-#define HdPrint(x) KiDebugPrint x
+#define IdePrint(x) KiDebugPrint x
 
-#define DUMP_STRUC_FIELD(OBJECT, FNAME, TYPE) HdPrint(( #OBJECT "->" #FNAME " = " TYPE "\n", (OBJECT)->FNAME ));
+#define DUMP_STRUC_FIELD(OBJECT, FNAME, TYPE) IdePrint(( #OBJECT "->" #FNAME " = " TYPE "\n", (OBJECT)->FNAME ));
 
 void DUMP_PCB(PHYSICAL_IDE_CONTROL_BLOCK *OBJECT) 
 {
@@ -273,9 +276,159 @@ void DUMP_PCB(PHYSICAL_IDE_CONTROL_BLOCK *OBJECT)
 	}														
 }
 
+#pragma pack(2)
+
+struct IDE_DEVICE_IDENTIFICATION
+{
+	USHORT Reserved1 : 2;
+	USHORT ResonseIncomplete : 1;
+	USHORT Reserved2 : 3;
+	USHORT NotRemovableController : 1;
+	USHORT RemovableMedia : 1;
+	USHORT Reserved3 : 7;
+	USHORT ATADevice : 1;
+	USHORT NumberCylinders;
+	USHORT SpecificConfiguration;
+	USHORT NumberHeads;
+	USHORT Reserved4[2];
+	USHORT SectorsPerTrack;
+	USHORT Reserved5[3];
+	USHORT SerialNumber [10];
+	USHORT Reserved6[3];
+	USHORT FirmwareRevision [4];
+	USHORT ModelNumber [20];
+	//47
+
+	USHORT MaxSectPerIrqMult : 8;
+	USHORT Reserved7 : 8;
+	
+	USHORT Reserved8;
+	
+	USHORT Reserved9 : 10;
+	USHORT IORDYMayBeDisabled : 1;
+	USHORT IORDYSupported : 1;
+	USHORT Reserved10 : 1;
+	USHORT StandyTimerSupported : 1;
+	USHORT Reserved11 : 2;
+	
+	USHORT Reserved12 [3];
+
+	USHORT Fields5458Valid : 1;
+	USHORT Fields6470Valid : 1;
+	USHORT Fields88Valid : 1;
+	USHORT Reserved : 13;
+	USHORT NumberCurrentCylinders;
+	USHORT NumberCurrentHeads;
+	USHORT NumberCurrentSectorsPerTrack;
+	ULONG CapacityInSectors;
+
+	// ...
+};
+
+STATIC_ASSERT (sizeof(IDE_DEVICE_IDENTIFICATION) == 118);
+#pragma pack()
+
+
+void
+IdeStringToCString(
+	USHORT *IdeString,
+	char *CString,
+	ULONG nWords
+	)
+{
+	ULONG i;
+	for (i=0; i<nWords; i++)
+	{
+		CString[i*2] = IdeString[i] >> 8;
+		CString[i*2 + 1] = IdeString[i] & 0xFF;
+	}
+	CString[i*2] = 0;
+}
+
 STATUS
 KEAPI
-HdPerformRead(
+IdeIdentifyDevice(
+	IN UCHAR Channel,
+	IN UCHAR Device,
+	OUT IDE_DEVICE_IDENTIFICATION **pID
+	)
+/*++
+	Perform device identification
+--*/
+{
+	IDE_PORT_6 port6 = {0};
+	port6.Reserved1 = 1;
+	port6.Reserved2 = 1;
+	port6.Dev = Device;
+
+	IdeWritePort (Channel, 6, *(UCHAR*)&port6);
+
+
+	ULONG Timeout = 1000000;
+	while (!(IdeGetState(Channel).Busy == 0 && IdeGetState(Channel).DeviceReady == 1) && Timeout > 0)
+	{
+		Timeout --;
+	}
+
+	if (Timeout==0)
+	{
+		IdePrint(("TIMEDOUT\n"));
+		return STATUS_DEVICE_NOT_READY;
+	}
+
+
+	IdeWritePort (Channel, 7, IDE_IDENTIFY_DEVICE);
+
+
+	Timeout = 1000000;
+	while (!(IdeGetState(Channel).Busy == 0 && IdeGetState(Channel).DeviceReady == 1) && Timeout > 0)
+	{
+		Timeout --;
+	}
+
+	if (Timeout==0)
+	{
+		IdePrint(("TIMEDOUT\n"));
+		return STATUS_DEVICE_NOT_READY;
+	}
+
+	
+	char *buf = (char*) MmAllocatePage ();
+	IdeRead (Channel, buf, 512);
+
+
+	KdPrint(("Device on IDE[%d:%d] identified:\n", Channel, Device));
+
+	IDE_DEVICE_IDENTIFICATION *id = (IDE_DEVICE_IDENTIFICATION*) buf;
+	
+	KdPrint(("Removable Media : %d\n", id->RemovableMedia));
+	KdPrint(("ResonseIncomplete : %d\n", id->ResonseIncomplete));
+	KdPrint(("NotRemovableController : %d\n", id->NotRemovableController));
+	KdPrint(("ATADevice : %d\n", id->ATADevice));
+	KdPrint(("NumberCylinders : %d\n", id->NumberCylinders));
+	KdPrint(("NumberHeads : %d\n", id->NumberHeads));
+	KdPrint(("SectorsPerTrack : %d\n", id->SectorsPerTrack));
+
+	char Serial[21];
+	IdeStringToCString (id->SerialNumber, Serial, 10);
+	KdPrint(("SerialNumber : %s\n", Serial));
+
+	char Revision[7];
+	IdeStringToCString (id->FirmwareRevision, Revision, 3);
+	KdPrint(("FirmwareRevision : %s\n", Revision));
+
+	char Model[41];
+	IdeStringToCString (id->ModelNumber, Model, 20);
+	KdPrint(("ModelNumber : %s\n", Model));
+
+	*pID = id;
+
+	return STATUS_SUCCESS;
+}
+
+STATUS
+KEAPI
+IdePerformRead(
 	IN PFILE FileObject,
 	IN ULONG SectorNumber,
 	OUT PVOID Buffer,
@@ -287,7 +440,7 @@ HdPerformRead(
 
 	if (!MmIsAddressValid(FileObject))
 	{
-		HdPrint(("FileObject=%08x\n", FileObject));
+		IdePrint(("FileObject=%08x\n", FileObject));
 	}
 	ASSERT (MmIsAddressValid(FileObject));
 	ASSERT (MmIsAddressValid(FileObject->DeviceObject));
@@ -297,16 +450,16 @@ HdPerformRead(
 #define CHANNEL (pcb->Channel)
 #define DEVICE  (pcb->Device)
 
-//	HdPrint(("HD: performing generic read, pcb=%08x\n", pcb));
+//	IdePrint(("HD: performing generic read, pcb=%08x\n", pcb));
 	//DUMP_PCB (pcb);
 
 	if (pcb->Mask != PHYS_IDE_CB_MASK)
 	{
-		HdPrint(("pcb->Mask=%08x\n", pcb->Mask));
+		IdePrint(("pcb->Mask=%08x\n", pcb->Mask));
 
 		UNICODE_STRING name;
 		STATUS Status = ObQueryObjectName (FileObject->DeviceObject, &name);
-		HdPrint(("device name %S\n", name.Buffer));
+		IdePrint(("device name %S\n", name.Buffer));
 	}
 	ASSERT (pcb->Mask == PHYS_IDE_CB_MASK);
 
@@ -315,16 +468,16 @@ HdPerformRead(
 
 	if (pcb->PhysicalOrPartition == 0)
 	{
-		//HdPrint(("HD: [%08x] Recursion read for partition [%08x -> %08x]\n", FileObject, FileObject->DeviceObject, pcb->RelatedPhysical->DeviceObject));
+		//IdePrint(("HD: [%08x] Recursion read for partition [%08x -> %08x]\n", FileObject, FileObject->DeviceObject, pcb->RelatedPhysical->DeviceObject));
 
-		//HdPrint(("Dumping related PCB\n"));		
+		//IdePrint(("Dumping related PCB\n"));		
 		//DUMP_PCB ( (PHYSICAL_IDE_CONTROL_BLOCK*)pcb->RelatedPhysical->FsContext2 );
 
-		//return HdPerformRead (pcb->RelatedPhysical, SectorNumber /*already adjusted by HddRead()*/, Buffer, Size);
-		return HdPerformRead (pcb->RelatedPhysical, SectorNumber + pcb->PartitionStart, Buffer, Size, nBytesWritten);
+		//return IdePerformRead (pcb->RelatedPhysical, SectorNumber /*already adjusted by HddRead()*/, Buffer, Size);
+		return IdePerformRead (pcb->RelatedPhysical, SectorNumber + pcb->PartitionStart, Buffer, Size, nBytesWritten);
 	}
 
-//	HdPrint(("HD: performing read IDE[%d:%d], Sector %08x\n", CHANNEL, DEVICE, SectorNumber));
+//	IdePrint(("HD: performing read IDE[%d:%d], Sector %08x\n", CHANNEL, DEVICE, SectorNumber));
 
 	ASSERT (CHANNEL < 2);
 	ASSERT (DEVICE < 2);
@@ -335,115 +488,119 @@ HdPerformRead(
 	port6.Reserved2 = 1;
 	port6.Dev = DEVICE;
 
-	HdWritePort (CHANNEL, 6, *(UCHAR*)&port6);
+	IdeWritePort (CHANNEL, 6, *(UCHAR*)&port6);
 
 _retry:
 
 	Timeout = 1000000;
 
-//	HdPrint(("HD: ~BSY.. "));
+//	IdePrint(("HD: ~BSY.. "));
 
-	while (HdGetState(CHANNEL).Busy && Timeout>0)
+	while (IdeGetState(CHANNEL).Busy && Timeout>0)
 		Timeout--;
 
 	if (Timeout==0)
 	{
-		HdPrint(("TIMEDOUT\n"));
+		IdePrint(("TIMEDOUT\n"));
 		return STATUS_DEVICE_NOT_READY;
 	}
 
-//	HdPrint(("~DEV.. "));
+//	IdePrint(("~DEV.. "));
 
 	Timeout = 1000000;
-	while (!(HdGetState(CHANNEL).Busy == 0 && HdGetState(CHANNEL).DeviceReady == 1) && Timeout > 0)
+	while (!(IdeGetState(CHANNEL).Busy == 0 && IdeGetState(CHANNEL).DeviceReady == 1) && Timeout > 0)
 	{
 		Timeout --;
 	}
 
 	if (Timeout==0)
 	{
-		HdPrint(("TIMEDOUT\n"));
+		IdePrint(("TIMEDOUT\n"));
 
-		HdControlChannel (CHANNEL, 4);
+		IdeControlChannel (CHANNEL, 4);
 		for (int i=0; i<1000000; i++) __asm nop;
-		HdControlChannel (CHANNEL, 0);
+		IdeControlChannel (CHANNEL, 0);
 
 		goto _retry;
 
 		return STATUS_DEVICE_NOT_READY;
 	}
 
-//	HdPrint(("OK. "));
+//	IdePrint(("OK. "));
 
 	ASSERT ( (SectorNumber & 0xFF000000) == 0 );
 
-	HdPulsedIrq[CHANNEL] = 0;
+	IdePulsedIrq[CHANNEL] = 0;
 
-	HdWritePort (CHANNEL, 2, 1);								// 1 cluster
-	HdWritePort (CHANNEL, 3, SectorNumber & 0xFF);
-	HdWritePort (CHANNEL, 4, (SectorNumber >> 8) & 0xFF);
-	HdWritePort (CHANNEL, 5, (SectorNumber >> 16) & 0xFF);
+	IdeWritePort (CHANNEL, 2, 1);								// 1 cluster
+	IdeWritePort (CHANNEL, 3, SectorNumber & 0xFF);
+	IdeWritePort (CHANNEL, 4, (SectorNumber >> 8) & 0xFF);
+	IdeWritePort (CHANNEL, 5, (SectorNumber >> 16) & 0xFF);
 
-	HdWritePort (CHANNEL, 7, IDE_CMD_READ);
+	IdeWritePort (CHANNEL, 7, IDE_CMD_READ);
 
-//	HdPrint(("~SENDING "));
+//	IdePrint(("~SENDING "));
 
 	Timeout = 1000000;
-	while (HdGetState(CHANNEL).Busy && Timeout > 0)
+	while (IdeGetState(CHANNEL).Busy && Timeout > 0)
 		Timeout --;
 
 	if (Timeout==0)
 	{
-		HdPrint(("TIMEDOUT\n"));
+		IdePrint(("TIMEDOUT\n"));
 		return STATUS_DEVICE_NOT_READY;
 	}
 
-	if (HdGetState(CHANNEL).DeviceFailure)
+	if (IdeGetState(CHANNEL).DeviceFailure)
 	{
-		HdPrint(("FAILED\n"));
+		IdePrint(("FAILED\n"));
 		return STATUS_INTERNAL_FAULT;
 	}
 
-	if (HdGetState(CHANNEL).Error)
+	if (IdeGetState(CHANNEL).Error)
 	{
-		UCHAR err = HdReadPort (CHANNEL, 1);
-		HdPrint(("ERROR [%02x]\n", err));
+		UCHAR err = IdeReadPort (CHANNEL, 1);
+		IdePrint(("ERROR [%02x]\n", err));
+
+		if (err == 0x20)
+			return STATUS_NO_MEDIA_IN_DEVICE;
+
 		return STATUS_UNSUCCESSFUL;
 	}
 
-//	HdPrint(("~READING.. "));
+//	IdePrint(("~READING.. "));
 
 	//Timeout = 1000000;
-	//while (!HdGetState(CHANNEL).DataRequestReady && Timeout > 0)
+	//while (!IdeGetState(CHANNEL).DataRequestReady && Timeout > 0)
 	//	Timeout --;
 
-	while (!HdPulsedIrq[CHANNEL]);
-	HdPulsedIrq[CHANNEL] = 0;
+	while (!IdePulsedIrq[CHANNEL]);
+	IdePulsedIrq[CHANNEL] = 0;
 
 	if (Timeout==0)
 	{
-		HdPrint(("TIMEDOUT\n"));
+		IdePrint(("TIMEDOUT\n"));
 		return STATUS_DEVICE_NOT_READY;
 	}
 
-	if (HdGetState(CHANNEL).DeviceFailure)
+	if (IdeGetState(CHANNEL).DeviceFailure)
 	{
-		HdPrint(("FAILED\n"));
+		IdePrint(("FAILED\n"));
 		return STATUS_INTERNAL_FAULT;
 	}
 
-	if (HdGetState(CHANNEL).Error)
+	if (IdeGetState(CHANNEL).Error)
 	{
-		HdPrint(("ERROR\n"));
+		IdePrint(("ERROR\n"));
 		return STATUS_UNSUCCESSFUL;
 	}
 
-	HdRead (CHANNEL, Buffer, ALIGN_UP(Size, SECTOR_SIZE)/2);
+	IdeRead (CHANNEL, Buffer, ALIGN_UP(Size, SECTOR_SIZE)/2);
 
-//	HdPrint(("OK\n"));
+//	IdePrint(("OK\n"));
 
 	/*
-	HdPrint (("Read succedded for [%d:%d], Sector %d, [%02x %02x %02x %02x  %02x %02x %02x %02x]\n",
+	IdePrint (("Read succedded for [%d:%d], Sector %d, [%02x %02x %02x %02x  %02x %02x %02x %02x]\n",
 		CHANNEL,
 		DEVICE,
 		SectorNumber,
@@ -467,7 +624,7 @@ _retry:
 
 STATUS
 KEAPI
-HdPerformWrite(
+IdePerformWrite(
 	IN PFILE FileObject,
 	IN ULONG SectorNumber,
 	OUT PVOID Buffer,
@@ -479,7 +636,7 @@ HdPerformWrite(
 
 	if (!MmIsAddressValid(FileObject))
 	{
-		HdPrint(("FileObject=%08x\n", FileObject));
+		IdePrint(("FileObject=%08x\n", FileObject));
 	}
 	ASSERT (MmIsAddressValid(FileObject));
 	ASSERT (MmIsAddressValid(FileObject->DeviceObject));
@@ -491,20 +648,20 @@ HdPerformWrite(
 
 	if (pcb->Mask != PHYS_IDE_CB_MASK)
 	{
-		HdPrint(("pcb->Mask=%08x\n", pcb->Mask));
+		IdePrint(("pcb->Mask=%08x\n", pcb->Mask));
 
 		UNICODE_STRING name;
 		STATUS Status = ObQueryObjectName (FileObject->DeviceObject, &name);
-		HdPrint(("device name %S\n", name.Buffer));
+		IdePrint(("device name %S\n", name.Buffer));
 	}
 	ASSERT (pcb->Mask == PHYS_IDE_CB_MASK);
 
 	if (pcb->PhysicalOrPartition == 0)
 	{
-		return HdPerformWrite (pcb->RelatedPhysical, SectorNumber + pcb->PartitionStart, Buffer, Size, nBytesWritten);
+		return IdePerformWrite (pcb->RelatedPhysical, SectorNumber + pcb->PartitionStart, Buffer, Size, nBytesWritten);
 	}
 
-	HdPrint(("HD: performing write IDE[%d:%d], Sector %08x\n", CHANNEL, DEVICE, SectorNumber));
+	IdePrint(("HD: performing write IDE[%d:%d], Sector %08x\n", CHANNEL, DEVICE, SectorNumber));
 
 	ASSERT (CHANNEL < 2);
 	ASSERT (DEVICE < 2);
@@ -515,34 +672,34 @@ HdPerformWrite(
 	port6.Reserved2 = 1;
 	port6.Dev = DEVICE;
 
-	HdWritePort (CHANNEL, 6, *(UCHAR*)&port6);
+	IdeWritePort (CHANNEL, 6, *(UCHAR*)&port6);
 
 _retry:
 
 	Timeout = 1000000;
 
-	while (HdGetState(CHANNEL).Busy && Timeout>0)
+	while (IdeGetState(CHANNEL).Busy && Timeout>0)
 		Timeout--;
 
 	if (Timeout==0)
 	{
-		HdPrint(("TIMEDOUT\n"));
+		IdePrint(("TIMEDOUT\n"));
 		return STATUS_DEVICE_NOT_READY;
 	}
 
 	Timeout = 1000000;
-	while (!(HdGetState(CHANNEL).Busy == 0 && HdGetState(CHANNEL).DeviceReady == 1) && Timeout > 0)
+	while (!(IdeGetState(CHANNEL).Busy == 0 && IdeGetState(CHANNEL).DeviceReady == 1) && Timeout > 0)
 	{
 		Timeout --;
 	}
 
 	if (Timeout==0)
 	{
-		HdPrint(("TIMEDOUT\n"));
+		IdePrint(("TIMEDOUT\n"));
 
-		HdControlChannel (CHANNEL, 4);
+		IdeControlChannel (CHANNEL, 4);
 		for (int i=0; i<1000000; i++) __asm nop;
-		HdControlChannel (CHANNEL, 0);
+		IdeControlChannel (CHANNEL, 0);
 
 		goto _retry;
 
@@ -551,64 +708,64 @@ _retry:
 
 	ASSERT ( (SectorNumber & 0xFF000000) == 0 );
 
-	HdPulsedIrq[CHANNEL] = 0;
+	IdePulsedIrq[CHANNEL] = 0;
 
-	HdWritePort (CHANNEL, 2, 1);								// 1 cluster
-	HdWritePort (CHANNEL, 3, SectorNumber & 0xFF);
-	HdWritePort (CHANNEL, 4, (SectorNumber >> 8) & 0xFF);
-	HdWritePort (CHANNEL, 5, (SectorNumber >> 16) & 0xFF);
+	IdeWritePort (CHANNEL, 2, 1);								// 1 cluster
+	IdeWritePort (CHANNEL, 3, SectorNumber & 0xFF);
+	IdeWritePort (CHANNEL, 4, (SectorNumber >> 8) & 0xFF);
+	IdeWritePort (CHANNEL, 5, (SectorNumber >> 16) & 0xFF);
 
-	HdWritePort (CHANNEL, 7, IDE_CMD_WRITE);
+	IdeWritePort (CHANNEL, 7, IDE_CMD_WRITE);
 
 
 	Timeout = 1000000;
-	while (HdGetState(CHANNEL).Busy && Timeout > 0)
+	while (IdeGetState(CHANNEL).Busy && Timeout > 0)
 		Timeout --;
 
 	if (Timeout==0)
 	{
-		HdPrint(("TIMEDOUT\n"));
+		IdePrint(("TIMEDOUT\n"));
 		return STATUS_DEVICE_NOT_READY;
 	}
 
-	if (HdGetState(CHANNEL).DeviceFailure)
+	if (IdeGetState(CHANNEL).DeviceFailure)
 	{
-		HdPrint(("FAILED\n"));
+		IdePrint(("FAILED\n"));
 		return STATUS_INTERNAL_FAULT;
 	}
 
-	if (HdGetState(CHANNEL).Error)
+	if (IdeGetState(CHANNEL).Error)
 	{
-		UCHAR err = HdReadPort (CHANNEL, 1);
-		HdPrint(("ERROR [%02x]\n", err));
+		UCHAR err = IdeReadPort (CHANNEL, 1);
+		IdePrint(("ERROR [%02x]\n", err));
 		return STATUS_UNSUCCESSFUL;
 	}
 
 
-	while (!HdPulsedIrq[CHANNEL]);
-	HdPulsedIrq[CHANNEL] = 0;
+	while (!IdePulsedIrq[CHANNEL]);
+	IdePulsedIrq[CHANNEL] = 0;
 
 	if (Timeout==0)
 	{
-		HdPrint(("TIMEDOUT\n"));
+		IdePrint(("TIMEDOUT\n"));
 		return STATUS_DEVICE_NOT_READY;
 	}
 
-	if (HdGetState(CHANNEL).DeviceFailure)
+	if (IdeGetState(CHANNEL).DeviceFailure)
 	{
-		HdPrint(("FAILED\n"));
+		IdePrint(("FAILED\n"));
 		return STATUS_INTERNAL_FAULT;
 	}
 
-	if (HdGetState(CHANNEL).Error)
+	if (IdeGetState(CHANNEL).Error)
 	{
-		HdPrint(("ERROR\n"));
+		IdePrint(("ERROR\n"));
 		return STATUS_UNSUCCESSFUL;
 	}
 
-	HdWrite (CHANNEL, Buffer, ALIGN_UP(Size, SECTOR_SIZE)/2);
+	IdeWrite (CHANNEL, Buffer, ALIGN_UP(Size, SECTOR_SIZE)/2);
 
-	HdPrint (("HDD: Write succedded for [%d:%d], Sector %d, [%02x %02x %02x %02x  %02x %02x %02x %02x]\n",
+	IdePrint (("IDE: Write succedded for [%d:%d], Sector %d, [%02x %02x %02x %02x  %02x %02x %02x %02x]\n",
 		CHANNEL,
 		DEVICE,
 		SectorNumber,
@@ -659,7 +816,7 @@ typedef struct MBR_PARTITION
 
 STATUS
 KEAPI
-HdAddDevice(
+IdeAddDevice(
 	PDRIVER DriverObject,
 	UCHAR Number
 	)
@@ -670,7 +827,7 @@ HdAddDevice(
 	RtlInitUnicodeString (&DeviceName, L"\\Device\\hda");
 	DeviceName.Buffer[10] = 'a' + Number;
 
-	HdPrint(("HDD: Creating device %S on IDE channel\n", DeviceName.Buffer));
+	IdePrint(("IDE: Creating device %S on IDE channel\n", DeviceName.Buffer));
 
 	Status = IoCreateDevice (
 		DriverObject,
@@ -682,21 +839,32 @@ HdAddDevice(
 
 	if (!SUCCESS(Status))
 	{
-		HdPrint(("[~] HDD: Cannot create device, IoCreateDevice failed with status %08x\n", Status));
+		IdePrint(("[~] IDE: Cannot create device, IoCreateDevice failed with status %08x\n", Status));
 		return Status;
 	}
 
+	UCHAR Channel = Number >> 1;
+	UCHAR Device = Number & 1;
+
+	IdePrint(("IDE: Identifying device [%d:%d]\n", Channel, Device));
+
+	IDE_DEVICE_IDENTIFICATION *id;
+
+	Status = IdeIdentifyDevice (Channel, Device, &id);
+	if (!SUCCESS(Status))
+	{
+		IdePrint(("[~] IDE device identification failed with status %08x\n", Status));
+		return Status;
+	}
+
+
 	PHYSICAL_IDE_CONTROL_BLOCK* pcb = (PHYSICAL_IDE_CONTROL_BLOCK*)(DeviceObject+1);
 	pcb->Mask = PHYS_IDE_CB_MASK;
-	pcb->Channel = Number >> 1;
-	pcb->Device = Number & 1;
+	pcb->Channel = Channel;
+	pcb->Device = Device;
 	pcb->PhysicalOrPartition = 1;
+	pcb->Identification = id;
 
-	//
-	// Read partition table
-	//
-
-	HdPrint(("[~] HDD: Reading partition table\n"));
 
 	PFILE PhysicalFileObject;
 	IO_STATUS_BLOCK IoStatus;
@@ -712,15 +880,46 @@ HdAddDevice(
 
 	if (!SUCCESS(Status))
 	{
-		HdPrint(("[~] HDD: Cannot open created device, IoCreateFile failed with status %08x\n", Status));
+		IdePrint(("[~] IDE: Cannot open created device, IoCreateFile failed with status %08x\n", Status));
 		return Status;
 	}
 
+	if (id->RemovableMedia)
+	{
+		IdePrint(("[~] IDE: Removable-Media device. Trying to find ECMA-119\n"));
+
+		char FirstExtent[2048];
+		LARGE_INTEGER Offset = {0};
+		Offset.LowPart = 2048 * 16;
+
+		Status = IoReadFile (
+			PhysicalFileObject,
+			FirstExtent,
+			2048,
+			&Offset,
+			0,
+			&IoStatus
+			);
+
+		if (!SUCCESS(Status))
+		{
+			IdePrint(("[-] IDE: Couln't read CDROM first extent [IoReadFile returned %08x]\n", Status));
+			IoCloseFile (PhysicalFileObject);
+			return Status;
+		}
+
+		IdePrint(("[~] IDE:  Signature = %s\n", &FirstExtent[1]));
+
+		return STATUS_SUCCESS;
+	}
+
+	//
+	// Read partition table
+	//
+
+	IdePrint(("[~] IDE: Reading partition table\n"));
+
 	UCHAR Buffer[512];
-	
-	//
-	// Read MBR
-	//
 
 	Status = IoReadFile(
 		PhysicalFileObject,
@@ -733,7 +932,7 @@ HdAddDevice(
 	
 	if (!SUCCESS(Status))
 	{
-		HdPrint(("[~] HDD: Cannot read partition table, IoReadFile failed with status %08x\n", Status));
+		IdePrint(("[~] IDE: Cannot read partition table, IoReadFile failed with status %08x\n", Status));
 		IoCloseFile (PhysicalFileObject);
 		return Status;
 	}
@@ -744,7 +943,7 @@ HdAddDevice(
 
 	if (Buffer[511] != 0xAA || Buffer[510] != 0x55)
 	{
-		HdPrint(("[~] HDD: Master Boot Record BAD on disk %S\n", DeviceName.Buffer));
+		IdePrint(("[~] IDE: Master Boot Record BAD on disk %S\n", DeviceName.Buffer));
 		IoCloseFile (PhysicalFileObject);
 		return STATUS_UNSUCCESSFUL;
 	}
@@ -755,12 +954,12 @@ HdAddDevice(
 	{
 		if (!(PartitionTable[i].Active == 0x80 || PartitionTable[i].Active == 0x00))
 		{
-			HdPrint(("[~] HDD: Partition table BAD on disk %S\n", DeviceName.Buffer));
+			IdePrint(("[~] IDE: Partition table BAD on disk %S\n", DeviceName.Buffer));
 			IoCloseFile (PhysicalFileObject);
 			return STATUS_UNSUCCESSFUL;
 		}
 
-		HdPrint(("Partition#%d: Active=%02x,Type=%02x,FirstSector=%d,NumberSectors=%d\n",
+		IdePrint(("Partition#%d: Active=%02x,Type=%02x,FirstSector=%d,NumberSectors=%d\n",
 			i,
 			PartitionTable[i].Active,
 			PartitionTable[i].Type,
@@ -778,7 +977,7 @@ HdAddDevice(
 		PartitionName.Buffer[10] = 'a' + Number;
 		PartitionName.Buffer[11] = '0' + i;
 
-		HdPrint(("HDD: Creating partition %S.. ", PartitionName.Buffer));
+		IdePrint(("IDE: Creating partition %S.. ", PartitionName.Buffer));
 
 		Status = IoCreateDevice (
 			DriverObject,
@@ -790,7 +989,7 @@ HdAddDevice(
 
 		if (!SUCCESS(Status))
 		{
-			HdPrint(("Cannot create device, IoCreateDevice failed with status %08x\n", Status));
+			IdePrint(("Cannot create device, IoCreateDevice failed with status %08x\n", Status));
 			return Status;
 		}
 
@@ -801,7 +1000,7 @@ HdAddDevice(
 		pcb->PartitionEnd = PartitionTable[i].FirstSector + PartitionTable[i].NumberOfSectors;
 		pcb->RelatedPhysical = PhysicalFileObject;
 
-		HdPrint(("Created partition %08x\n", Partition));
+		IdePrint(("Created partition %08x\n", Partition));
 
 		switch (PartitionTable[i].Type)
 		{
@@ -810,7 +1009,7 @@ HdAddDevice(
 		case 0x06:
 		case 0x0B:
 			{
-				HdPrint(("Fat partition found [%02x]. Mounting..\n", PartitionTable[i].Type));
+				IdePrint(("Fat partition found [%02x]. Mounting..\n", PartitionTable[i].Type));
 
 				UNICODE_STRING FatName;
 				RtlInitUnicodeString( &FatName, L"\\FileSystem\\Fat" );
@@ -820,7 +1019,7 @@ HdAddDevice(
 				Status = ObReferenceObjectByName (&FatName, IoDeviceObjectType, KernelMode, FILE_READ_DATA, NULL, (PVOID*)&FatFs);
 				if (!SUCCESS(Status))
 				{
-					HdPrint(("ObReferenceObjectByName failed for FAT fs: %08x\n", Status));
+					IdePrint(("ObReferenceObjectByName failed for FAT fs: %08x\n", Status));
 					continue;
 				}
 
@@ -830,12 +1029,12 @@ HdAddDevice(
 
 				if (!SUCCESS(Status))
 				{
-					HdPrint(("HDD: IoRequestMount failed : %08x\n", Status));
+					IdePrint(("IDE: IoRequestMount failed : %08x\n", Status));
 					return Status;
 				}
 				else
 				{
-					HdPrint(("HDD: Mounted partition %S for FAT file system\n", PartitionName.Buffer));
+					IdePrint(("IDE: Mounted partition %S for FAT file system\n", PartitionName.Buffer));
 				}
 			}
 			break;
@@ -847,12 +1046,12 @@ HdAddDevice(
 
 STATUS
 KEAPI
-HddCreateClose(
+IdeCreateClose(
 	PDEVICE DeviceObject,
 	PIRP Irp
 	)
 {
-	HdPrint(("HDD: %s for %S\n", Irp->MajorFunction==IRP_CREATE ? "IRP_CREATE" : "IRP_CLOSE",
+	IdePrint(("IDE: %s for %S\n", Irp->MajorFunction==IRP_CREATE ? "IRP_CREATE" : "IRP_CLOSE",
 		Irp->FileObject->RelativeFileName.Buffer));
 
 	if (Irp->MajorFunction == IRP_CREATE)
@@ -861,34 +1060,34 @@ HddCreateClose(
 		// Initialize caching for the hdd (support only read-only access)
 		//
 
-		CCFILE_CACHE_CALLBACKS Callbacks = { HdPerformRead, HdPerformWrite };
+		CCFILE_CACHE_CALLBACKS Callbacks = { IdePerformRead, IdePerformWrite };
 		CcInitializeFileCaching (Irp->FileObject, SECTOR_SIZE, &Callbacks);
 
-		KdPrint(("HDD CREAT: Irp->File->CacheMap %08x\n", Irp->FileObject->CacheMap));
+		KdPrint(("IDE CREAT: Irp->File->CacheMap %08x\n", Irp->FileObject->CacheMap));
 
 		Irp->FileObject->FsContext2 = (DeviceObject+1); // IDE Drive Control Block
 
 		PHYSICAL_IDE_CONTROL_BLOCK* pcb = (PHYSICAL_IDE_CONTROL_BLOCK*)(DeviceObject+1);
 
-		HdPrint(("IDE Control Block saved: *=%08x, SIGN=%08x[%08x], PhysOrPart=%d\n", pcb, pcb->Mask,PHYS_IDE_CB_MASK, pcb->PhysicalOrPartition));
+		IdePrint(("IDE Control Block saved: *=%08x, SIGN=%08x[%08x], PhysOrPart=%d\n", pcb, pcb->Mask,PHYS_IDE_CB_MASK, pcb->PhysicalOrPartition));
 		if (pcb->PhysicalOrPartition == 0) // partition
 		{
 			if (!MmIsAddressValid (pcb->RelatedPhysical))
 			{
-				HdPrint(("PCB INVALID [RelatedPhysical=%08]\n", pcb->RelatedPhysical));
+				IdePrint(("PCB INVALID [RelatedPhysical=%08]\n", pcb->RelatedPhysical));
 				INT3
 			}
 			if (!MmIsAddressValid (pcb->RelatedPhysical->DeviceObject))
 			{
-				HdPrint(("PCB INVALID [RelatedPhysical=%08x, RPH->DevObj=%08x]\n", pcb->RelatedPhysical->DeviceObject));
+				IdePrint(("PCB INVALID [RelatedPhysical=%08x, RPH->DevObj=%08x]\n", pcb->RelatedPhysical->DeviceObject));
 				INT3
 			}
 			
-			HdPrint(("Related physical: File=%08x, Device=%08x", pcb->RelatedPhysical, pcb->RelatedPhysical->DeviceObject));
+			IdePrint(("Related physical: File=%08x, Device=%08x", pcb->RelatedPhysical, pcb->RelatedPhysical->DeviceObject));
 
 			pcb = (PHYSICAL_IDE_CONTROL_BLOCK*)(pcb->RelatedPhysical->DeviceObject + 1);
 
-			HdPrint(("PCB=%08x [SIGN=%08x, CH=%d DV=%d]\n", pcb, pcb->Mask, pcb->Channel, pcb->Device));
+			IdePrint(("PCB=%08x [SIGN=%08x, CH=%d DV=%d]\n", pcb, pcb->Mask, pcb->Channel, pcb->Device));
 		}
 	}
 	else
@@ -905,7 +1104,7 @@ HddCreateClose(
 
 STATUS
 KEAPI
-HddReadWrite(
+IdeReadWrite(
 	PDEVICE DeviceObject,
 	PIRP Irp
 	)
@@ -947,7 +1146,7 @@ HddReadWrite(
 		// Partition on the hark disk.
 		//
 
-		HdPrint(("HD: Resolving partition [PS=%d] : Sector %d -> %d\n", pcb->PartitionStart, 
+		IdePrint(("HD: Resolving partition [PS=%d] : Sector %d -> %d\n", pcb->PartitionStart, 
 			Offset/SECTOR_SIZE, 
 			Offset/SECTOR_SIZE + pcb->PartitionStart));
 
@@ -986,7 +1185,7 @@ HddReadWrite(
 #if 0
 STATUS
 KEAPI
-HddFsControl(
+IdeFsControl(
 	PDEVICE DeviceObject,
 	PIRP Irp
 	)
@@ -1027,57 +1226,55 @@ DriverEntry(
 	IN PDRIVER DriverObject
 	)
 {
-	HdPrint(("[~] LKM DriverEntry()\n"));
+	IdePrint(("[~] LKM DriverEntry()\n"));
 
-	KiConnectInterrupt (14, Hd0ProcessIrq);
-	KiConnectInterrupt (15, Hd1ProcessIrq);
+	KiConnectInterrupt (14, Ide0ProcessIrq);
+	KiConnectInterrupt (15, Ide1ProcessIrq);
 
-//	HdControlChannel (0, 2);
-//	HdControlChannel (1, 2);
+//	IdeControlChannel (0, 2);
+//	IdeControlChannel (1, 2);
 
 	BOOLEAN Presence[4];
 
-	HdPrint(("Checking presence (0,0).. "));
-	Presence[0] = HdCheckDevicePresence (0, 0);
-	HdPrint(("%s\n", (Presence[0] ? "TRUE" : "FALSE")));
+	IdePrint(("Checking presence (0,0).. "));
+	Presence[0] = IdeCheckDevicePresence (0, 0);
+	IdePrint(("%s\n", (Presence[0] ? "TRUE" : "FALSE")));
 
-	HdPrint(("Checking presence (0,1).. "));
-	Presence[1] = HdCheckDevicePresence (0, 1);
-	HdPrint(("%s\n", (Presence[1] ? "TRUE" : "FALSE")));
+	IdePrint(("Checking presence (0,1).. "));
+	Presence[1] = IdeCheckDevicePresence (0, 1);
+	IdePrint(("%s\n", (Presence[1] ? "TRUE" : "FALSE")));
 
-	HdPrint(("Checking presence (1,0).. "));
-	Presence[2] = HdCheckDevicePresence (1, 0);
-	HdPrint(("%s\n", (Presence[2] ? "TRUE" : "FALSE")));
+	IdePrint(("Checking presence (1,0).. "));
+	Presence[2] = IdeCheckDevicePresence (1, 0);
+	IdePrint(("%s\n", (Presence[2] ? "TRUE" : "FALSE")));
 
-	HdPrint(("Checking presence (1,1).. "));
-	Presence[3] = HdCheckDevicePresence (1, 1);
-	HdPrint(("%s\n", (Presence[3] ? "TRUE" : "FALSE")));
+	IdePrint(("Checking presence (1,1).. "));
+	Presence[3] = IdeCheckDevicePresence (1, 1);
+	IdePrint(("%s\n", (Presence[3] ? "TRUE" : "FALSE")));
 
 	DriverObject->IrpHandlers[IRP_CREATE] =
-	DriverObject->IrpHandlers[IRP_CLOSE]  = HddCreateClose;
+	DriverObject->IrpHandlers[IRP_CLOSE]  = IdeCreateClose;
 	DriverObject->IrpHandlers[IRP_READ]   = 
-	DriverObject->IrpHandlers[IRP_WRITE]  = HddReadWrite;
-	//DriverObject->IrpHandlers[IRP_FSCTL]  = HddFsControl;
+	DriverObject->IrpHandlers[IRP_WRITE]  = IdeReadWrite;
+	//DriverObject->IrpHandlers[IRP_FSCTL]  = IdeFsControl;
 
 	//
 	// Create four device objects
 	//
 
 	if (Presence[0])
-		HdAddDevice (DriverObject, 0);
+		IdeAddDevice (DriverObject, 0);
 
 	if (Presence[1])
-		HdAddDevice (DriverObject, 1);
-
-	INT3
+		IdeAddDevice (DriverObject, 1);
 
 	if (Presence[2])
-		HdAddDevice (DriverObject, 2);
+		IdeAddDevice (DriverObject, 2);
 
 	if (Presence[3])
-		HdAddDevice (DriverObject, 3);
+		IdeAddDevice (DriverObject, 3);
 
 
-	HdPrint(("HDD: Finished\n"));
+	IdePrint(("IDE: Finished\n"));
 	return STATUS_SUCCESS;
 }

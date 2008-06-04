@@ -334,6 +334,9 @@ CcpActualReadPage(
 			Status = STATUS_SUCCESS;
 			break;
 		}
+
+		if (Status == STATUS_NO_MEDIA_IN_DEVICE)
+			break;
 	}
 
 	return Status;
