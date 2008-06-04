@@ -295,8 +295,8 @@ KiDemoThread(
 	KeSetOnScreenStatus ("Loading device drivers [hdd.sys]");
 	KiMoveLoadingProgressBar (5);
 
-	RtlInitUnicodeString( &ImagePath, L"\\SystemRoot\\hdd.sys" );
-	RtlInitUnicodeString( &DriverName, L"\\Driver\\hdd" );
+	RtlInitUnicodeString( &ImagePath, L"\\SystemRoot\\ide.sys" );
+	RtlInitUnicodeString( &DriverName, L"\\Driver\\ide" );
 
 	Status = MmLoadSystemImage (
 		&ImagePath,
@@ -307,7 +307,7 @@ KiDemoThread(
 		(PVOID*) &DriverObject
 		);
 
-	KdPrint(("MmLoadSystemImage: hdd.sys Mapped at %08x, DrvObj %08x, Status %08x\n", ImageBase, DriverObject, Status));	
+	KdPrint(("MmLoadSystemImage: ide.sys Mapped at %08x, DrvObj %08x, Status %08x\n", ImageBase, DriverObject, Status));	
 	
 
 	KeSetOnScreenStatus ("Reading boot.ini");
