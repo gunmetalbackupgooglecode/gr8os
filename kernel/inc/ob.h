@@ -170,12 +170,12 @@ typedef struct OBJECT_TYPE
 	ULONG ObjectCount;
 } *POBJECT_TYPE;
 
-extern POBJECT_TYPE ObDirectoryObjectType;
-extern POBJECT_TYPE IoDeviceObjectType;
-extern POBJECT_TYPE IoDriverObjectType;
+KEVAR POBJECT_TYPE ObDirectoryObjectType;
+KEVAR POBJECT_TYPE IoDeviceObjectType;
+KEVAR POBJECT_TYPE IoDriverObjectType;
 //extern POBJECT_TYPE KeEventObjectType;
-extern POBJECT_TYPE MmExtenderObjectType;
-extern POBJECT_TYPE MmFileMappingObjectType;
+KEVAR POBJECT_TYPE MmExtenderObjectType;
+KEVAR POBJECT_TYPE MmFileMappingObjectType;
 //extern POBJECT_TYPE PsThreadObjectType;
 //extern POBJECT_TYPE PsProcessObjectType;
 
@@ -351,13 +351,14 @@ ObpDeleteObjectInternal(
 	PVOID Object
 	);
 
+// begin_ddk
+
+KESYSAPI
 STATUS
 KEAPI
 ObpDeleteObject(
 	PVOID Object
 	);
-
-// begin_ddk
 
 /*
 KESYSAPI
@@ -423,6 +424,15 @@ KEAPI
 ObQueryObjectName(
 	IN PVOID Object,
 	OUT PUNICODE_STRING ObjectName
+	);
+
+KESYSAPI
+STATUS
+KEAPI
+ObQueryDirectoryObject(
+	IN POBJECT_DIRECTORY Directory OPTIONAL,
+	IN PVOID PreviousObject OPTIONAL,
+	OUT PVOID *NextObject
 	);
 
 // end_ddk

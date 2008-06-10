@@ -7,10 +7,10 @@
 // Pointers to the appropriate object directories of I/O subsystem
 //
 
-extern POBJECT_DIRECTORY IoDeviceDirectory;
-extern POBJECT_DIRECTORY IoDriverDirectory;
-
 // begin_ddk
+
+KEVAR POBJECT_DIRECTORY IoDeviceDirectory;
+KEVAR POBJECT_DIRECTORY IoDriverDirectory;
 
 #define SECTOR_SIZE 512
 

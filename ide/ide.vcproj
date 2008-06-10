@@ -247,6 +247,10 @@
 			</FileConfiguration>
 		</File>
 		<File
+			RelativePath=".\ide.h"
+			>
+		</File>
+		<File
 			RelativePath=".\ide.res"
 			>
 		</File>

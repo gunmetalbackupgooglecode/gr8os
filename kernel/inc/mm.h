@@ -795,7 +795,7 @@ typedef struct EXTENDER
 
 } *PEXTENDER;
 
-extern POBJECT_TYPE MmExtenderObjectType;
+KEVAR POBJECT_TYPE MmExtenderObjectType;
 
 extern LOCKED_LIST MmExtenderList;
 

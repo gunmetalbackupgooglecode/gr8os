@@ -1180,7 +1180,11 @@ ExInitializeMutex(
 	Initialize mutex
 --*/
 {
-	KeInitializeEvent ((PEVENT)Mutex, SynchronizationEvent, TRUE);
+	KeZeroMemory( Mutex, sizeof(MUTEX) );
+
+	Mutex->Header.ObjectType = SynchronizationMutex;
+	Mutex->Header.SignaledState = TRUE;
+	InitializeListHead (&Mutex->Header.WaitListHead);
 }
 
 

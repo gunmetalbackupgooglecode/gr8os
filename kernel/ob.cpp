@@ -657,6 +657,7 @@ ObpDeleteObjectInternal(
 	return STATUS_SUCCESS;
 }
 
+KESYSAPI
 STATUS
 KEAPI
 ObpDeleteObject(
@@ -1036,11 +1037,13 @@ ObpDumpDirectory(
 		if (obj->ObjectType != ObDirectoryObjectType)
 		{
 			for (int i=0; i<Indent+3; i++ ) KdPrint((" "));
-			KdPrint(("%S [%S] Refs=%d Handles=%d ", 
+			KdPrint(("%S [%S] Refs=%d Handles=%d [*=%08x]", 
 				obj->ObjectName.Buffer,
 				obj->ObjectType->ObjectTypeName.Buffer,
 				obj->ReferenceCount,
-				obj->HandleCount ));
+				obj->HandleCount,
+				OBJECT_HEADER_TO_OBJECT(obj,void)
+				));
 
 			if (obj->ObjectType == ObSymbolicLinkObjectType)
 			{
@@ -1116,6 +1119,50 @@ ObQueryObjectName(
 	return STATUS_UNSUCCESSFUL;
 }
 
+
+KESYSAPI
+STATUS
+KEAPI
+ObQueryDirectoryObject(
+	IN POBJECT_DIRECTORY Directory,
+	IN PVOID PreviousObject OPTIONAL,
+	OUT PVOID *NextObject
+	)
+/*++
+	Enumerate objects in object directory.
+	First call should contain valid directory pointer in Directory, PreviousObject==NULL and after
+	 the successful call NextObject will contain pointer to the first object in this directory.
+	Next calls should contain valid directory pointer in Directory, PreviousObject must contain pointer
+	 to the previous object in this directory and after the successful call NextObject will contain 
+	 pointer to the next object in this directory.
+ --*/
+{
+	ExAcquireMutex (&Directory->DirectoryLock);
+
+	POBJECT_HEADER objhdr;
+	STATUS Status = STATUS_UNSUCCESSFUL;
+
+	if (PreviousObject == NULL)
+		objhdr = CONTAINING_RECORD (&Directory->ObjectList, OBJECT_HEADER, DirectoryList);
+	else
+		objhdr = OBJECT_TO_OBJECT_HEADER (PreviousObject);
+
+	POBJECT_HEADER nexthdr = CONTAINING_RECORD (objhdr->DirectoryList.Flink, OBJECT_HEADER, DirectoryList);
+
+	if (nexthdr == CONTAINING_RECORD (&Directory->ObjectList, OBJECT_HEADER, DirectoryList))
+	{
+		*NextObject = NULL;
+		Status = STATUS_NO_MORE_ENTRIES;
+	}
+	else
+	{
+		*NextObject = OBJECT_HEADER_TO_OBJECT (nexthdr, void);
+		Status = STATUS_SUCCESS;
+	}
+	
+	ExReleaseMutex (&Directory->DirectoryLock);
+	return Status;
+}
 
 #if OBEMU
 POBJECT_HANDLE HandleTable;

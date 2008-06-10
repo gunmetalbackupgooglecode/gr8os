@@ -453,6 +453,29 @@ KiDemoThread(
 
 
 
+	KeSetOnScreenStatus ("Loading device drivers [cdfs.sys]");
+	KiMoveLoadingProgressBar (7);
+
+	RtlInitUnicodeString( &ImagePath, L"\\SystemRoot\\cdfs.sys" );
+	RtlInitUnicodeString( &DriverName, L"\\Driver\\cdfs" );
+
+	Status = MmLoadSystemImage (
+		&ImagePath,
+		&DriverName,
+		DriverMode,
+		FALSE,
+		&ImageBase,
+		(PVOID*) &DriverObject
+		);
+
+	KdPrint(("MmLoadSystemImage: cdfs.sys Mapped at %08x, DrvObj %08x, Status %08x\n", ImageBase, DriverObject, Status));	
+
+	KdPrint(("\nall ok\n"));
+	
+	ObpDumpDirectory (IoDeviceDirectory, 0);
+
+	INT3
+
 	KeSetOnScreenStatus ("Testing file mapping");
 	KiMoveLoadingProgressBar (10);
 
