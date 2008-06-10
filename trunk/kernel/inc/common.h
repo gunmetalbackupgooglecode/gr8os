@@ -78,6 +78,8 @@ typedef ULONG STATUS, *PSTATUS;
 #define STATUS_DELETE_PENDING				((STATUS) 0xF0000014)
 #define STATUS_IN_PAGE_ERROR				((STATUS) 0xF0000015)
 #define STATUS_NO_MEDIA_IN_DEVICE			((STATUS) 0xF0000016)
+#define STATUS_NO_MORE_ENTRIES				((STATUS) 0xF0000017)
+#define STATUS_FILE_SYSTEM_NOT_RECOGNIZED	((STATUS) 0xF0000018)
 
 #define STATUS_INVALID_PARAMETER_1			((STATUS) 0xF0000021)
 #define STATUS_INVALID_PARAMETER_2			((STATUS) 0xF0000022)
@@ -103,7 +105,12 @@ typedef ULONG STATUS, *PSTATUS;
 #define OPTIONAL
 #define UNIMPLEMENTED
 
+#ifdef KERNEL_EXPORTS
 #define KEVAR extern "C" extern
+#else
+#define KEVAR extern "C" __declspec(dllimport)
+#endif
+
 #define KECDECL		__cdecl
 #define KEAPI		__stdcall
 #define KEFASTAPI	__fastcall
@@ -262,7 +269,7 @@ LARGE_INTEGER __inline RtlMakeLargeInteger(ULONG Low, ULONG High)
 #define CC_DISABLE_CACHE_REBUILDING	1
 
 // Extended info on quiet bugcheck
-#define KE_QUIET_BUGCHECK_EXTENDED	0
+#define KE_QUIET_BUGCHECK_EXTENDED	1
 
 
 // begin_ddk

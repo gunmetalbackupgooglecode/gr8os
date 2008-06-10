@@ -795,7 +795,8 @@ typedef struct EVENT
 typedef enum KE_OBJECT_TYPE
 {
 	NotificationEvent,
-	SynchronizationEvent
+	SynchronizationEvent,
+	SynchronizationMutex
 } *PKE_OBJECT_TYPE;
 
 KESYSAPI

@@ -94,28 +94,56 @@ redirect_IRQ:
 	or	eax, 1000b
 	wrmsr
 
+	jecxz $+2
+	jecxz $+2
+
 	mov	al,11h
 	out	0a0h,al
+	jecxz $+2
+	jecxz $+2
 	out	20h,al
+	
+	jecxz $+2
+	jecxz $+2
 
 	mov	al,bh
 	out	0a1h,al
 	mov	al,bl
+	jecxz $+2
+	jecxz $+2
 	out	21h,al
+
+	jecxz $+2
+	jecxz $+2
 
 	mov	al,02
 	out	0a1h,al
 	mov	al,04
+	jecxz $+2
+	jecxz $+2
 	out	21h,al
+
+	jecxz $+2
+	jecxz $+2
 
 	mov	al,01
 	out	0a1h,al
+	jecxz $+2
+	jecxz $+2
 	out	21h,al
+
+	jecxz $+2
+	jecxz $+2
 
 	mov	al,dh
 	out	0a1h,al
+	jecxz $+2
+	jecxz $+2
 	mov	al,dl
 	out	21h,al
+
+	jecxz $+2
+	jecxz $+2
 
 	; APIC On
 	rdmsr

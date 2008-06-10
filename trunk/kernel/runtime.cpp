@@ -550,6 +550,13 @@ int __cdecl _vsnprintf(char *buf, size_t cnt, const char *fmt, va_list args)
 			}
 			continue;
 
+		case 'Z':
+			{
+				PUNICODE_STRING sw = va_arg(args, PUNICODE_STRING);
+				str = stringw(str, end, sw->Buffer, sw->Length, field_width, precision, flags);
+			}
+			continue;
+
 		case 'p':
             if ((flags & LARGE) == 0)
                 flags |= LARGE;
