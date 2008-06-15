@@ -169,7 +169,7 @@ EXPORTS
 	ObReferenceObjectByHandle
 	ObLockObject
 	ObUnlockObject
-	;ObIsObjectGoingAway
+	ObIsObjectGoingAway
 	ObQueryDirectoryObject
 	
 	ObDirectoryObjectType
@@ -226,6 +226,11 @@ EXPORTS
 	PspLockSchedulerDatabase
 	PspUnlockSchedulerDatabase
 	
+	;
+	; Se
+	;
+	
+	SeAccessCheckEx
 	
 	;
 	; RTL

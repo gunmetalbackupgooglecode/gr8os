@@ -348,6 +348,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\inc\se.h"
+				>
+			</File>
+			<File
 				RelativePath=".\inc\STRUCT.INC"
 				>
 			</File>
@@ -533,6 +537,10 @@
 			</File>
 			<File
 				RelativePath=".\runtime.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\se.cpp"
 				>
 			</File>
 		</Filter>

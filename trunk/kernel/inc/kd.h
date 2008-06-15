@@ -1,6 +1,8 @@
 // begin_ddk
 #pragma once
 
+KEVAR char *KdpErrorStatusValues[];
+
 KESYSAPI
 VOID
 KEAPI

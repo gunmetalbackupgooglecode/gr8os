@@ -289,6 +289,7 @@ extern "C"
 #include "ob.h"
 #include "cc.h"
 #include "io.h"
+#include "se.h"
 
 // end_ddk
 

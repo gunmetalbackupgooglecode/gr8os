@@ -30,6 +30,8 @@ struct CONTEXT_FRAME;
 
 #pragma pack(1)
 
+struct SE_ACCESS_TOKEN;
+
 typedef struct THREAD
 {
 	// Double-linked cycle list of threads.
@@ -97,7 +99,11 @@ typedef struct THREAD
 	MUTEX IrpListLock;
 	LIST_ENTRY IrpList;
 
+	// Previous mode
 	PROCESSOR_MODE PreviousMode;
+
+	// Thread's access token
+	SE_ACCESS_TOKEN *AccessToken;
 
 } *PTHREAD;
 
@@ -182,6 +188,9 @@ typedef struct PROCESS
 	
 	// Working set
 	PMMWORKING_SET WorkingSet;
+	
+	// Process' access token
+	SE_ACCESS_TOKEN *AccessToken;
 
 } *PPROCESS;
 

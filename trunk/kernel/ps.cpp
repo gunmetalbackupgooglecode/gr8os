@@ -468,8 +468,6 @@ PspCreateThread(
 --*/
 {
 	PspLockSchedulerDatabase( );
-
-	KeZeroMemory( Thread, sizeof(THREAD) );
 	
 	// Set thread ID, state, quantum.
 	Thread->UniqueId = (++UniqueThreadIdSeed);
@@ -514,7 +512,25 @@ PsCreateThread(
 	Create new thread allocating new space for THREAD
 --*/
 {
+	if (!SUCCESS(SeAccessCheck (SE_1_CREATE_THREAD, 0)))
+		return NULL;
+
 	PTHREAD NewThread = (PTHREAD) ExAllocateHeap( FALSE, sizeof(THREAD) );
+	KeZeroMemory( NewThread, sizeof(THREAD) );
+
+	STATUS Status = SeInheritAccessTokenProcess (
+		OwningProcess,
+		OwningProcess->AccessToken->Privileges1,
+		OwningProcess->AccessToken->Privileges2,
+		&NewThread->AccessToken
+		);
+
+	if (!SUCCESS(Status))
+	{
+		ExFreeHeap (NewThread);
+		return NULL;
+	}
+
 	PspCreateThread( NewThread, OwningProcess, StartRoutine, StartContext );
 
 	PVOID Arguments[3] = {
@@ -580,6 +596,9 @@ PsCreateProcess(
 	Create process allocating new space for PROCESS
 --*/
 {
+	if (!SUCCESS(SeAccessCheck (SE_1_CREATE_PROCESS, 0)))
+		return NULL;
+
 	PPROCESS Process = (PPROCESS) ExAllocateHeap( FALSE, sizeof(PROCESS) );
 	PspCreateProcess( Process );
 	MmCreateAddressSpace( Process );
@@ -632,6 +651,35 @@ PspInitSystem(
 	InitializeLockedList (&PsTerminateThreadCallbackList);
 	InitializeLockedList (&PsCreateProcessCallbackList);
 	InitializeLockedList (&PsTerminateProcessCallbackList);
+
+	//
+	// Initialize SE
+	//
+
+	InitializeLockedList (&SeLoggedUsers);
+
+	//
+	// Create System user
+	//
+
+	SeSystemUser = (PSE_LOGGED_USER) ExAllocateHeap (TRUE, sizeof(SE_LOGGED_USER));
+	SeSystemUser->UserId = 0;
+	SeSystemUser->GroupId = 0;
+	SeSystemUser->Privileges1 = 0xFFFFFFFF;
+	SeSystemUser->Privileges2 = 0xFFFFFFFF;
+	SeSystemUser->DefaultPrivileges1 = 0xFFFFFFFF;
+	SeSystemUser->DefaultPrivileges2 = 0xFFFFFFFF;
+
+	InterlockedInsertTailList (&SeLoggedUsers, &SeSystemUser->LoggedUsersEntry);
+
+	//
+	// Create access token for System process
+	//
+
+	PSE_ACCESS_TOKEN Token = SeCreateAccessToken (SeSystemUser);
+	InitialSystemProcess.AccessToken = Token;
+	SystemThread.AccessToken = Token;
+	InterlockedIncrement ( (PLONG)&Token->ShareCount); // =2
 }
 
 

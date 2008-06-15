@@ -26,7 +26,7 @@
 // BUGBUG: Delete in final version
 //
 
-THREAD Thread1, Thread2, Thread3;
+PTHREAD Thread1, Thread2, Thread3;
 
 VOID KiIncChar(
 	ULONG Pos
@@ -786,7 +786,9 @@ KiInitSystem(
 
 //	PspCreateThread( &Thread1, &InitialSystemProcess, PsCounterThread, (PVOID)( 80*3 + 40 ) );
 //	PspCreateThread( &Thread2, &InitialSystemProcess, PsCounterThread, (PVOID)( 80*4 + 45 ) );
-	PspCreateThread( &Thread3, &InitialSystemProcess, KiDemoThread, NULL );
+	Thread3 = PsCreateThread( &InitialSystemProcess, KiDemoThread, NULL );
+
+	ASSERT (Thread3 != NULL);
 
 	KiDebugPrintRaw( "INIT: Initialization completed.\n\n" );
 
