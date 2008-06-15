@@ -1331,7 +1331,8 @@ IoCompleteRequest(
 
 	if ( Irp->Flags & IRP_FLAGS_TRACE_IRP )
 	{
-		KdPrint(("IRP [Tracing]: %s %s, status %08x, %d bytes being copied [%02x %02x %02x %02x]\n", 
+		KdPrint(("IRP [Tracing]: FileObject=%08x %s %s, status %08x, %d bytes being copied [%02x %02x %02x %02x] UserIosb=%08x\n", 
+			Irp->FileObject,
 			(Irp->Flags & IRP_FLAGS_BUFFERED_IO) ? "Buffered I/O" : "",
 			(Irp->Flags & IRP_FLAGS_INPUT_OPERATION) ? "Input Operation" : "",
 			Irp->IoStatus.Status,
@@ -1339,7 +1340,8 @@ IoCompleteRequest(
 			((UCHAR*)Irp->SystemBuffer)[0],
 			((UCHAR*)Irp->SystemBuffer)[1],
 			((UCHAR*)Irp->SystemBuffer)[2],
-			((UCHAR*)Irp->SystemBuffer)[3]
+			((UCHAR*)Irp->SystemBuffer)[3],
+			Irp->UserIosb
 			));
 	}
 
@@ -1366,6 +1368,9 @@ IoCompleteRequest(
 			);
 	}
 
+//	if ( Irp->Flags & IRP_FLAGS_TRACE_IRP )
+//		KdPrint(("#1 Irp->UserIosb = %08x\n", Irp->UserIosb));
+
 	if (Irp->Flags & IRP_FLAGS_DEALLOCATE_BUFFER)
 	{
 		if (Irp->BufferLength < PAGE_SIZE)
@@ -1379,6 +1384,9 @@ IoCompleteRequest(
 	//
 	// Copy status block to user block
 	//
+
+//	if ( Irp->Flags & IRP_FLAGS_TRACE_IRP )
+//		KdPrint(("#2 Irp->UserIosb = %08x\n", Irp->UserIosb));
 
 	*Irp->UserIosb = Irp->IoStatus;
 

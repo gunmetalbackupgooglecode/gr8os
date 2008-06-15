@@ -2570,6 +2570,9 @@ MmLoadSystemImage(
 	ULONG AlignedImageSize = 0;
 	PVOID Image = 0;
 
+	if (!SUCCESS(SeAccessCheck (SE_1_LOAD_DRIVER,0)))
+		return STATUS_ACCESS_DENIED;
+
 	ASSERT (TargetMode != UserMode);
 
 #define RETURN(st)  { Status = (st); __leave; }

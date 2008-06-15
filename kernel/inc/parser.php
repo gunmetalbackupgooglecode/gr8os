@@ -17,7 +17,8 @@ $files = array(
 	"mm.h",
 	"ob.h",
 	"ps.h",
-	"rtl.h"
+	"rtl.h",
+	"se.h"
 	);
 	
 $start = "// begin_ddk";
