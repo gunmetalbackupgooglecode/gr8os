@@ -1,0 +1,9 @@
+EXPORTS
+	PciGetVendorShort
+	PciGetVendorFull
+	PciGetDeviceShort
+	PciGetDeviceFull
+	PciGetBaseClassDesc
+	PciGetDeviceByClass
+	PciGetVideoAdapterLFBPhysAddress
+	

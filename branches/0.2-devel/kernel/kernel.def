@@ -1,0 +1,266 @@
+EXPORTS
+	
+	;
+	; Executive
+	;
+	
+	ExAllocateHeap
+	ExFreeHeap
+	ExReallocHeap
+	ExLockHeapBlock
+	ExUnlockHeapBlock
+	ExEnterHeapGuardedRegion
+	ExLeaveHeapGuardedRegion
+	ExAcquireMutex
+	ExReleaseMutex
+	ExInitializeMutex
+	ExCreateCallback
+	ExDeleteCallback
+	
+	;
+	; HAL
+	;
+	
+	HalReadComPort
+	HalWriteComPort
+	HalConfigureTimer
+	HalQueryTimerCounter
+	HalReadSystemPort
+	HalReadConfigTimer
+	HalBusClockFrequency
+	HalRequestDma
+	HalFreeDma
+	HalAllocatePhysicalLowMegPages
+	HalFreePhysicalLowMegPages
+	HalInitializeDmaRequest
+	HalCompleteDmaRequest
+	HalEnableDma
+	HalDisableDma
+	HalClearDmaFf
+	HalSetDmaMode
+	HalCmosRead
+	HalRebootMachine
+	
+	;
+	; DBGKD
+	;
+	
+	KdCheckSumPacket
+	KdPollBreakIn
+	KdPortGetByte
+	KdPortPutByte
+	KdReceivePacket
+	KdReceivePacketWithType
+	KdSendPacket
+	KdWakeUpDebugger
+	
+	;
+	; Kernel
+	;
+	
+	KiInPort
+	KiOutPort
+	KiInPortW
+	KiOutPortW
+	KiInPortD
+	KiOutPortD
+	KeAllocateGdtDescriptor
+	KeAssertionFailed
+	KeAssertionEqualFailed
+	KeBugCheck
+	KeDispatchException
+	_except_handler3
+	;KeContinue
+	_global_unwind2
+	_local_unwind2
+	RtlUnwind
+	KeRaiseStatus
+	KeRaiseException
+	KeGdtEntry
+	KeIdtEntry
+	KeInitializeEvent
+	KeInsertQueueDpc
+	KeRemoveQueueDpc
+	KeClearEvent
+	KeSetEvent
+	KePulseEvent
+	KeStallExecution
+	KeWaitForSingleObject
+	KiDebugPrint
+	KiDebugPrintRaw
+	KiFillDataSegment
+	KiInitSystem
+	InterlockedExchange
+	InterlockedExchangeAdd
+	InterlockedIncrement
+	InterlockedDecrement
+	InterlockedCompareExchange
+	KiConnectInterrupt
+	_KiEoiHelper@0
+	KePrintActiveConsole
+	KiKeyboardStatusByte
+	KeAcquireLock
+	KeReleaseLock
+	KeReleaseIrqState
+	KeSetOnScreenStatus
+	KeChangeWpState
+	
+	;
+	; Io
+	;
+	
+	IoAllocateIrp
+	IoCallDriver
+	IoBuildDeviceIoControlRequest
+	IoBuildDeviceRequest
+	IoCreateDevice
+	IoAttachDevice
+	IoDetachDevice
+	IoDeleteDevice
+	IoGetAttachedDevice
+	IoGetNextDevice
+	IoCreateFile
+	IoCloseFile
+	IoReadFile
+	IoWriteFile
+	IoDeviceIoControlFile
+	IoCompleteRequest
+	IoRegisterFileSystem
+	IoUnregisterFileSystem
+	IoAllocateMountDriveLetter
+	IoFreeMountedDriveLetter
+	IoMountVolume
+	IoDismountVolume
+	IoRequestMount
+	IoRequestDismount
+	IoDeviceDirectory
+	IoDriverDirectory
+	
+	;
+	; Cc
+	;
+	
+	CcInitializeFileCaching
+	CcFreeCacheMap
+	CcCacheReadFile
+	;CcRequestCachedPage
+	CcCacheWriteFile
+	CcPurgeCacheFile
+		
+	;
+	; Ob
+	;
+	
+	ObCreateDirectory
+	ObCreateObject
+	ObCreateObjectType
+	ObDeleteObject
+	ObpDeleteObject
+	ObCreateSymbolicLink
+	ObReferenceObject
+	ObDereferenceObject
+	ObDereferenceObjectEx
+	ObInsertObject
+	ObMakeTemporaryObject
+	ObReferenceObjectByName
+	ObOpenObjectByName
+	ObOpenObjectByPointer
+	ObQueryObjectName
+	ObReferenceObjectByHandle
+	ObLockObject
+	ObUnlockObject
+	ObIsObjectGoingAway
+	ObQueryDirectoryObject
+	
+	ObDirectoryObjectType
+	IoDeviceObjectType
+	IoDriverObjectType
+	MmExtenderObjectType
+	ObSymbolicLinkObjectType
+	IoVpbObjectType
+	ExCallbackObjectType
+	
+	ObRootObjectDirectory
+	
+	;
+	; Mm
+	;
+	
+	MmIsAddressValid
+	MmMapPhysicalPagesKernel
+	MmMapPhysicalPagesInRange
+	MmUnmapPhysicalPages = MiUnmapPhysicalPages
+	MmIsAddressValidEx
+	MmAllocateMmd
+	MmAllocatePhysicalPages
+	MmBuildMmdForNonpagedSpace
+	MmFreeMmd
+	MmFreePhysicalPages
+	MmLockPages
+	MmMapLockedPages
+	MmUnlockPages
+	MmUnmapLockedPages
+	MmLoadSystemImage
+	MmReservePhysicalAddressRange
+	MmAcpiInfo
+	MmCreateFileMapping
+	MmMapViewOfFile
+	MmUnmapViewOfFile
+	MmAllocatePage
+	MmFreePage
+	
+	;
+	; Processes
+	;
+	
+	FindReadyThread
+	PsCreateProcess
+	PsCreateThread
+	PsDelayThreadExecution
+	PsExitThread
+	PsGetCurrentProcess
+	PsGetCurrentThread
+	PsTerminateThread
+	PspDumpReadyQueue
+	PspDumpSystemThreads
+	PspLockSchedulerDatabase
+	PspUnlockSchedulerDatabase
+	
+	;
+	; Se
+	;
+	
+	SeAccessCheckEx
+	
+	;
+	; RTL
+	;
+	
+	RtlInitUnicodeString
+	RtlDuplicateUnicodeString
+	RtlFreeUnicodeString
+	memset
+	memcpy
+	memmove
+	sprintf
+	vsprintf
+	wcscmp
+	wcslen
+	wcsncpy
+	wcssubstr
+	wcsrchr
+	strlen
+	strchr
+	strncmp
+	wcscat
+	wcscpy
+	wcstomb
+	wcsicmp
+	mbstowcs
+	strcat
+	strcmp
+	strcpy
+	stricmp
+	strncpy
+	strnicmp
+	
