@@ -87,7 +87,7 @@ FdRead(
 {
 	ULONG Size = Irp->BufferLength;
 	STATUS Status = STATUS_INVALID_PARAMETER;
-	PVOID Buffer;
+	PVOID Buffer = 0;
 	ULONG  RelativeOffset;
 
 	if (Irp->Flags & IRP_FLAGS_BUFFERED_IO)
@@ -170,7 +170,7 @@ FdDriverEntry(
 	// Support the both.
 	//
 
-	FdDeviceObject->Flags |= DEVICE_FLAGS_BUFFERED_IO | DEVICE_FLAGS_NEITHER_IO;
+	FdDeviceObject->Flags |= DEVICE_FLAGS_BUFFERED_IO;
 
 	KdPrint (("Fd: Device created\n"));
 

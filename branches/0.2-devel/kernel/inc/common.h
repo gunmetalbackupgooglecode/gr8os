@@ -33,8 +33,14 @@ typedef const wchar_t *PCWSTR;
 
 typedef unsigned char BYTE, *PBYTE, UCHAR, *PUCHAR;
 typedef void VOID, *PVOID, **PPVOID;
+
+#ifndef _DEFINE_LONGLONG_BY_INT64_
 typedef long long LONGLONG, *PLONGLONG, LONG64, *PLONG64;
 typedef unsigned long long ULONGLONG, *PULONGLONG, ULONG64, *PULONG64;
+#else
+typedef __int64 LONGLONG, *PLONGLONG, LONG64, *PLONG64;
+typedef unsigned __int64 ULONGLONG, *PULONGLONG, ULONG64, *PULONG64;
+#endif
 
 typedef ULONG STATUS, *PSTATUS;
 
@@ -136,7 +142,7 @@ typedef  ULONG* va_list;
 #define LOBYTE(w) ((w)&0xFF)
 #define HIBYTE(w) (((w)>>8)&0xFF)
 
-#define INT3 { __asm _emit 0xEB __asm _emit 0xFE }
+#define INT3 { __asm cli __asm hlt __asm _emit 0xEB __asm _emit 0xFE }
 
 //
 // CONTAINING_RECORD and FIELD_OFFSET macroses
@@ -175,6 +181,7 @@ struct COUNTED_BUFFER
 typedef struct COUNTED_BUFFER<PVOID> CBUFFER, *PCBUFFER;
 typedef struct COUNTED_BUFFER<PWSTR> UNICODE_STRING, *PUNICODE_STRING;
 typedef struct COUNTED_BUFFER<PCHAR> ANSI_STRING, *PANSI_STRING;
+typedef struct COUNTED_BUFFER<PCHAR> STRING, *PSTRING;
 
 #define max(a,b) ( (a) > (b) ? (a) : (b) )
 #define min(a,b) ( (a) < (b) ? (a) : (b) )
@@ -230,7 +237,7 @@ LARGE_INTEGER __inline RtlMakeLargeInteger(ULONG Low, ULONG High)
 #define KD_TRACE_PORT_LOCKING	0
 
 // Print error messages
-#define KD_TRACE_PORT_IO_ERRORS	0
+#define KD_TRACE_PORT_IO_ERRORS	1
 
 // Dump bytes
 #define KD_TRACE_LOW_LEVEL_IO	0
@@ -262,6 +269,9 @@ LARGE_INTEGER __inline RtlMakeLargeInteger(ULONG Low, ULONG High)
 // Trace FS FAT reading
 #define FSFAT_TRACE_READING			0
 
+// Trace FS FAT writing
+#define FSFAT_TRACE_WRITING			0
+
 // Hang on bugcheck
 #define KE_HANG_ON_BUGCHECK			1
 
@@ -271,6 +281,11 @@ LARGE_INTEGER __inline RtlMakeLargeInteger(ULONG Low, ULONG High)
 // Extended info on quiet bugcheck
 #define KE_QUIET_BUGCHECK_EXTENDED	1
 
+// COM debugging?
+#define COM_DEBUG					0
+
+// KD2 debugging?
+#define KD2_DBG           0
 
 // begin_ddk
 
@@ -290,12 +305,29 @@ extern "C"
 #include "cc.h"
 #include "io.h"
 #include "se.h"
+#include "ks.h"
 
 // end_ddk
 
 // Built-in driver includes
+#ifndef GROSEMU
 #include "builtin/floppy/floppy.h"
 #include "builtin/fsfat/fsfat.h"
+#else
+KESYSAPI
+STATUS
+KEAPI
+FdDriverEntry (
+	PDRIVER Driver
+	);
+
+KESYSAPI
+STATUS
+KEAPI
+FsFatDriverEntry (
+	PDRIVER Driver
+	);
+#endif
 
 // begin_ddk
 }

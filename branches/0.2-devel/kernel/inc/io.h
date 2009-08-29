@@ -26,8 +26,31 @@ KEVAR POBJECT_DIRECTORY IoDriverDirectory;
 #define DEVICE_TYPE_VIDEO		0x00000005
 #define DEVICE_TYPE_DISK_FILE_SYSTEM	0x00000006
 
-#define DEVICE_FLAGS_BUFFERED_IO	0x00000001
-#define DEVICE_FLAGS_NEITHER_IO		0x00000002
+#define DEVICE_FLAGS_NEITHER_IO		    0x00000000
+#define DEVICE_FLAGS_BUFFERED_IO	    0x00000001
+#define DEVICE_FLAGS_METHOD_MASK      0x00000003
+
+#define METHOD_NEITHER  0
+#define METHOD_BUFFERED 1
+
+//
+// Device io control
+//
+
+#define FILE_ANY_ACCESS 0
+
+// bits 0:2 - method;
+// bits 2:12 - function;
+// bits 14:2  - access
+// bits 16:16 - device type
+#define CTL_CODE( DeviceType, Function, Method, Access ) (                 \
+    ((DeviceType) << 16) | ((Access) << 14) | ((Function) << 2) | (Method) \
+)
+
+#define DEVICE_TYPE_FROM_CTL_CODE(ctrlCode)     (((ULONG)(ctrlCode & 0xffff0000)) >> 16)
+#define ACCESS_FROM_CTL_CODE(ctrlCode)          (((ULONG)(ctrlCode & 0x0000c000)) >> 14)
+#define FUNCTION_FROM_CTL_CODE(ctrlCode)        (((ULONG)(ctrlCode & 0x00003ffc)) >> 2)
+#define METHOD_FROM_CTL_CODE(ctrlCode)          ((ULONG)ctrlCode & 3)
 
 typedef struct DRIVER *PDRIVER;
 typedef struct IRP *PIRP;
@@ -60,6 +83,8 @@ typedef struct DEVICE
 	//
 	//  VPB exists when the file system is mounted.
 	//
+
+  PVOID DeviceExtension;
 } *PDEVICE;
 
 //
@@ -218,6 +243,7 @@ struct IRP
 	PIO_STATUS_BLOCK UserIosb;			// User pointer to the IRP
 	PROCESSOR_MODE RequestorMode;		// Requestor processor mode
 	PTHREAD CallerThread;				// Caller thread
+  PDEVICE DeviceObject;     // Associated device object
 	PFILE FileObject;					// File object used to queue this IRP
 	PEVENT UserEvent;					// Pointer to the user event in asynchronous i/o
 	LIST_ENTRY ThreadListEntry;			// Double-linked list with the IRPs of the specified thread. See THREAD::IrpList

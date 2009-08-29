@@ -185,10 +185,9 @@ exDB_handler:
     jmp  general_exception
 
 exBP_handler:
-    cli
-    jmp $
-    sti
-    iretd
+    push dword 0
+    mov  dword [faulting_message], _bpt
+    jmp  general_exception
 
 exOF_handler:
     push dword 0

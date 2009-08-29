@@ -720,7 +720,7 @@ int _cdecl sprintf(char * buf, const char *fmt, ...)
 /*
  * @implemented
  */
-int _snprintf(char * buf, size_t cnt, const char *fmt, ...)
+int CRTAPI _snprintf(char * buf, size_t cnt, const char *fmt, ...)
 {
 	va_list args;
 	int i;
@@ -735,14 +735,78 @@ int _snprintf(char * buf, size_t cnt, const char *fmt, ...)
 /*
  * @implemented
  */
-int KEAPI vsprintf(char *buf, const char *fmt, va_list args)
+int CRTAPI vsprintf(char *buf, const char *fmt, va_list args)
 {
 	return _vsnprintf(buf,MAXLONG,fmt,args);
 }
 
 KESYSAPI
+int
+CRTAPI
+printf(
+	char *fmt,
+	...
+	)
+{
+	char buffer[1024];
+	va_list va;
+	int l;
+
+	va_start (va, fmt);
+	l = _vsnprintf (buffer, sizeof(buffer), fmt, va);
+	va_end (va);
+
+	KiDebugPrintRaw (buffer);
+	return l;
+}
+
+__declspec(noreturn)
+KESYSAPI
+void
+CRTAPI
+panic(
+	char *fmt,
+	...
+	)
+{
+	char buffer[1024];
+	va_list va;
+	int l;
+
+	va_start (va, fmt);
+	l = _vsnprintf (buffer, sizeof(buffer), fmt, va);
+	va_end (va);
+
+	KiDebugPrintRaw (buffer);
+	__asm cli
+	__asm hlt
+	for(;;);
+}
+
+KESYSAPI
+int
+CRTAPI
+fprintf(
+	void *v,
+	char *fmt,
+	...
+	)
+{
+	char buffer[1024];
+	va_list va;
+	int l;
+
+	va_start (va, fmt);
+	l = _vsnprintf (buffer, sizeof(buffer), fmt, va);
+	va_end (va);
+
+	KiDebugPrintRaw (buffer);
+	return l;
+}
+
+KESYSAPI
 char*
-KEAPI
+CRTAPI
 strncpy(
 	char* to,
 	const char* from, 
@@ -755,7 +819,7 @@ strncpy(
 
 KESYSAPI
 char*
-KEAPI
+CRTAPI
 strcpy(
 	char *s1,
 	char *s2
@@ -767,7 +831,7 @@ strcpy(
 
 KESYSAPI
 INT
-KEAPI
+CRTAPI
 wcslen(
 	PWSTR wstr
 	)
@@ -779,7 +843,7 @@ wcslen(
 
 KESYSAPI
 INT
-KEAPI
+CRTAPI
 strlen(
 	char *str
 	)
@@ -791,7 +855,7 @@ strlen(
 
 KESYSAPI
 char*
-KEAPI
+CRTAPI
 strchr(
 	char *str,
 	char chr
@@ -805,8 +869,24 @@ strchr(
 }
 
 KESYSAPI
+char*
+CRTAPI
+strrchr(
+	char *str,
+	char chr
+	)
+{
+	int len = strlen(str);
+	for (char *ch=(str+len-1); ch!=str; ch--)
+		if (*ch == chr)
+			return ch;
+
+	return NULL;
+}
+
+KESYSAPI
 ULONG
-KEAPI
+CRTAPI
 wcstomb(
 	char *mbs,
 	WCHAR *wcs,
@@ -829,7 +909,7 @@ wcstomb(
 
 KESYSAPI
 ULONG
-KEAPI
+CRTAPI
 mbstowcs(
 	WCHAR *wcs,
 	char *mbs,
@@ -852,7 +932,7 @@ mbstowcs(
 
 KESYSAPI
 INT 
-KEAPI
+CRTAPI
 strncmp(
 	char *s1,
 	char *s2,
@@ -872,7 +952,7 @@ strncmp(
 
 KESYSAPI
 INT 
-KEAPI
+CRTAPI
 strcmp(
 	char *s1,
 	char *s2
@@ -890,7 +970,7 @@ strcmp(
 
 KESYSAPI
 INT 
-KEAPI
+CRTAPI
 strnicmp(
 	char *s1,
 	char *s2,
@@ -910,7 +990,7 @@ strnicmp(
 
 KESYSAPI
 INT 
-KEAPI
+CRTAPI
 stricmp(
 	char *s1,
 	char *s2
@@ -927,7 +1007,7 @@ stricmp(
 
 KESYSAPI
 char* 
-KEAPI
+CRTAPI
 strcat(
 	char *s1,
 	char *s2
@@ -938,7 +1018,7 @@ strcat(
 
 KESYSAPI
 INT
-KEAPI
+CRTAPI
 wcscmp(
 	PWSTR wstr,
 	PWSTR wstr2
@@ -963,7 +1043,7 @@ wcscmp(
 
 KESYSAPI
 INT
-KEAPI
+CRTAPI
 wcsicmp(
 	PWSTR wstr,
 	PWSTR wstr2
@@ -988,7 +1068,7 @@ wcsicmp(
 
 KESYSAPI
 VOID
-KEAPI
+CRTAPI
 wcsncpy(
 	PWSTR dst,
 	PWSTR src,
@@ -1000,7 +1080,7 @@ wcsncpy(
 
 KESYSAPI
 VOID
-KEAPI
+CRTAPI
 wcscpy(
 	PWSTR dst,
 	PWSTR src
@@ -1011,7 +1091,7 @@ wcscpy(
 
 KESYSAPI
 VOID
-KEAPI
+CRTAPI
 wcscat(
 	PWSTR dst,
 	PWSTR src
@@ -1036,7 +1116,7 @@ wcssubstr(
 
 KESYSAPI
 PWSTR
-KEAPI
+CRTAPI
 wcsrchr(
 	 PWSTR SourceString,
 	 WCHAR Char
@@ -1062,6 +1142,19 @@ RtlInitUnicodeString(
 	UnicodeString->Buffer = Buffer;
 	UnicodeString->Length = wcslen(Buffer)*2;
 	UnicodeString->MaxLength = UnicodeString->Length + 2;
+}
+
+KESYSAPI
+VOID
+KEAPI
+RtlInitString(
+	OUT PSTRING String,
+	IN PCHAR Buffer
+	)
+{
+	String->Buffer = Buffer;
+	String->Length = strlen(Buffer);
+	String->MaxLength = String->Length + 2;
 }
 
 KESYSAPI
@@ -1162,4 +1255,156 @@ void DumpMemory( DWORD base, ULONG length, DWORD DisplayBase )
 	}
 }
 
-/* EOF */
+/*
+//
+// Notice codes
+//
+#define STATUS_PENDING						((STATUS) 0x00000007)
+#define STATUS_CACHED						((STATUS) 0x00000006)
+#define STATUS_ALREADY_FREE					((STATUS) 0x00000005)
+#define STATUS_FINISH_PARSING				((STATUS) 0x00000004)
+#define STATUS_REPARSE						((STATUS) 0x00000003)
+#define STATUS_TIMEOUT						((STATUS) 0x00000002)
+#define STATUS_MORE_AVAILABLE				((STATUS) 0x00000001)
+
+// Success code
+#define STATUS_SUCCESS						((STATUS) 0x00000000)
+
+// 
+// Error codes
+//
+
+#define STATUS_UNSUCCESSFUL					((STATUS) 0xF0000001)
+#define STATUS_INSUFFICIENT_RESOURCES		((STATUS) 0xF0000002)
+#define STATUS_ACCESS_DENIED				((STATUS) 0xF0000003)
+#define STATUS_ACCESS_VIOLATION				((STATUS) 0xF0000004)
+#define STATUS_NOT_FOUND					((STATUS) 0xF0000005)
+#define STATUS_INVALID_PARAMETER			((STATUS) 0xF0000006)
+#define STATUS_INTERNAL_FAULT				((STATUS) 0xF0000007)
+#define STATUS_NOT_IMPLEMENTED				((STATUS) 0xF0000008)
+#define STATUS_REPEAT_NEEDED				((STATUS) 0xF0000009)
+#define STATUS_DEVICE_NOT_READY				((STATUS) 0xF000000A)
+#define STATUS_PARTIAL_COMPLETION			((STATUS) 0xF000000B)
+#define STATUS_IN_USE						((STATUS) 0xF000000C)
+#define STATUS_INVALID_HANDLE				((STATUS) 0xF000000D)
+#define STATUS_INVALID_FUNCTION				((STATUS) 0xF000000E)
+#define STATUS_NOT_SUPPORTED				((STATUS) 0xF000000F)
+#define STATUS_DATATYPE_MISALIGNMENT		((STATUS) 0xF0000010)
+#define STATUS_BUSY							((STATUS) 0xF0000011)
+#define STATUS_INVALID_FILE_FOR_IMAGE		((STATUS) 0xF0000012)
+#define STATUS_PRIVILEGE_NOT_HELD			((STATUS) 0xF0000013)
+#define STATUS_DELETE_PENDING				((STATUS) 0xF0000014)
+#define STATUS_IN_PAGE_ERROR				((STATUS) 0xF0000015)
+#define STATUS_NO_MEDIA_IN_DEVICE			((STATUS) 0xF0000016)
+#define STATUS_NO_MORE_ENTRIES				((STATUS) 0xF0000017)
+#define STATUS_FILE_SYSTEM_NOT_RECOGNIZED	((STATUS) 0xF0000018)
+
+#define STATUS_INVALID_PARAMETER_1			((STATUS) 0xF0000021)
+#define STATUS_INVALID_PARAMETER_2			((STATUS) 0xF0000022)
+#define STATUS_INVALID_PARAMETER_3			((STATUS) 0xF0000023)
+#define STATUS_INVALID_PARAMETER_4			((STATUS) 0xF0000024)
+#define STATUS_INVALID_PARAMETER_5			((STATUS) 0xF0000025)
+#define STATUS_INVALID_PARAMETER_6			((STATUS) 0xF0000026)
+#define STATUS_INVALID_PARAMETER_7			((STATUS) 0xF0000027)
+#define STATUS_INVALID_PARAMETER_8			((STATUS) 0xF0000028)
+
+//
+// Warning codes
+//
+
+#define STATUS_END_OF_FILE					((STATUS) 0x80000001)
+*/
+
+#define STATUS_ERROR						((STATUS) 0xF0000000)
+#define STATUS_WARNING						((STATUS) 0x80000000)
+#define STATUS_NOTICE						((STATUS) 0x00000000)
+#define STATUS_TYPE							0xF0000000
+
+#define STATUS_TABLE_END {0,0,0}
+
+STATUS_DESCRIPTION
+RtlpNoticeCodes[] = {
+	{ STATUS_PENDING, "STATUS_PENDING", "Request has been delayed" },
+	{ STATUS_CACHED, "STATUS_CACHED", "Caching was performed to satisfy the request" },
+	{ STATUS_ALREADY_FREE, "STATUS_ALREADY_FREE", "A freeing attempt was performed on already free DMA channel" },
+	{ STATUS_FINISH_PARSING, "STATUS_FINISH_PARSING", "Object parse routine returns this status to stop parsing object path" },
+	{ STATUS_REPARSE, "STATUS_REPARSE", "Symlink parse routine returns this status to reparse object path" },
+	{ STATUS_TIMEOUT, "STATUS_TIMEOUT", "Request timed out" },
+	{ STATUS_MORE_AVAILABLE, "STATUS_MORE_AVAILABLE", "More information available, request was partly satisfied" },
+	{ STATUS_SUCCESS, "STATUS_SUCCESS", "Request succeeded" },
+	STATUS_TABLE_END
+};
+
+STATUS_DESCRIPTION
+RtlpWarningCodes[] = {
+	{ STATUS_END_OF_FILE, "STATUS_END_OF_FILE", "The end of file reached while reading it" },
+	STATUS_TABLE_END
+};
+
+STATUS_DESCRIPTION
+RtlpErrorCodes[] = {
+	{ STATUS_UNSUCCESSFUL, "STATUS_UNSUCCESSFUL", "Request failed" },
+	{ STATUS_INSUFFICIENT_RESOURCES, "STATUS_INSUFFICIENT_RESOURCES", "Not enough resources to complete the request" },
+	{ STATUS_ACCESS_DENIED, "STATUS_ACCESS_DENIED", "Not enough rights to complete the request, access was denied" },
+	{ STATUS_ACCESS_VIOLATION, "STATUS_ACCESS_VIOLATION", "A memory access violation occurred while processing the request" },
+	{ STATUS_NOT_FOUND, "STATUS_NOT_FOUND", "An object was not found" },
+	{ STATUS_INVALID_PARAMETER, "STATUS_INVALID_PARAMETER", "Request does not support such a parameter" },
+	{ STATUS_INTERNAL_FAULT, "STATUS_INTERNAL_FAULT", "Internal fault occurred while processing the request" },
+	{ STATUS_NOT_IMPLEMENTED, "STATUS_NOT_IMPLEMENTED", "The requested operation is not implemented yet" },
+	{ STATUS_REPEAT_NEEDED, "STATUS_REPEAT_NEEDED", "The operation should be repeated to success" },
+	{ STATUS_DEVICE_NOT_READY, "STATUS_DEVICE_NOT_READY", "Device is not ready to complete the request" },
+	{ STATUS_PARTIAL_COMPLETION, "STATUS_PARTIAL_COMPLETION", "Only the part of request completed successfully" },
+	{ STATUS_IN_USE, "STATUS_IN_USE", "The requested object is in use and caller should wait until it becomes released" },
+	{ STATUS_INVALID_HANDLE, "STATUS_INVALID_HANDLE", "Invalid handle passed" },
+	{ STATUS_INVALID_FUNCTION, "STATUS_INVALID_FUNCTION", "Not valid operation is being performed" },
+	{ STATUS_NOT_SUPPORTED, "STATUS_NOT_SUPPORTED", "Requested operation is not supported" },
+	{ STATUS_DATATYPE_MISALIGNMENT, "STATUS_DATATYPE_MISALIGNMENT", "Data alignment should be met to complete the request" },
+	{ STATUS_BUSY, "STATUS_BUSY", "The requested DMA channel is busy now" },
+	{ STATUS_INVALID_FILE_FOR_IMAGE, "STATUS_INVALID_FILE_FOR_IMAGE", "File is not valid to be interpreted as image" },
+	{ STATUS_PRIVILEGE_NOT_HELD, "STATUS_PRIVILEGE_NOT_HELD", "Not enough privileges to complete the request" },
+	{ STATUS_DELETE_PENDING, "STATUS_DELETE_PENDING", "Object is going to be deleted and cannot be used" },
+	{ STATUS_IN_PAGE_ERROR, "STATUS_IN_PAGE_ERROR", "Access fault resolving failed because of internal in-page error" },
+	{ STATUS_NO_MEDIA_IN_DEVICE, "STATUS_NO_MEDIA_IN_DEVICE", "No media in device" },
+	{ STATUS_NO_MORE_ENTRIES, "STATUS_NO_MORE_ENTRIES", "No more entries to continue the enumeration" },
+	{ STATUS_FILE_SYSTEM_NOT_RECOGNIZED, "STATUS_FILE_SYSTEM_NOT_RECOGNIZED", "File system is not recognized on the media" },
+	STATUS_TABLE_END
+};
+
+
+KESYSAPI
+PSTATUS_DESCRIPTION
+KEAPI
+RtlLookupStatusString (
+	STATUS Status
+	)
+/**
+	Internal routine to lookup status description by value
+*/
+{
+	STATUS_DESCRIPTION *ptr = NULL;
+	switch (Status & STATUS_TYPE)
+	{
+	case STATUS_NOTICE:  ptr = RtlpNoticeCodes;  break;
+	case STATUS_WARNING: ptr = RtlpWarningCodes; break;
+	case STATUS_ERROR:   ptr = RtlpErrorCodes;   break;
+	default: ASSERT (FALSE);
+	}
+
+	while (ptr->String)
+	{
+		if (ptr->Status == Status)
+			return ptr;
+		ptr ++;
+	}
+
+	return NULL;
+}
+
+extern "C" {
+	struct F
+	{
+		int dummy;
+	};
+	
+	F _iob[4];
+}

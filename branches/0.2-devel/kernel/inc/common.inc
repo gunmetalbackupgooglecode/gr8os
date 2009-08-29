@@ -110,6 +110,7 @@ struct THREAD
     WaitMode		  db ?
     
     ContextFrame	  dd ?
+    CallerFrame       dd ?
     ExitCode		  dd ?
     ExceptionList	  dd ?
     CurrentException  dd ?
@@ -159,7 +160,27 @@ struct CONTEXT
     Eip  dd ?
     Cs   dd ?
     Eflags dd ?
+    HardwareEsp dd ?
+    HardwareSs  dd ?
 ends
+
+RPL_MASK = 3
+
+; returns stack pointer in edx
+macro GET_STACK c
+{
+	mov  ecx, c
+	mov  eax, [ecx + CONTEXT.Cs]
+	and  eax, RPL_MASK
+	mov  edx, [ecx + CONTEXT.Esp]
+	jz   @F	; ring = 0
+	
+	; ring > 0
+	mov  edx, [ecx + CONTEXT.HardwareEsp]
+		
+@@:
+}	
+	
 
 KE_PG_PDE_START  = 00180000h
 
@@ -216,3 +237,5 @@ PIT_FREQ = 1193180
 
 
 KE_IDT_IRQ_BASE   =  0x20
+
+STATUS_INVALID_FUNCTION = 0xF000000E

@@ -799,12 +799,59 @@ KeContinue:
 	iretd	
 	
 
-;public _local_unwind2 as '__local_unwind2'
+public __allmul as '__allmul'
+
+__allmul:
+
+LOWORD_A   EQU [esp + 4]       ; stack address of a
+LOWORD_B   EQU [esp + 12]      ; stack address of b
+
+HIWORD_A   EQU [esp + 8]
+HIWORD_B   EQU [esp + 16]
+
+
 ;
-;_local_unwind2:
-;	; esp+4   RegistrationFrame
-;	; esp+8   trylevel
-;	push  ebp
-;	push  [esp+4]
-;	push  dword -2
-;	push 
+;       AHI, BHI : upper 32 bits of A and B
+;       ALO, BLO : lower 32 bits of A and B
+;
+;             ALO * BLO
+;       ALO * BHI
+; +     BLO * AHI
+; ---------------------
+;
+
+        mov     eax,HIWORD_A
+        mov     ecx,HIWORD_B
+        or      ecx,eax         ;test for both hiwords zero.
+        mov     ecx,LOWORD_B
+        jnz     short hard      ;both are zero, just mult ALO and BLO
+
+        mov     eax,LOWORD_A
+        mul     ecx
+
+        ret     16              ; callee restores the stack
+
+hard:
+        push    ebx
+
+; must redefine A and B since esp has been altered
+
+LOWORD_A2      EQU     [esp + 8]       ; stack address of a
+LOWORD_B2      EQU     [esp + 16]      ; stack address of b
+HIWORD_A2      EQU     [esp + 12]
+HIWORD_B2      EQU     [esp + 20]
+
+        mul     ecx             ;eax has AHI, ecx has BLO, so AHI * BLO
+        mov     ebx,eax         ;save result
+
+        mov     eax,LOWORD_A2
+        mul     dword HIWORD_B2 ;ALO * BHI
+        add     ebx,eax         ;ebx = ((ALO * BHI) + (AHI * BLO))
+
+        mov     eax,LOWORD_A2  ;ecx = BLO
+        mul     ecx             ;so edx:eax = ALO*BLO
+        add     edx,ebx         ;now edx has all the LO*HI stuff
+
+        pop     ebx
+
+        ret     16              ; callee restores the stack

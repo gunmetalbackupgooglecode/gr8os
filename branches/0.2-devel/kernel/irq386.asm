@@ -333,6 +333,28 @@ KiConnectInterrupt:
 	retn 8
 	
 
+public KiConnectVector as '_KiConnectVector@8'
+
+;  Writes IDT vector
+;  esp+4  vector
+;  esp+8  handler
+KiConnectVector:
+	mov  eax, [esp + 4]
+	mov  ecx, [esp + 8]
+	
+	push esi
+	
+	sidt fword [IDTR]
+	mov  esi, [IDTR_base]
+
+	push ecx
+	push eax
+	call KiWriteNewVector
+	
+	pop  esi
+	retn 8
+	
+
 ; @implemented
 ;
 ; KiWriteNewVector
@@ -372,6 +394,16 @@ extrn exAC_handler
 extrn exMC_handler
 extrn exXF_handler
 
+extrn KsSystemCall
+;extrn PsxSystemCall
+;extrn WndSystemCall
+
+; stubs
+;KsSystemCall:
+PsxSystemCall:
+WndSystemCall:
+	iretd
+
 
 ; @implemented
 ;
@@ -410,6 +442,9 @@ KiInitializeIdt:
 	invoke KiWriteVector, 0x21, irq1_handler
 	invoke KiWriteNewVector, 0x26, FdIrq_handler	; IRQ6 - FD
 	invoke KiWriteVector, 0x30, KiSystemCall
+	invoke KiWriteVector, 0x31, KsSystemCall
+	invoke KiWriteVector, 0x80, PsxSystemCall
+	invoke KiWriteVector, 0x2E, WndSystemCall
 	
 	popfd
 	
@@ -423,7 +458,7 @@ public KiSystemCall as '_KiSystemCall@0'
 ;
 ; KiSystemCall
 ;
-;  Translates system call
+;  Translates internal system call
 ;
 KiSystemCall:
     pushad

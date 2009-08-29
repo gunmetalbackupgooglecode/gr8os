@@ -2,21 +2,60 @@
 
 #pragma once
 
+#define CRTAPI _cdecl
+
 #define UPCASE(ch)  (( (ch)>='a' && (ch)<='z' ) ? (ch)-'a'+'A' : (ch) )
 #define UPCASEW(ch)  (( (ch)>=L'a' && (ch)<=L'z' ) ? (ch)-L'a'+L'A' : (ch) )
 
+#define stdin	(&_iob[STDIN_FILENO])
+#define stdout	(&_iob[STDOUT_FILENO])
+#define stderr	(&_iob[STDERR_FILENO])
+
+KESYSAPI
+int
+CRTAPI
+printf(
+	char *fmt,
+	...
+	);
+
+__declspec(noreturn)
+KESYSAPI
+void
+CRTAPI
+panic(
+	char *fmt,
+	...
+	);
+
+KESYSAPI
+int
+CRTAPI
+fprintf(
+	void *v,
+	char *fmt,
+	...
+	);
+
 KESYSAPI
 char*
-KEAPI
+CRTAPI
 strchr(
 	char *str,
 	char chr
 	);
 
+KESYSAPI
+char*
+CRTAPI
+strrchr(
+	char *str,
+	char chr
+	);
 
 KESYSAPI
 INT 
-_cdecl 
+CRTAPI 
 sprintf(
 	char * buf, 
 	const char *fmt, 
@@ -25,7 +64,7 @@ sprintf(
 
 KESYSAPI
 INT
-KEAPI 
+CRTAPI 
 vsprintf(
 	char *buf,
 	const char *fmt, 
@@ -45,14 +84,14 @@ isdigit(
 
 KESYSAPI
 INT
-KEAPI
+CRTAPI
 wcslen(
 	PWSTR wstr
 	);
 
 KESYSAPI
 ULONG
-KEAPI
+CRTAPI
 wcstomb(
 	char *mbs,
 	WCHAR *wcs,
@@ -61,7 +100,7 @@ wcstomb(
 
 KESYSAPI
 ULONG
-KEAPI
+CRTAPI
 mbstowcs(
 	WCHAR *wcs,
 	char *mbs,
@@ -70,7 +109,7 @@ mbstowcs(
 
 KESYSAPI
 INT 
-KEAPI
+CRTAPI
 strncmp(
 	char *s1,
 	char *s2,
@@ -79,7 +118,7 @@ strncmp(
 
 KESYSAPI
 INT 
-KEAPI
+CRTAPI
 strcmp(
 	char *s1,
 	char *s2
@@ -87,7 +126,7 @@ strcmp(
 
 KESYSAPI
 char*
-KEAPI
+CRTAPI
 strncpy(
 	char* to,
 	const char* from, 
@@ -96,7 +135,7 @@ strncpy(
 
 KESYSAPI
 char* 
-KEAPI
+CRTAPI
 strcpy(
 	char *s1,
 	char *s2
@@ -104,7 +143,7 @@ strcpy(
 
 KESYSAPI
 char* 
-KEAPI
+CRTAPI
 strcat(
 	char *s1,
 	char *s2
@@ -112,14 +151,17 @@ strcat(
 
 KESYSAPI
 INT
-KEAPI
+CRTAPI
 strlen(
 	char *str
 	);
 
+#define STATIC_STRLEN(X) (sizeof(X) - 1)
+#define STATIC_WCSLEN(X) ((sizeof(X) - 2) / 2)
+
 KESYSAPI
 INT 
-KEAPI
+CRTAPI
 strnicmp(
 	char *s1,
 	char *s2,
@@ -128,7 +170,7 @@ strnicmp(
 
 KESYSAPI
 INT 
-KEAPI
+CRTAPI
 stricmp(
 	char *s1,
 	char *s2
@@ -136,7 +178,7 @@ stricmp(
 
 KESYSAPI
 INT
-KEAPI
+CRTAPI
 wcscmp(
 	PWSTR wstr,
 	PWSTR wstr2
@@ -144,7 +186,7 @@ wcscmp(
 
 KESYSAPI
 INT
-KEAPI
+CRTAPI
 wcsicmp(
 	PWSTR wstr,
 	PWSTR wstr2
@@ -152,7 +194,7 @@ wcsicmp(
 
 KESYSAPI
 VOID
-KEAPI
+CRTAPI
 wcsncpy(
 	PWSTR dst,
 	PWSTR src,
@@ -161,7 +203,7 @@ wcsncpy(
 
 KESYSAPI
 VOID
-KEAPI
+CRTAPI
 wcscpy(
 	PWSTR dst,
 	PWSTR src
@@ -169,7 +211,7 @@ wcscpy(
 
 KESYSAPI
 VOID
-KEAPI
+CRTAPI
 wcscat(
 	PWSTR dst,
 	PWSTR src
@@ -188,7 +230,7 @@ wcssubstr(
 
 KESYSAPI
 PWSTR
-KEAPI
+CRTAPI
 wcsrchr(
 	 PWSTR SourceString,
 	 WCHAR Char
@@ -200,6 +242,14 @@ KEAPI
 RtlInitUnicodeString(
 	OUT PUNICODE_STRING UnicodeString,
 	IN PWSTR Buffer
+	);
+
+KESYSAPI
+VOID
+KEAPI
+RtlInitString(
+	OUT PSTRING String,
+	IN PCHAR Buffer
 	);
 
 KESYSAPI
@@ -657,5 +707,18 @@ typedef struct
 	USHORT Type : 4;
 } IMAGE_FIXUP_ENTRY, *PIMAGE_FIXUP_ENTRY;
 #pragma pack()
+
+typedef struct STATUS_DESCRIPTION {
+	STATUS Status;
+	PCHAR String;
+	PCHAR Description;
+} *PSTATUS_DESCRIPTION;
+
+KESYSAPI
+PSTATUS_DESCRIPTION
+KEAPI
+RtlLookupStatusString (
+	STATUS Status
+	);
 
 // end_ddk

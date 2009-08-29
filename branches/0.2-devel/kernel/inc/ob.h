@@ -173,7 +173,7 @@ typedef struct OBJECT_TYPE
 KEVAR POBJECT_TYPE ObDirectoryObjectType;
 KEVAR POBJECT_TYPE IoDeviceObjectType;
 KEVAR POBJECT_TYPE IoDriverObjectType;
-//extern POBJECT_TYPE KeEventObjectType;
+KEVAR POBJECT_TYPE KeEventObjectType;
 KEVAR POBJECT_TYPE MmExtenderObjectType;
 KEVAR POBJECT_TYPE MmFileMappingObjectType;
 //extern POBJECT_TYPE PsThreadObjectType;
@@ -228,6 +228,7 @@ typedef struct OBJECT_HEADER
 #define OB_OBJECT_OWNER_DRV	' vrD'				// Drivers
 #define OB_OBJECT_OWNER_CDRV	'vrDC'			// Critical drivers
 #define OB_OBJECT_OWNER_EXT	' txE'				// Extenders
+#define OB_OBJECT_OWNER_KS	'  sK'
 
 
 //
@@ -466,6 +467,13 @@ ObpCreateHandle(
 STATUS
 KEAPI
 ObpDeleteHandle(
+	IN HANDLE Handle,
+	IN BOOLEAN AlreadyLocked
+	);
+
+STATUS
+KEAPI
+ObClose(
 	IN HANDLE Handle
 	);
 

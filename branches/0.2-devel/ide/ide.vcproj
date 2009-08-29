@@ -49,6 +49,7 @@
 				Name="VCCLCompilerTool"
 				Optimization="2"
 				InlineFunctionExpansion="1"
+				AdditionalIncludeDirectories="..\kernel\inc\ddk"
 				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_X86_"
 				StringPooling="true"
 				RuntimeLibrary="0"
@@ -79,7 +80,7 @@
 			<Tool
 				Name="VCLinkerTool"
 				AdditionalOptions="/DRIVER /ALIGN:32 /subsystem:native /safeseh:no"
-				AdditionalDependencies="ntoskrnl.lib hal.lib ndis.lib"
+				AdditionalDependencies="../kernel.lib $(NOINHERIT)"
 				OutputFile="Release/ide.sys"
 				LinkIncremental="1"
 				SuppressStartupBanner="true"
