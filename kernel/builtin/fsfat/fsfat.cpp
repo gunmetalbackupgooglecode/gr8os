@@ -46,7 +46,7 @@ FsFatCreateVcb(
 		return Status;
 	}
 
-	FsPrint(("FSFAT: FsFatCreateVcb: Volume name %S\n", VolumeName.Buffer));
+  FsPrint(("FSFAT: FsFatCreateVcb: Volume name %S\n", VolumeName.Buffer));
 
 	Status = IoCreateFile (
 		&Vcb->RawFileObject,
@@ -421,6 +421,7 @@ FsFatFsControl(
 				}
 
 				MountedDeviceObject->Vcb.DriveLetter = 0;
+        MountedDeviceObject->DeviceObject.Flags |= DEVICE_FLAGS_BUFFERED_IO;
 
 				Status = IoAllocateMountDriveLetter (&MountedDeviceObject->Vcb.DriveLetter);
 
@@ -727,7 +728,9 @@ FsFatCreate(
 					//BUGBUG: Replace SECTOR_SIZE with call to IRP_FSCTL with IRP_MN_QUERY_DEVICE_PROPERTIES (SectorSize)
 					//BUGBUG: Add FsFatPerformWrite
 
-					CCFILE_CACHE_CALLBACKS Callbacks = { FsFatPerformRead, NULL };
+					SET_FILE_NONCACHED (Irp->FileObject);
+
+					CCFILE_CACHE_CALLBACKS Callbacks = { FsFatPerformRead, FsFatPerformWrite };
 					Status = CcInitializeFileCaching (Irp->FileObject, dev->Vcb.ClusterSize, &Callbacks);
 
 					goto finally;
@@ -1247,7 +1250,7 @@ FsFatRead(
 	if (DeviceObject == FsDeviceObject)
 	{
 		//
-		// Disallow all open/close operations for the FSD device object
+		// Deny all read/wrete operations for the FSD device object
 		//
 
 		Status = STATUS_INVALID_FUNCTION;
@@ -1298,6 +1301,225 @@ FsFatRead(
 	COMPLETE_IRP (Irp, Status, Read);
 }
 
+#if FSFAT_TRACE_WRITING
+#define FwPrint(x) KiDebugPrint x
+#else
+#define FwPrint(x)
+#endif
+
+STATUS
+KEAPI
+FsFatWriteCluster(
+	IN PFSFATVCB Vcb,
+	IN ULONG Cluster,
+	IN PVOID Buffer
+	)
+/*++
+	Write cluster to disk
+--*/
+{
+	ULONG StartSector;
+	IO_STATUS_BLOCK IoStatus;
+	STATUS Status;
+	LARGE_INTEGER Offset;
+
+	Cluster -= 2;
+	StartSector = Vcb->Cluster2StartSector + Cluster*Vcb->FatHeader->SectorsPerCluster;
+
+	Offset.LowPart = StartSector * Vcb->FatHeader->SectorSize;
+
+	Status = IoWriteFile (
+		Vcb->RawFileObject,
+		Buffer,
+		Vcb->ClusterSize,
+		&Offset,
+		0,
+		&IoStatus
+		);
+
+	return Status;
+}
+
+
+STATUS
+KEAPI
+FsFatPerformWrite(
+	IN PFILE FileObject,
+	IN ULONG SectorNumber,	// actually it is the cluster number
+	IN PVOID Buffer,
+	IN ULONG Size,
+	OUT PULONG nBytesWritten
+	)
+/*++
+	Perform writing of page
+--*/
+{
+	//
+	// Handle file writing.
+	//
+	
+	// BUGBUG: NOT TESTED MAY CONTAIN BUGS
+
+	FwPrint(("FSFAT: Performing write operation [File=%08x, Cluster#=%08x, Size=%08x]\n", FileObject, SectorNumber, Size));
+
+	__try
+	{
+
+		PFSFATFCB Fcb = (PFSFATFCB) FileObject->FsContext;
+		PFSFATVCB Vcb = (PFSFATVCB) &((PFSFAT_VOLUME_OBJECT)FileObject->DeviceObject)->Vcb;
+
+		if( Size == 0 )
+			return STATUS_SUCCESS;
+
+		ULONG Cluster = FsFatFileClusterByPos (Vcb,
+			Fcb->DirEnt->StartCluster | (Fcb->DirEnt->StartClusterHigh<<16),
+			SectorNumber // actually it is a cluster number
+			);
+
+		if (Cluster == -1)
+		{
+			//
+			// Writing truncated because the end-of-file occurred.
+			//
+
+			KdPrint(("FSFAT: End-of-file occurred while writing cluster\n"));
+
+			return STATUS_END_OF_FILE;
+		}
+		else if (Cluster == -2)
+		{
+			//
+			// Bad cluster found.
+			//
+
+			KdPrint(("FSFAT: Writing bad cluster #%d in file: FAILED\n", SectorNumber));
+			
+			return STATUS_PARTIAL_COMPLETION;
+		}
+		else if (Cluster == -3)
+		{
+			//
+			// Reserved cluster found.
+			//
+
+			KdPrint(("FSFAT: Writing reserved cluster #%d in file: FAILED\n", SectorNumber));
+			
+			return STATUS_PARTIAL_COMPLETION;
+		}
+
+		FrPrint(("FSFAT: Writing cluster #%d: %08x (offset %08x)\n", SectorNumber, Cluster, SectorNumber*Vcb->ClusterSize));
+
+		if (Cluster < 2)
+		{
+			KdPrint(("FSFAT: Internal check failed (Cluster<2)\n"));
+			
+			return STATUS_INVALID_PARAMETER;
+		}
+
+		STATUS Status = FsFatWriteCluster (Vcb, Cluster, Buffer);
+
+		*nBytesWritten = Vcb->ClusterSize;
+
+		if (FsFatReadFatEntry (Vcb, Cluster) >= FATTBL(LastClusterStart))
+		{
+			//
+			// This is the last cluster.
+			//
+
+			*nBytesWritten = Fcb->DirEnt->FileSize % Vcb->ClusterSize;
+		}
+
+		if (!SUCCESS(Status))
+		{
+			KdPrint(("FSFAT: Writing cluster %08x failed with status %08x\n", Cluster, Status));
+			return Status;
+		}
+
+	}
+	__except (EXCEPTION_EXECUTE_HANDLER)
+	{
+		KdPrint(("FSFAT: Caught exception %08x\n", GetExceptionCode()));
+		
+		KeBugCheck (KERNEL_MODE_EXCEPTION_NOT_HANDLED,
+					GetExceptionCode(),
+					NULL,
+					0,
+					0
+					);
+	}
+
+	return STATUS_SUCCESS;
+}
+
+STATUS
+KEAPI
+FsFatWrite(
+	PDEVICE DeviceObject,
+	PIRP Irp
+	)
+/*++
+	Handle the write operation.
+--*/
+{
+	STATUS Status = STATUS_INTERNAL_FAULT;
+	ULONG Read = 0;
+
+	if (DeviceObject == FsDeviceObject)
+	{
+		//
+		// Deny all read/write operations for the FSD device object
+		//
+
+		Status = STATUS_INVALID_FUNCTION;
+	}
+	else
+	{
+		PDEVICE RealDevice = DeviceObject->Vpb->PhysicalDeviceObject;
+
+		KdPrint(("FSFAT write req: %S\n", Irp->FileObject->RelativeFileName.Buffer));
+
+		if (Irp->FileObject->RelativeFileName.Length == 0)
+		{
+			//
+			// Someone wants to write the disk directly.
+			// Pass IRP down.
+			//
+
+			IoSkipCurrentIrpStackLocation (Irp);
+			return IoCallDriver (RealDevice, Irp);
+		}
+		else
+		{
+			PVOID Buffer;
+			ULONG Offset;
+
+			if (Irp->Flags & IRP_FLAGS_BUFFERED_IO)
+			{
+				Buffer = Irp->SystemBuffer;
+			}
+			else if (Irp->Flags & IRP_FLAGS_NEITHER_IO)
+			{
+				Buffer = Irp->UserBuffer;
+			}
+
+			if (Irp->CurrentStackLocation->Parameters.ReadWrite.OffsetSpecified)
+			{
+				Offset = (ULONG)(Irp->CurrentStackLocation->Parameters.ReadWrite.Offset.LowPart);
+			}
+			else
+			{
+				Offset = Irp->FileObject->CurrentOffset.LowPart;
+			}
+
+			Status = CcCacheWriteFile (Irp->FileObject, Offset, Buffer, Irp->BufferLength, &Read);
+		}
+	}
+
+	COMPLETE_IRP (Irp, Status, Read);
+}
+
+
+
 STATUS
 KEAPI
 FsFatDriverEntry (
@@ -1334,7 +1556,7 @@ FsFatDriverEntry (
 	DriverObject->IrpHandlers [IRP_CREATE] = FsFatCreate;
 	DriverObject->IrpHandlers [IRP_CLOSE] = FsFatClose;
 	DriverObject->IrpHandlers [IRP_READ] = FsFatRead;
-//	DriverObject->IrpHandlers [IRP_WRITE] = FsFatWrite;
+	DriverObject->IrpHandlers [IRP_WRITE] = FsFatWrite;
 //	DriverObject->IrpHandlers [IRP_IOCTL] = FsFatIoctl;
 
 	//

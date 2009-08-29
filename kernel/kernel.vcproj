@@ -332,6 +332,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\inc\ks.h"
+				>
+			</File>
+			<File
 				RelativePath=".\inc\mm.h"
 				>
 			</File>
@@ -402,6 +406,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\mm\fault.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\builtin\floppy\fdfunc.cpp"
 				>
 			</File>
@@ -410,7 +418,15 @@
 				>
 			</File>
 			<File
+				RelativePath=".\mm\fileview.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\builtin\fsfat\fsfat.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\builtin\gdbapi.cpp"
 				>
 			</File>
 			<File
@@ -452,6 +468,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\kd2.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\ke386.asm"
 				>
 				<FileConfiguration
@@ -482,11 +502,48 @@
 				>
 			</File>
 			<File
+				RelativePath=".\ks.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\ks386.asm"
+				>
+				<FileConfiguration
+					Name="Release|Win32"
+					>
+					<Tool
+						Name="VCCustomBuildTool"
+						CommandLine="D:\Soft\fasm\fasm.exe ks386.asm ks386.obj&#x0D;&#x0A;"
+						Outputs="ks386.obj"
+					/>
+				</FileConfiguration>
+			</File>
+			<File
+				RelativePath=".\mm\ldr.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\mm\listsup.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\mm\map.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\mm.cpp"
 				>
 			</File>
 			<File
+				RelativePath=".\mm\mmd.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\ob.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\mm\paging.cpp"
 				>
 			</File>
 			<File
@@ -536,6 +593,10 @@
 				</FileConfiguration>
 			</File>
 			<File
+				RelativePath=".\builtin\ramdrive\ramdrive.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\runtime.cpp"
 				>
 			</File>
@@ -544,6 +605,10 @@
 				>
 			</File>
 		</Filter>
+		<File
+			RelativePath=".\gdbsrv.obj"
+			>
+		</File>
 		<File
 			RelativePath=".\kernel.res"
 			>

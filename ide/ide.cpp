@@ -465,6 +465,8 @@ IdePerformWrite(
 {
 	ULONG Timeout;
 
+	INT3
+
 	if (!MmIsAddressValid(FileObject))
 	{
 		IdePrint(("FileObject=%08x\n", FileObject));
@@ -674,6 +676,8 @@ IdeAddDevice(
 		return Status;
 	}
 
+  DeviceObject->Flags |= DEVICE_FLAGS_BUFFERED_IO;
+
 	UCHAR Channel = Number >> 1;
 	UCHAR Device = Number & 1;
 
@@ -824,7 +828,9 @@ IdeAddDevice(
 			return Status;
 		}
 
-		pcb = (PHYSICAL_IDE_CONTROL_BLOCK*)(Partition+1);
+    Partition->Flags |= DEVICE_FLAGS_BUFFERED_IO;
+
+    pcb = (PHYSICAL_IDE_CONTROL_BLOCK*)(Partition+1);
 		pcb->Mask = PHYS_IDE_CB_MASK;
 		pcb->PhysicalOrPartition = 0;
 		pcb->PartitionStart = PartitionTable[i].FirstSector;
@@ -839,6 +845,7 @@ IdeAddDevice(
 		case 0x04:
 		case 0x06:
 		case 0x0B:
+			// FAT
 			{
 				IdePrint(("Fat partition found [%02x]. Mounting..\n", PartitionTable[i].Type));
 
@@ -866,6 +873,41 @@ IdeAddDevice(
 				else
 				{
 					IdePrint(("IDE: Mounted partition %S for FAT file system\n", PartitionName.Buffer));
+				}
+			}
+			break;
+
+		case 0x07:
+			// NTFS / HPFS
+			{
+				IdePrint(("Ntfs partition found [%02x]. Mounting..\n", PartitionTable[i].Type));
+
+				UNICODE_STRING NtfsName;
+				RtlInitUnicodeString( &NtfsName, L"\\FileSystem\\Ntfs" );
+				STATUS Status;
+				PDEVICE NtfsDev;
+
+				Status = ObReferenceObjectByName (&NtfsName, IoDeviceObjectType, KernelMode, FILE_READ_DATA, NULL, (PVOID*)&NtfsDev);
+				if (!SUCCESS(Status))
+				{
+					IdePrint(("ObReferenceObjectByName failed for NTFS fs: %08x\n", Status));
+					continue;
+				}
+
+				Status = IoRequestMount (Partition, NtfsDev);
+
+				ObDereferenceObject (NtfsDev);
+
+				if (!SUCCESS(Status))
+				{
+					IdePrint(("IDE: IoRequestMount failed : %08x\n", Status));
+					INT3
+					return Status;
+				}
+				else
+				{
+					IdePrint(("IDE: Mounted partition %S for NTFS file system\n", PartitionName.Buffer));
+					INT3
 				}
 			}
 			break;
@@ -996,9 +1038,7 @@ IdeReadWrite(
 			);
 	}
 	else
-	{
-		ASSERT (FALSE);
-		/*
+	{	
 		Status = CcCacheWriteFile (
 			Irp->FileObject,
 			Offset,
@@ -1006,7 +1046,6 @@ IdeReadWrite(
 			Size,
 			&Size
 			);
-		*/
 	}
 
 	COMPLETE_IRP (Irp, Status, Size);

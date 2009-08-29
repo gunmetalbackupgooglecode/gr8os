@@ -20,6 +20,27 @@ ULONG KiScreenY = 0;
 ULONG KiXResolution = 80;
 ULONG KiYResolution = 24;
 
+#define VIDEO_REGISTER_INDEX_PORT    0x3D4
+#define VIDEO_REGISTER_DATA_PORT     0x3D5
+
+#define VIDEO_REGISTER_CURSOR_LOW    0x0F
+#define VIDEO_REGISTER_CURSOR_HIGH   0x0E
+
+
+VOID
+KEAPI
+KiUpdateCursorPosition (
+	)
+{
+	USHORT Position = (USHORT)(KiScreenY * KiXResolution + KiScreenX);
+
+	KiOutPort (VIDEO_REGISTER_INDEX_PORT,	VIDEO_REGISTER_CURSOR_HIGH);
+	KiOutPort (VIDEO_REGISTER_DATA_PORT,	(UCHAR)(Position >> 8));
+
+	KiOutPort (VIDEO_REGISTER_INDEX_PORT,	VIDEO_REGISTER_CURSOR_LOW);
+	KiOutPort (VIDEO_REGISTER_DATA_PORT,	(UCHAR)(Position & 0xFF));
+}
+
 BOOLEAN KiFirstPrint = TRUE;
 BOOLEAN KiUseBochsLogging  = FALSE;
 
@@ -94,6 +115,7 @@ BochsPrintF(
 	vsprintf ( KiDebugPrintBuffer, FormatString, va );
 	BochsPrint (KiDebugPrintBuffer);
 }
+
 
 VOID
 KEAPI
@@ -170,6 +192,7 @@ KiPutChar(
 //			);
 	}
 
+	KiUpdateCursorPosition ();
 }
 
 KESYSAPI
@@ -469,6 +492,9 @@ KdpReceiveString(
 		if (Status == CP_GET_NODATA)
 		{
 			*ActualReadBytes = i;
+			if ( i > 0 )
+				Status = CP_GET_SUCCESS;
+
 			break;
 		}
 	}
@@ -658,6 +684,10 @@ KdReceivePacketWithType(
 			return Code;
 		}
 
+		if (Code == KDP_PACKET_TIMEOUT)
+			continue;
+
+		ASSERT (Packet.PacketLeader == PACKET_LEADER || Packet.PacketLeader == CONTROL_PACKET_LEADER);
 
 		KdpReceiveStringR (&Code, &Packet.PacketType, sizeof(Packet.PacketType));
 		if (Code == CP_GET_NODATA)
@@ -670,6 +700,8 @@ KdReceivePacketWithType(
 			}
 			continue;
 		}
+
+		ASSERT (Packet.PacketLeader == PACKET_LEADER || Packet.PacketLeader == CONTROL_PACKET_LEADER);
 
 		if (Packet.PacketLeader == CONTROL_PACKET_LEADER &&
 			Packet.PacketType == PACKET_TYPE_KD_RESEND)
@@ -689,6 +721,8 @@ KdReceivePacketWithType(
 			continue;
 		}
 
+		ASSERT (Packet.PacketLeader == PACKET_LEADER || Packet.PacketLeader == CONTROL_PACKET_LEADER);
+
 		KdpReceiveStringR (&Code, &Packet.PacketId, sizeof(Packet.PacketId));
 		if (Code == CP_GET_NODATA)
 			return KDP_PACKET_TIMEOUT;
@@ -701,6 +735,8 @@ KdReceivePacketWithType(
 			continue;
 		}
 
+		ASSERT (Packet.PacketLeader == PACKET_LEADER || Packet.PacketLeader == CONTROL_PACKET_LEADER);
+
 		KdpReceiveStringR (&Code, &Packet.Checksum, sizeof(Packet.Checksum));
 		if (Code == CP_GET_NODATA)
 			return KDP_PACKET_TIMEOUT;
@@ -712,6 +748,8 @@ KdReceivePacketWithType(
 			}
 			continue;
 		}
+
+		ASSERT (Packet.PacketLeader == PACKET_LEADER || Packet.PacketLeader == CONTROL_PACKET_LEADER);
 
 #if TRACE_PACKETS
 		KiDebugPrint ("KdReceivePacket: Got:\n");
@@ -735,6 +773,7 @@ KdReceivePacketWithType(
 				else if(*PacketType == PACKET_TYPE_KD_ACKNOWLEDGE)
 				{
 					KdpNextPacketIdToSend ^= 1;
+					KdpNextPacketIdToSend &= ~SYNC_PACKET_ID;
 					return KDP_PACKET_RECEIVED;
 				}
 				else continue;
@@ -770,6 +809,7 @@ KdReceivePacketWithType(
 
 				KdpSendControlPacket (PACKET_TYPE_KD_RESEND, 0);
 				KdpNextPacketIdToSend ^= 1;
+				KdpNextPacketIdToSend &= ~SYNC_PACKET_ID;
 				KdpPacketIdExpected ^= 1;
 				return KDP_PACKET_RECEIVED;
 			}
@@ -1735,7 +1775,7 @@ KdWakeUpDebugger(
 	KdpSendStateChange (ExceptionCode, NumberParameters, Parameter1, Parameter2, Parameter3, Parameter4, 
 		ExceptionAddress, FirstChance);
 
-	while (KdpReceiveAndReplyPackets())
+	while (KdpReceiveAndReplyPackets() == FALSE)
 	{
 		NOTHING;
 	}

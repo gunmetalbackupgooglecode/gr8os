@@ -258,3 +258,13 @@ FsFatPerformRead(
 	IN ULONG Size,
 	OUT PULONG nBytesRead
 	);
+
+STATUS
+KEAPI
+FsFatPerformWrite(
+	IN PFILE FileObject,
+	IN ULONG SectorNumber,
+	IN PVOID Buffer,
+	IN ULONG Size,
+	OUT PULONG nBytesWritten
+	);

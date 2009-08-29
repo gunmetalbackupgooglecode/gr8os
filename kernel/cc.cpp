@@ -252,17 +252,19 @@ CcpCacheFilePage(
 	return Status;
 }
 
+#define CCP_ACTUAL_WRITE_PAGE(CACHEMAP,CACHEDPAGE) CcpActualWritePage((CACHEMAP), (CACHEDPAGE)->PageNumber, (CACHEDPAGE)->Buffer)
+
 STATUS
 KEAPI
 CcpActualWritePage(
 	IN PCCFILE_CACHE_MAP CacheMap,
-	IN PCCFILE_CACHED_PAGE Page
+	IN ULONG PageNumber,
+	IN PVOID Buffer
 	)
 /*++
 	Performs actual writing of the modified page to the disk.
 --*/
 {
-	PUCHAR pBuffer = (PUCHAR)Page->Buffer;
 	STATUS Status;
 
 	if (CacheMap->Callbacks.ActualWrite == NULL)
@@ -274,8 +276,8 @@ CcpActualWritePage(
 
 		Status = CacheMap->Callbacks.ActualWrite (
 			CacheMap->FileObject, 
-			Page->PageNumber*CacheMap->ClustersPerPage + i,
-			pBuffer + i*CacheMap->ClusterSize, 
+			PageNumber*CacheMap->ClustersPerPage + i,
+			(PUCHAR)Buffer + i*CacheMap->ClusterSize, 
 			CacheMap->ClusterSize,
 			&BytesWritten
 			);
@@ -419,7 +421,7 @@ _rebuild:
 							  CacheMap->PageSize
 							  );*/
 
-				Status = CcpActualWritePage (CacheMap, Page);
+				Status = CCP_ACTUAL_WRITE_PAGE (CacheMap, Page);
 
 				if (!SUCCESS(Status))
 				{
@@ -464,7 +466,7 @@ _rebuild:
 								  CacheMap->PageSize
 								  );*/
 
-					Status = CcpActualWritePage (CacheMap, Page);
+					Status = CCP_ACTUAL_WRITE_PAGE (CacheMap, Page);
 					
 					if (!SUCCESS(Status))
 					{
@@ -540,6 +542,21 @@ CcPurgeCacheFile(
 	{
 		PCCFILE_CACHED_PAGE Page = &CacheMap->PageCacheMap[i];
 
+		if (i==0) KdPrint(("PAGE %X VA %X DIRTY %X\n", i, Page->Buffer, MiGetPteAddress(Page->Buffer)->u1.e1.Dirty));
+
+		/*
+		KdPrint((
+		"//                                                                       \n"
+		"// BUGBUG                                                                \n"
+		"// If the page was mapped by someone else,                               \n"
+		"//  we cannot know is page modified or not.                              \n"
+		"// CCFILE_CACHED_PAGE should contain pointers to all views of            \n"
+		"//  the specified file to check them all for MMPTE::u1.e1.Dirty          \n"
+		"//	                                                                      \n"
+		));
+		INT3
+		*/
+
 		if (Page->Cached &&
 			Page->Modified)
 		{
@@ -556,7 +573,7 @@ CcPurgeCacheFile(
 						  CacheMap->PageSize
 						  );*/
 
-			Status = CcpActualWritePage (CacheMap, Page);
+			Status = CCP_ACTUAL_WRITE_PAGE (CacheMap, Page);
 
 			if (!SUCCESS(Status))
 			{
@@ -600,7 +617,7 @@ CcpFindAndReadWrite(
 {
 	STATUS Status = STATUS_NOT_FOUND;
 
-	*nBytesRead = 0;
+	//*nBytesRead = 0;
 
 _repeat_read:
 
@@ -677,8 +694,9 @@ _repeat_read:
 				CacheMap->PageCacheMap[i].Modified = TRUE;
 			}
 
-			CcPrint (("CC: Cache %s satisfied from cache for the file %08x, page %d\n", 
-				WriteOperation ? "write" : "read", CacheMap->FileObject, *PageNumber));
+			CcPrint (("CC: Cache %s satisfied from cache for the file %08x[%S], page %d\n", 
+				WriteOperation ? "write" : "read", CacheMap->FileObject,
+				CacheMap->FileObject->RelativeFileName.Buffer, *PageNumber));
 
 			break;
 		}
@@ -686,6 +704,22 @@ _repeat_read:
 
 	return Status;
 }
+
+STATUS
+KEAPI
+CcFindAndReadWrite(
+	IN PCCFILE_CACHE_MAP CacheMap,
+	IN ULONG PageNumber,
+	IN ULONG PageOffset,
+	IN BOOLEAN WriteOperation,
+	IN OUT PVOID Buffer OPTIONAL,
+	IN ULONG Size,
+	OUT PULONG nBytesRead
+	)
+{
+	return CcpFindAndReadWrite (CacheMap, &PageNumber, &PageOffset, WriteOperation, &Buffer, &Size, nBytesRead);
+}
+
 
 STATUS
 KEAPI
@@ -705,11 +739,13 @@ CcpActualRead(
 	PVOID TempPage = MmAllocatePage ();
 	STATUS Status;
 
+  ASSERT (TempPage != NULL);
+
 	if (CacheMap->FileObject->RelativeFileName.Length > 0)
 		Cc2Print(("CC: CcpActualRead: PN=%04x,POffs=%03x,Size=%04x, Read=%04x\n", PageNumber, PageOffset, Size, *nBytesRead));
-
+    
 	Status = CcpActualReadPage (CacheMap, PageNumber, TempPage);
-
+ 
 	if (SUCCESS(Status))
 	{
 		if (Size > (PAGE_SIZE-PageOffset))
@@ -784,13 +820,103 @@ CcpActualWrite(
 	OUT PULONG nBytesWritten
 	)
 /*++
-	Perform actual writing of page. This function may be recursive
+	Perform actual writing of page.
 --*/
 {
+	// BUGBUG: NOT TESTED MAY CONTAIN BUGS
+	INT3
+
 	PVOID TempPage = MmAllocatePage ();
 	STATUS Status;
 
-	Status = CcpActualReadPage (CacheMap, PageNumber, TempPage);
+	CcPrint(("CC: Actual write (FILE %X (%S) Page %X Offs %X Size %X). Read page first.\n",
+		CacheMap->FileObject, CacheMap->FileObject->RelativeFileName.Buffer, 
+		PageNumber, PageOffset, Size));
+	//
+	// First try to find page in cache map (if file is cached for reading).
+	// If page is cached, satisfy write request by copying
+	// If page is not cached, read page, and satisfy write request by copying.
+	// Then page will be actually written.
+	//
+
+	if (IS_FILE_CACHED(CacheMap->FileObject) == FALSE)
+	{
+		CcPrint(("CCWRITE: File is not cached\n"));
+		
+		//
+		// File is not cached.
+		// Read page, modify it and write back
+		//
+
+		ASSERT (Size < PAGE_SIZE);
+
+		Status = CcpActualReadPage (CacheMap, PageNumber, TempPage);
+		KdPrint(("CCWRITE: %X\n %S\n", Status, TempPage));
+		INT3
+
+		if (SUCCESS(Status))
+		{
+			memcpy ((PUCHAR)TempPage + PageOffset, Buffer, Size);
+
+			Status = CcpActualWritePage (CacheMap, PageNumber, TempPage);
+		}
+
+		MmFreePage (TempPage);
+
+		return Status;
+	}
+
+
+	ULONG PageSize = PAGE_SIZE;
+	ULONG Read;
+	Status = CcFindAndReadWrite (CacheMap, 
+		PageNumber, PageOffset, FALSE, TempPage, PageSize, &Read);
+
+	CcPrint(("CC: ActualWrite: CcpFindAndReadWrite %X\n", Status));
+
+	if (Status == STATUS_NOT_FOUND)
+	{
+		// Page is not cached. Read it
+		Status = CcpActualReadPage (CacheMap, PageNumber, TempPage);
+		if (!SUCCESS(Status))
+		{
+			CcPrint(("CC: ActualWrite: CcpActualReadPage failed with status %X\n", Status));
+			MmFreePage (TempPage);
+			return Status;
+		}
+
+		// Cache it
+		Status = CcpCacheFilePage (CacheMap->FileObject, PageNumber, TempPage);
+		if (!SUCCESS(Status))
+		{
+			CcPrint(("CC: ActualWrite: CcpCacheFilePage failed with status %X\n", Status));
+			MmFreePage (TempPage);
+			return Status;
+		}
+		
+		CcPrint(("CC: ActualWrite: Read & cached. Retrying\n"));
+
+		// Satisfy writing. Second try
+		Status = CcFindAndReadWrite (CacheMap, 
+			PageNumber, PageOffset, FALSE, TempPage, PageSize, &Read);
+
+		ASSERT (SUCCESS(Status));	// cannot fail
+	}
+
+	// Now request is satisfied in cache or page has been successfully read and cached.
+	// Also, first or second call CcpFindAndReadWrite satisfied writing to cache
+	// Perform actual writing to disk
+
+	Status = CcpActualWritePage (CacheMap, PageNumber, TempPage);
+
+	CcPrint(("CC: ActualWrite: CcpActualWritePage %X\n", Status));
+
+	MmFreePage (TempPage);
+	return Status;
+
+#if 0
+
+	//////////////////
 
 	if (SUCCESS(Status))
 	{
@@ -819,6 +945,8 @@ CcpActualWrite(
 	Size -= PAGE_SIZE-PageOffset;
 	if ((LONG)Size > 0)
 	{
+		INT3
+			/*
 		PVOID NewBuffer = (PUCHAR)Buffer + (PAGE_SIZE-PageOffset);
 
 		PageNumber ++;
@@ -830,9 +958,11 @@ CcpActualWrite(
 		{
 			Status = CcpActualWrite (CacheMap, PageNumber, PageOffset, NewBuffer, Size, nBytesWritten);
 		}
+			*/
 	}
 
 	return Status;
+#endif
 }
 
 KESYSAPI
@@ -853,6 +983,8 @@ CcCacheReadFile(
 	PCCFILE_CACHE_MAP CacheMap = FileObject->CacheMap;
 	
 	/* -----------hekked by scrat---------- */
+
+	*nBytesRead = 0;
 
 	ExAcquireMutex (&CacheMap->CacheMapLock);
 
@@ -966,9 +1098,9 @@ CcCacheWriteFile(
 	ULONG PageNumber = ALIGN_DOWN (Offset, PAGE_SIZE) / PAGE_SIZE;
 	ULONG PageOffset = Offset & (PAGE_SIZE-1);
 
-	if (FileObject->WriteThrough == 0)
+	//if (FileObject->WriteThrough == 0)
 	{
-		CcPrint (("CC: Cache read requested for the file %08x [%S], offs=%08x [pg=%05x, ofs=%03x], sz=%08x\n", 
+		CcPrint (("CC: Cache write requested for the file %08x [%S], offs=%08x [pg=%05x, ofs=%03x], sz=%08x\n", 
 			FileObject, FileObject->RelativeFileName.Buffer, Offset, PageNumber, PageOffset, Size));
 	}
 
@@ -976,6 +1108,7 @@ CcCacheWriteFile(
 
 	if (FileObject->WriteThrough)
 	{
+		CcPrint(("CC: Write-through enabled, performing actual write\n"));
 		ExReleaseMutex (&CacheMap->CacheMapLock);
 
 		return CcpActualWrite (CacheMap, PageNumber, PageOffset, Buffer, Size, nBytesWritten);

@@ -49,6 +49,83 @@ KiWriteCharAttribute(
 	__asm retn
 }
 
+extern ULONG KiXResolution;
+extern ULONG KiYResolution;
+
+KESYSAPI
+VOID
+KEAPI
+KeWriteConsoleChar(
+  UCHAR x,
+  UCHAR y,
+  CHAR chr,
+  UCHAR attribute
+  )
+{
+  USHORT Position = (USHORT)(y * KiXResolution + x);
+  __asm
+  {
+    movzx eax, [Position]
+    shl eax, 1
+    mov cl, [chr]
+    mov dl, [attribute]
+    mov byte ptr gs:[eax], cl
+    mov byte ptr gs:[eax+1], dl
+  }
+}
+
+KESYSAPI
+VOID
+KEAPI
+KeScanConsole(
+  IN UCHAR x,
+  IN UCHAR y,
+  IN USHORT ByteCount,
+  OUT PVOID Buffer
+  )
+{
+  USHORT Position = (USHORT)(y * KiXResolution + x);
+  __asm
+  {
+    movzx esi, [Position]
+    shl esi, 1
+
+    mov edi, [Buffer]
+    movzx ecx, [ByteCount]
+
+    rep movs byte ptr es:[edi], gs:[esi]
+  }
+}
+
+KESYSAPI
+VOID
+KEAPI
+KeWriteConsole(
+  IN UCHAR x,
+  IN UCHAR y,
+  IN USHORT ByteCount,
+  IN PVOID Buffer
+  )
+{
+  USHORT Position = (USHORT)(y * KiXResolution + x);
+  __asm
+  {
+    movzx edi, [Position]
+    shl edi, 1
+
+    mov esi, [Buffer]
+    movzx ecx, [ByteCount]
+
+    push es
+    push gs
+    pop es
+
+    rep movsb // movs byte ptr gs:[edi], ds:[esi]
+
+    pop es
+  }
+}
+
 KESYSAPI
 PDPC_QUEUE
 KEAPI

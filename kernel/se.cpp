@@ -227,3 +227,7 @@ SepInheritAccessToken(
 	return STATUS_SUCCESS;
 }
 
+
+//
+// TO DO: SeLogonUser and othrz.
+//

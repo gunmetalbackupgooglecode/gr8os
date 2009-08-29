@@ -80,7 +80,10 @@ typedef struct THREAD
 	PROCESSOR_MODE WaitMode;
 
 	// Context Frame
-	CONTEXT_FRAME* ContextFrame;
+	CONTEXT_FRAME *ContextFrame;
+
+	// Caller frame
+	CONTEXT_FRAME *CallerFrame;
 
 	// Exit code
 	ULONG ExitCode;
@@ -145,6 +148,8 @@ typedef struct CONTEXT_FRAME
 	ULONG  Eip;
 	ULONG  Cs;
 	ULONG  Eflags;
+	ULONG  HardwareEsp;
+	ULONG  HardwareSs;
 } CONTEXT, *PCONTEXT;
 
 // end_ddk

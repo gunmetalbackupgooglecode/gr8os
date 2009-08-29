@@ -98,6 +98,9 @@ EXPORTS
 	KiConnectInterrupt
 	_KiEoiHelper@0
 	KePrintActiveConsole
+	KeWriteConsole
+	KeWriteConsoleChar
+	KeScanConsole
 	KiKeyboardStatusByte
 	KeAcquireLock
 	KeReleaseLock
@@ -208,6 +211,7 @@ EXPORTS
 	MmUnmapViewOfFile
 	MmAllocatePage
 	MmFreePage
+	MmCreatePagingFile
 	
 	;
 	; Processes
@@ -233,12 +237,22 @@ EXPORTS
 	SeAccessCheckEx
 	
 	;
+	; KS kernel services
+	;
+	
+	KsClose
+	KsCreateFile
+	KsCreateEvent
+	KsSetEvent
+	
+	;
 	; RTL
 	;
 	
 	RtlInitUnicodeString
 	RtlDuplicateUnicodeString
 	RtlFreeUnicodeString
+	RtlInitString
 	memset
 	memcpy
 	memmove
@@ -263,4 +277,7 @@ EXPORTS
 	stricmp
 	strncpy
 	strnicmp
+	RtlLookupStatusString
+	_allmul
+	breakpoint
 	

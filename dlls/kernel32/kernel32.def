@@ -1,0 +1,11 @@
+EXPORTS
+	GetVersion
+	CreateFileA
+	CreateFileW
+	CloseHandle
+	ReadFile
+	WriteFile
+	CreateEventA
+	CreateEventW
+	SetEvent
+	

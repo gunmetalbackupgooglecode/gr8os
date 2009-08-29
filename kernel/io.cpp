@@ -531,9 +531,30 @@ IoBuildDeviceIoControlRequest(
 
 	Irp->MajorFunction = IRP_IOCTL;
 	Irp->UserBuffer = InputBuffer;
-	Irp->Flags |= IRP_FLAGS_BUFFERED_IO | IRP_FLAGS_DEALLOCATE_BUFFER | IRP_FLAGS_INPUT_OPERATION;
-	Irp->SystemBuffer = ExAllocateHeap (FALSE, max(InputBufferSize, OutputBufferSize));
-	memcpy (Irp->SystemBuffer, InputBuffer, InputBufferSize);
+	Irp->Flags |= IRP_FLAGS_INPUT_OPERATION;
+  Irp->DeviceObject = DeviceObject;
+
+  CHAR Method = METHOD_FROM_CTL_CODE (IoControlCode);
+  switch (Method)
+  {
+  case METHOD_NEITHER:
+    //
+    // Do nothing for neither i/o
+    //
+    break;
+
+  case METHOD_BUFFERED:
+
+    //
+    // Start buffered i/o
+    //
+
+    Irp->Flags |= IRP_FLAGS_BUFFERED_IO | IRP_FLAGS_DEALLOCATE_BUFFER;
+	  Irp->SystemBuffer = ExAllocateHeap (FALSE, max(InputBufferSize, OutputBufferSize));
+	  memcpy (Irp->SystemBuffer, InputBuffer, InputBufferSize);
+    break;
+  }
+
 	Irp->BufferLength = InputBufferSize;
 	Irp->UserIosb = IoStatus;
 	Irp->RequestorMode = RequestorMode;
@@ -575,28 +596,42 @@ IoBuildDeviceRequest(
 	if (Irp == NULL)
 		return Irp;
 
-	//
-	// BUGBUG: select i/o type from device flags
-	//
-
 	Irp->MajorFunction = MajorFunction;
 	Irp->UserBuffer = Buffer;
-	Irp->Flags |= IRP_FLAGS_BUFFERED_IO | IRP_FLAGS_DEALLOCATE_BUFFER;
 	
-	if (BufferSize < PAGE_SIZE)
-	{
-		Irp->SystemBuffer = ExAllocateHeap (FALSE, BufferSize);
-	}
-	else
-	{
-		Irp->SystemBuffer = MmAllocateMemory (BufferSize);
-	}
+  CHAR Method = DeviceObject->Flags & DEVICE_FLAGS_METHOD_MASK;
+  switch (Method)
+  {
+  case METHOD_NEITHER:
+    //
+    // Do nothing for neither i/o
+    //
 
-	if (!Irp->SystemBuffer)
-	{
-		ExFreeHeap (Irp);
-		return NULL;
-	}
+    break;
+
+  case METHOD_BUFFERED:
+
+    //
+    // Start buffered i/o
+    //
+
+    Irp->Flags |= IRP_FLAGS_BUFFERED_IO | IRP_FLAGS_DEALLOCATE_BUFFER;
+	  if (BufferSize < PAGE_SIZE)
+	  {
+		  Irp->SystemBuffer = ExAllocateHeap (FALSE, BufferSize);
+	  }
+	  else
+	  {
+		  Irp->SystemBuffer = MmAllocateMemory (BufferSize);
+	  }
+
+	  if (!Irp->SystemBuffer)
+	  {
+		  ExFreeHeap (Irp);
+		  return NULL;
+	  }
+    break;
+  }
 
 	Irp->BufferLength = BufferSize;
 	Irp->UserIosb = IoStatus;
@@ -1074,6 +1109,8 @@ IoCreateDevice(
 	Device->StackSize = 1;
 	InitializeListHead (&Device->IopInternalLinks);
 
+  Device->DeviceExtension = (Device+1);
+
 	if (DeviceType == DEVICE_TYPE_DISK)
 	{
 		Status = IopCreateVpb (Device);
@@ -1440,8 +1477,8 @@ IoRegisterFileSystem(
 {
 	ExAcquireMutex (&IopFileSystemListLock);
 
-	InsertTailList (&IopFileSystemListHead, &DeviceObject->IopInternalLinks);
 	ObReferenceObject (DeviceObject);
+	InsertTailList (&IopFileSystemListHead, &DeviceObject->IopInternalLinks);
 
 	ExReleaseMutex (&IopFileSystemListLock);
 }

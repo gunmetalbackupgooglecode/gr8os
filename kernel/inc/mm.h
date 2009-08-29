@@ -563,6 +563,19 @@ KEAPI
 MiDumpPageLists(
 	);
 
+extern MUTEX MmPageDatabaseLock;
+
+#define MM_PTE_IS_FREE(PTE) \
+	( (PointerPte)->u1.e1.Valid == 0 && (PointerPte)->u1.e1.PteType == PTE_TYPE_NORMAL_OR_NOTMAPPED )
+
+extern PMMPPD MmZeroedPageListHead;
+extern PMMPPD MmFreePageListHead;
+extern PMMPPD MmModifiedPageListHead;
+extern PMMPPD MmStandbyPageListHead;
+extern PMMPPD *MmPageLists[];
+
+
+
 #pragma pack()
 
 // begin_ddk

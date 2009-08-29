@@ -519,6 +519,14 @@ KiConnectInterrupt(
 KESYSAPI
 VOID
 KEAPI
+KiConnectVector(
+	UCHAR IdtVector,
+	PVOID Handler
+	);
+
+KESYSAPI
+VOID
+KEAPI
 KiEoiHelper(
 	);
 
@@ -799,6 +807,10 @@ typedef enum KE_OBJECT_TYPE
 	SynchronizationMutex
 } *PKE_OBJECT_TYPE;
 
+#define EVENT_READ_STATE	0x00000001
+#define EVENT_SET_STATE		0x00000002
+#define EVENT_ALL_ACCESS	(EVENT_READ_STATE | EVENT_SET_STATE)
+
 KESYSAPI
 VOID
 KEAPI
@@ -956,6 +968,39 @@ KiWriteCharAttribute(
 	UCHAR Attribute
 	);
 
-extern UCHAR KiKeyboardStatusByte;
+KEVAR UCHAR KiKeyboardStatusByte;
+
+typedef struct OBJECT_DIRECTORY *POBJECT_DIRECTORY;
+KEVAR POBJECT_DIRECTORY KeBaseNamedObjectsDirectory;
+
+KESYSAPI
+VOID
+KEAPI
+KeWriteConsoleChar(
+  IN UCHAR x,
+  IN UCHAR y,
+  IN CHAR chr,
+  IN UCHAR attribute
+  );
+
+KESYSAPI
+VOID
+KEAPI
+KeWriteConsole(
+  IN UCHAR x,
+  IN UCHAR y,
+  IN USHORT ByteCount,
+  IN PVOID Buffer
+  );
+
+KESYSAPI
+VOID
+KEAPI
+KeScanConsole(
+  IN UCHAR x,
+  IN UCHAR y,
+  IN USHORT ByteCount,
+  OUT PVOID Buffer
+  );
 
 // end_ddk

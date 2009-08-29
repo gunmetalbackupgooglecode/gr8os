@@ -1,0 +1,14 @@
+EXPORTS
+	fopen
+	fclose
+	_fcloseall
+	stdin
+	stdout
+	stderr
+	_errno
+	_fdopen
+	malloc
+	free
+	StatusToError
+	
+	

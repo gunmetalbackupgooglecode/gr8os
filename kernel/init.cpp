@@ -21,12 +21,15 @@
 //==================================
 
 //
-// Demo code with three counter threads..
+// Demo code with two counter threads..
 //
 // BUGBUG: Delete in final version
 //
 
-PTHREAD Thread1, Thread2, Thread3;
+PTHREAD Thread1, Thread2;
+
+// Loader thread
+PTHREAD LoaderThread;
 
 VOID KiIncChar(
 	ULONG Pos
@@ -127,8 +130,191 @@ void _f()
 }
 
 VOID
+InitIncrementProgressBar(
+	)
+{
+	static int bar = 5;
+
+	ASSERT (bar <= 10);
+
+	KiMoveLoadingProgressBar (bar);
+
+	bar ++;
+}
+
+WCHAR DriverDir[] = L"\\Driver\\";
+
+VOID 
 KEAPI
-KiDemoThread(
+KiLoadDeviceDrivers(
+	)
+{
+	PFILE File;
+	STATUS Status;
+	UNICODE_STRING FdName;
+	IO_STATUS_BLOCK IoStatus;
+
+	KeSetOnScreenStatus ("Loading device drivers");
+	InitIncrementProgressBar ();
+
+	RtlInitUnicodeString (&FdName, L"\\SystemRoot\\bootdrv.init");
+	
+	Status = IoCreateFile (&File, FILE_READ_DATA, &FdName, &IoStatus, FILE_OPEN_EXISTING, 0);
+	if (!SUCCESS(Status)) 
+	{
+		KeBugCheck (KE_INITIALIZATION_FAILED,
+					__LINE__,
+					Status,
+					0,
+					0
+					);
+	}
+
+	//PCHAR Buffer = (PCHAR) ExAllocateHeap (TRUE, PAGE_SIZE);
+	PCHAR Buffer = (PCHAR) MmAllocatePage ();
+
+	Status = IoReadFile (File, Buffer, PAGE_SIZE, NULL, 0, &IoStatus);
+	if (!SUCCESS(Status)) 
+	{
+		KeBugCheck (KE_INITIALIZATION_FAILED,
+					__LINE__,
+					Status,
+					0,
+					0
+					);
+	}
+
+	IoCloseFile (File);
+
+	KdPrint(("INIT: Read bootdrv.ini: \n%s\n\n", Buffer));
+
+	UNICODE_STRING DriverName, ImagePath;
+	PVOID ImageBase = 0;
+	PDRIVER DriverObject = 0;
+	PCHAR pLine = Buffer;
+	PCHAR pNextLine, pp;
+
+	// Enumerate lines
+	for ( ; ((pNextLine = (pp = strchr (pLine, '\n'))) != NULL); pLine = pNextLine + 1)
+	{
+		// Remove \r and \n from the end of the line
+		do
+		{
+			*pp = '\0';
+			pp --;
+		}
+		while (*pp == '\r');
+
+		// pp points to the last character of the line.
+
+		//
+		// Find & kill all spaces
+		//
+
+		// At the beginning
+		while (*pLine == ' ')
+			pLine ++;
+
+		// Does line contain spaces only?
+		if (*pLine == '\0')
+			continue;
+
+		// At the end
+		while (*pp == ' ')
+			*(pp--) = '\0';
+
+		// Move to \0
+		pp++;
+
+		//
+		// Calculate line length
+		//
+
+		int cchLineLength = (pp-pLine);
+
+		// Skip empty lines
+		if (cchLineLength == 0)
+			continue;
+
+		// Skip comment lines
+		if (pLine[0] == ';')
+			continue;
+
+		KdPrint(("INIT: Processing entry '%s'\n", pLine));
+
+		// Make from \DIRDIR\FILEFILE.sys -> \Driver\FILEFILE
+		WCHAR *pImagePath = (WCHAR*) ExAllocateHeap (TRUE, cchLineLength * 2 + 2);
+
+		// Make unicode string from ansi string
+		mbstowcs (pImagePath, pLine, cchLineLength);
+
+		KdPrint(("INIT: pImagePath = '%S' (cchLineLength=%d)\n", pImagePath, cchLineLength));
+
+		// Found position of FILEFILE
+		PCHAR paDriver = strrchr (pLine, '\\');
+		PCHAR paDot = strrchr (pLine, '.');
+		
+		if (!paDriver)
+		{
+      ExFreeHeap (pImagePath);
+			KdPrint(("INIT: Invalid entry in bootdrv.ini: '%s'\n", pLine));
+			INT3
+			continue;
+		}
+
+		paDriver ++;
+
+		if (!paDot)
+			paDot = pp + 1;
+
+		//
+		//  \Some\Big\Path\To\Driver.sys
+		//   paDriver---------^     ^-----paDot
+
+		int cchDriverLength = (paDot - paDriver) + STATIC_WCSLEN(DriverDir);
+		WCHAR *pDriverName = (WCHAR*) ExAllocateHeap (TRUE, cchDriverLength * 2 + 2);
+
+		wcscpy  (pDriverName,								DriverDir);
+		wcsncpy (pDriverName + STATIC_WCSLEN(DriverDir),	pImagePath + ((int)(paDriver - pLine)),  (paDot - paDriver));
+		pDriverName[cchDriverLength] = L'\0';
+
+		KdPrint(("INIT: pDriverName = '%S'\n", pDriverName));
+
+		RtlInitUnicodeString( &ImagePath,  pImagePath  );
+		RtlInitUnicodeString( &DriverName, pDriverName );
+
+		Status = MmLoadSystemImage (
+			&ImagePath,
+			&DriverName,
+			DriverMode,
+			FALSE,
+			&ImageBase,
+			(PVOID*) &DriverObject
+			);
+
+		if (!SUCCESS(Status))
+		{
+			KdPrint(("MmLoadSystemImage: %S failed with status %08x\n", pImagePath, Status));
+			KdPrint(("Failed loading boot driver %S\n", pImagePath));
+			ASSERT (FALSE);
+		}
+
+		KdPrint(("MmLoadSystemImage: %S Mapped at %08x, DrvObj %08x, Status %08x\n", pImagePath, ImageBase, DriverObject, Status));	
+
+		ExFreeHeap (pImagePath);
+		ExFreeHeap (pDriverName);
+	}
+
+	MmFreePage (Buffer);
+
+	KdPrint(("INIT: Boot drivers loaded successfully\n"));
+
+//	INT3
+}
+
+VOID
+KEAPI
+KiLoaderThread(
 	PVOID Argument
 	)
 {
@@ -288,27 +474,15 @@ KiDemoThread(
 		KiDebugPrint("Last finally block\n");
 	}
 
-	UNICODE_STRING DriverName, ImagePath;
-	PVOID ImageBase = 0;
-	PDRIVER DriverObject = 0;
+	KiLoadDeviceDrivers ();
 
-	KeSetOnScreenStatus ("Loading device drivers [hdd.sys]");
-	KiMoveLoadingProgressBar (5);
+	ObpDumpDirectory (IoDeviceDirectory, 0);
+	//ObpDumpDirectory (IoDriverDirectory, 0);
 
-	RtlInitUnicodeString( &ImagePath, L"\\SystemRoot\\ide.sys" );
-	RtlInitUnicodeString( &DriverName, L"\\Driver\\ide" );
+  for(;;)
+  { }
 
-	Status = MmLoadSystemImage (
-		&ImagePath,
-		&DriverName,
-		DriverMode,
-		FALSE,
-		&ImageBase,
-		(PVOID*) &DriverObject
-		);
-
-	KdPrint(("MmLoadSystemImage: ide.sys Mapped at %08x, DrvObj %08x, Status %08x\n", ImageBase, DriverObject, Status));	
-	
+	INT3
 
 	KeSetOnScreenStatus ("Reading boot.ini");
 
@@ -317,7 +491,7 @@ KiDemoThread(
 
 	Status = IoCreateFile (
 		&File,
-		FILE_READ_DATA,
+		FILE_READ_DATA | FILE_WRITE_DATA,
 		&FileName,
 		&IoStatus,
 		FILE_OPEN_EXISTING,
@@ -328,10 +502,9 @@ KiDemoThread(
 		INT3
 	}
 
-	for (int i=0; i<2; i++)
+	UCHAR buff[513];
+	for (int i=0; i<1; i++)
 	{
-		UCHAR buff[513];
-
 		Status = IoReadFile (File, buff, SECTOR_SIZE, NULL, 0, &IoStatus);
 		if (!SUCCESS(Status)) {
 			KdPrint(("IoReadFile failed with status %08x\n", Status));
@@ -344,6 +517,7 @@ KiDemoThread(
 		//KdPrint(("Read: OK\n"));
 	}
 
+
 	KdPrint(("\nExMutexAcquirementsGlobalCounter = %08x\nExMutexSatisfactionsGlobalCounter = %08x\n",
 		ExMutexAcquirementsGlobalCounter,
 		ExMutexSatisfactionsGlobalCounter
@@ -353,41 +527,6 @@ KiDemoThread(
 
 
 
-	KeSetOnScreenStatus ("Loading device drivers [keyboard.sys]");
-	KiMoveLoadingProgressBar (6);
-
-	RtlInitUnicodeString( &ImagePath, L"\\SystemRoot\\keyboard.sys" );
-	RtlInitUnicodeString( &DriverName, L"\\Driver\\keyboard" );
-
-	Status = MmLoadSystemImage (
-		&ImagePath,
-		&DriverName,
-		DriverMode,
-		FALSE,
-		&ImageBase,
-		(PVOID*) &DriverObject
-		);
-
-	KdPrint(("MmLoadSystemImage: keyboard.sys Mapped at %08x, DrvObj %08x, Status %08x\n", ImageBase, DriverObject, Status));	
-
-
-	/*
-	RtlInitUnicodeString( &ImagePath, L"\\SystemRoot\\pci.sys" );
-	RtlInitUnicodeString( &DriverName, L"\\Driver\\pci" );
-
-	Status = MmLoadSystemImage (
-		&ImagePath,
-		&DriverName,
-		DriverMode,
-		FALSE,
-		&ImageBase,
-		(PVOID*) &DriverObject
-		);
-
-	KdPrint(("MmLoadSystemImage: Mapped at %08x, DrvObj %08x, Status %08x\n", ImageBase, DriverObject, Status));
-
-	ObpDumpDirectory (ObRootObjectDirectory,0);
-	*/
 
 	/*
 	PEXCALLBACK Callback;
@@ -434,50 +573,10 @@ KiDemoThread(
 	// Fall through counter thread code.
 	//PsCounterThread( (PVOID)( 80*5 + 35 ) );
 
-	KeSetOnScreenStatus ("Loading device drivers [console.sys]");
-	KiMoveLoadingProgressBar (6);
-
-	RtlInitUnicodeString( &ImagePath, L"\\SystemRoot\\console.sys" );
-	RtlInitUnicodeString( &DriverName, L"\\Driver\\console" );
-
-	Status = MmLoadSystemImage (
-		&ImagePath,
-		&DriverName,
-		DriverMode,
-		FALSE,
-		&ImageBase,
-		(PVOID*) &DriverObject
-		);
-
-	KdPrint(("MmLoadSystemImage: console.sys Mapped at %08x, DrvObj %08x, Status %08x\n", ImageBase, DriverObject, Status));	
-
-
-
-	KeSetOnScreenStatus ("Loading device drivers [cdfs.sys]");
-	KiMoveLoadingProgressBar (7);
-
-	RtlInitUnicodeString( &ImagePath, L"\\SystemRoot\\cdfs.sys" );
-	RtlInitUnicodeString( &DriverName, L"\\Driver\\cdfs" );
-
-	Status = MmLoadSystemImage (
-		&ImagePath,
-		&DriverName,
-		DriverMode,
-		FALSE,
-		&ImageBase,
-		(PVOID*) &DriverObject
-		);
-
-	KdPrint(("MmLoadSystemImage: cdfs.sys Mapped at %08x, DrvObj %08x, Status %08x\n", ImageBase, DriverObject, Status));	
-
-	KdPrint(("\nall ok\n"));
-	
-	ObpDumpDirectory (IoDeviceDirectory, 0);
-
 	INT3
 
 	KeSetOnScreenStatus ("Testing file mapping");
-	KiMoveLoadingProgressBar (10);
+	InitIncrementProgressBar ();
 
 	KdPrint(("all ok\n"));
 	KdPrint(("Testing file mapping\n"));
@@ -487,11 +586,14 @@ KiDemoThread(
 	Status = MmCreateFileMapping (
 		File,
 		KernelMode,
-		MM_READONLY,
+		//MM_READONLY,
+		MM_READWRITE,
 		&hMapping
 		);
 
 	KdPrint(("MmCreateFileMapping for [boot.ini] : %08x\n", Status));
+
+	if(!SUCCESS(Status)) INT3;
 
 	PVOID VirtualAddress = NULL;
 
@@ -500,21 +602,40 @@ KiDemoThread(
 		0,
 		0,
 		PAGE_SIZE,
-		MM_READONLY,
+		//MM_READONLY,
+		MM_READWRITE,
 		&VirtualAddress
 		);
 
 	KdPrint(("MmMapViewOfFile for [hMapping=%04x] : %08x [VA=%08x]\n", hMapping, Status, VirtualAddress));
 
+	if(!SUCCESS(Status)) INT3;
 
 //	MiDisplayMappings ();
 
 	char buf[100];
+	Pte = MiGetPteAddress (VirtualAddress);
 
 	memcpy (buf, VirtualAddress, 99);
 	buf[99] = 0;
 
 	KdPrint(("-->buf : %s\n", buf));
+	KdPrint(("ACCESSED %X DIRTY %X\n", Pte->u1.e1.Accessed, Pte->u1.e1.Dirty));
+
+	*(ULONG*)VirtualAddress = 'GNOL';
+
+	memcpy (buf, VirtualAddress, 99);
+	buf[99] = 0;
+
+	KdPrint(("-->buf : %s\n", buf));
+	KdPrint(("ACCESSED %X DIRTY %X\n", Pte->u1.e1.Accessed, Pte->u1.e1.Dirty));
+
+	//INT3
+
+	CcPurgeCacheFile (File);
+	KdPrint(("CC: Cache purged\n"));
+
+	INT3
 
 	MiDisplayMappings ();
 
@@ -522,7 +643,7 @@ KiDemoThread(
 	ObpDumpDirectory (ObGlobalObjectDirectory, 0);
 	ObpDumpDirectory (IoDeviceDirectory, 0);
 
-	INT3
+	//INT3
 
 	IoCloseFile (File);
 
@@ -590,6 +711,23 @@ KiStallExecutionHalfSecond(
 LOADER_ARGUMENTS KiLoaderBlock;
 ULONG KiInitializationPhase = 0;
 
+POBJECT_TYPE KeEventObjectType;
+POBJECT_DIRECTORY KeBaseNamedObjectsDirectory;
+
+extern "C" void _cdecl set_debug_traps (void);
+extern "C" void _cdecl breakpoint (void);
+
+VOID
+KEAPI
+Kd2Initialize (
+	VOID
+	);
+
+BOOLEAN
+KEAPI
+Kd2PrintString (
+	PSTR String
+	);
 
 KENORETURN
 VOID
@@ -598,6 +736,8 @@ KiInitSystem(
 	PLOADER_ARGUMENTS LdrArgs
 	)
 {
+	STATUS Status;
+
 	KiInitializeOnScreenStatusLine();
 	KeSetOnScreenStatus ("Loading");
 
@@ -607,8 +747,7 @@ KiInitSystem(
 
 	if (LdrArgs->PhysicalMemoryPages/256 < 52)
 	{
-		KiDebugPrint("KERNEL: Not enough memory to run, need at least 52 megs. System halted\n");
-		KiStopExecution ();
+		panic("KERNEL: Not enough memory to run, need at least 52 megs. System halted\n");
 	}
 
 	KiDebugPrintRaw( "INIT: Initializing kernel\n" );
@@ -752,8 +891,42 @@ KiInitSystem(
 	IoInitSystem( );
 	KiDebugPrintRaw( "IO: Passed initialization\n" );
 
-	KiDebugPrintRaw( "INIT: Initialization phase 1 completed, Starting initialization phase 2\n"  );
+	// Initiialize kernel
+	UNICODE_STRING Name;
 
+	RtlInitUnicodeString (&Name, L"Event");
+
+	Status = ObCreateObjectType (
+		&KeEventObjectType,
+		&Name,
+		NULL,
+		NULL,
+		NULL,
+		NULL,
+		NULL,
+		OB_OBJECT_OWNER_KE
+		);
+
+	if (!SUCCESS(Status))
+	{
+		KeBugCheck (KE_INITIALIZATION_FAILED, __LINE__, Status, 0, 0);
+	}
+
+	RtlInitUnicodeString (&Name, L"BaseNamedObjects");
+
+	Status = ObCreateDirectory (
+		&KeBaseNamedObjectsDirectory, 
+		&Name,
+		OB_OBJECT_OWNER_IO,
+		ObRootObjectDirectory
+		);
+
+	if (!SUCCESS(Status))
+	{
+		KeBugCheck (KE_INITIALIZATION_FAILED, __LINE__, Status, 0, 0);
+	}
+
+	KiDebugPrintRaw( "INIT: Initialization phase 1 completed, Starting initialization phase 2\n"  );
 
 	//
 	// Phase 2: Finalizing high-level initialization
@@ -772,6 +945,39 @@ KiInitSystem(
 
 	KiDebugPrintRaw( "INIT: Initialization phase 2 completed. Initialization completed.\n"  );
 
+#if COM_DEBUG
+
+	do
+	{
+		KdWakeUpDebugger (0x80000003, 0, 0, 0, 0, 0, (ULONG) &KiInitSystem, TRUE);
+//		KdWakeUpDebugger (STATUS_BREAKPOINT, 0, 0, 0, 0, 0, &KiInitSystem, FALSE);
+
+//		KiDebugPrint("What the fuck?!");
+		panic("What the fuck?!");
+	}
+	while (TRUE);
+
+	/*
+	if (!HalpInitializeComPort (0, 9600))
+	{
+		panic ("HAL: com port not connected (required by debug build)\n");		
+	}
+
+	KiDebugPrintRaw ("HAL: com port initialized\n");
+	set_debug_traps ();
+	for(;;)
+		breakpoint ();
+	*/
+#elif KD2_DBG
+
+	Kd2Initialize ();
+	
+	do {
+		Kd2PrintString ("Hello to WinDbg!\n");
+		Kd2PrintString ("Running GR8OS...\n");
+	}
+	while (TRUE);
+#endif
 
 	//
 	// Start demo threads
@@ -782,13 +988,13 @@ KiInitSystem(
 	// Create two additional threads
 	KeInitializeEvent (&ev, SynchronizationEvent, 0);
 
-	KiDebugPrint ("PS: ZeroPageThread=%08x, Thread1=%08x, Thread2=%08x, Thread3=%08x\n", &SystemThread, &Thread1, &Thread2, &Thread3);
+	KiDebugPrint ("PS: ZeroPageThread=%08x\n", &SystemThread);
 
 //	PspCreateThread( &Thread1, &InitialSystemProcess, PsCounterThread, (PVOID)( 80*3 + 40 ) );
 //	PspCreateThread( &Thread2, &InitialSystemProcess, PsCounterThread, (PVOID)( 80*4 + 45 ) );
-	Thread3 = PsCreateThread( &InitialSystemProcess, KiDemoThread, NULL );
+	LoaderThread = PsCreateThread( &InitialSystemProcess, KiLoaderThread, NULL );
 
-	ASSERT (Thread3 != NULL);
+	ASSERT (LoaderThread != NULL);
 
 	KiDebugPrintRaw( "INIT: Initialization completed.\n\n" );
 
