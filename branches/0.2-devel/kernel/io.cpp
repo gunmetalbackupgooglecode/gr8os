@@ -360,7 +360,7 @@ IoInitSystem(
 
 	RtlInitUnicodeString (&FdDriverName, L"\\Driver\\floppy" );
 
-	Status = IopCreateDriverObject ( 0, 0, DRV_FLAGS_BUILTIN|DRV_FLAGS_CRITICAL, FdDriverEntry, &FdDriverName, &FdDriver );
+	Status = IopCreateDriverObject ( 0, 0, DRV_FLAGS_BUILTIN|DRV_FLAGS_CRITICAL, FdDriverEntry, NULL, &FdDriverName, &FdDriver );
 	if (!SUCCESS(Status))
 	{
 		KeBugCheck (IO_INITIALIZATION_FAILED,
@@ -392,7 +392,8 @@ IoInitSystem(
 		0, 
 		0, 
 		DRV_FLAGS_BUILTIN|DRV_FLAGS_CRITICAL, 
-		FsFatDriverEntry, 
+		FsFatDriverEntry,
+		NULL,
 		&FatDriverName, 
 		&FatDriver 
 		);
@@ -807,7 +808,7 @@ IoCloseFile(
 
 	//
 	// FileObjectType deletion routine will free all resources and dereference the
-	//  coppersponding device object
+	//  corresponding device object
 	//
 
 	if (SUCCESS(Status))
@@ -892,6 +893,55 @@ IoReadFile(
 		FileObject->CurrentOffset.LowPart = Offset.LowPart + IoStatus->Information;
 	}
 
+	return Status;
+}
+
+KESYSAPI
+STATUS
+KEAPI
+IoQueryInformationFile(
+	IN PFILE FileObject,
+	IN ULONG FileInfoClass,
+	IN ULONG Length,
+	OUT PVOID Buffer,
+	OUT PIO_STATUS_BLOCK IoStatus
+	)
+/*++
+	Query information on the specified file object.
+--*/
+{
+	STATUS Status;
+	PIRP Irp;
+
+	Irp = IoBuildDeviceRequest(
+		FileObject->DeviceObject,
+		IRP_QUERY_INFO,
+		IoStatus,
+		KeGetRequestorMode(),
+		Buffer,
+		Length,
+		NULL);
+
+	if (!Irp)
+	{
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+	Irp->FileObject = FileObject;
+	Irp->CurrentStackLocation->DeviceObject = FileObject->DeviceObject;
+	Irp->CurrentStackLocation->Parameters.QuerySetInfo.InfoClass = FileInfoClass;
+	for (int i=1; i<Irp->StackSize; i++)
+	{
+		Irp->IrpStackLocations[i] = Irp->IrpStackLocations[i-1];
+	}
+	
+	Status = IoCallDriver (FileObject->DeviceObject, Irp);
+
+	if (SUCCESS(Status) && !SUCCESS(IoStatus->Status))
+	{
+		Status = IoStatus->Status;
+	}
+	
 	return Status;
 }
 
@@ -1240,6 +1290,7 @@ IopCreateDriverObject(
 	IN PVOID DriverEnd,
 	IN ULONG Flags,
 	IN PDRIVER_ENTRY DriverEntry,
+	IN PLDR_MODULE Module,
 	IN PUNICODE_STRING DriverName,
 	OUT PDRIVER *DriverObject
 	)
@@ -1278,6 +1329,7 @@ IopCreateDriverObject(
 	Driver->DriverEntry = DriverEntry;
 	Driver->DriverUnload = NULL;
 	Driver->Flags = Flags;
+	Driver->Module = Module;
 	
 	for (int i=0; i<MAX_IRP; i++)
 		Driver->IrpHandlers[i] = IopInvalidDeviceRequest;
@@ -1292,6 +1344,27 @@ IopCreateDriverObject(
 		return Status;
 	}
 
+	if (Flags & DRV_FLAGS_WDM)
+	{
+		//
+		// Prepare for WDM driver.
+		//
+
+		UNICODE_STRING wdmName;
+		PLDR_MODULE pWdm;
+
+		RtlInitUnicodeString (&wdmName, L"wdmdriver.sys");
+		Status = LdrLookupModule (&wdmName, &pWdm);
+		if (SUCCESS(Status))
+		{
+			DriverEntry = (PDRIVER_ENTRY) LdrGetProcedureAddressByName(pWdm->Base, "WdmDriverEntry");
+		}
+	}
+	else
+	{
+		Driver->IoInternal = NULL;
+	}
+	
 	Status = DriverEntry (Driver);
 	if (!SUCCESS(Status))
 	{

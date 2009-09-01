@@ -97,16 +97,22 @@ EXPORTS
 	InterlockedCompareExchange
 	KiConnectInterrupt
 	_KiEoiHelper@0
-	KePrintActiveConsole
-	KeWriteConsole
-	KeWriteConsoleChar
-	KeScanConsole
 	KiKeyboardStatusByte
 	KeAcquireLock
 	KeReleaseLock
 	KeReleaseIrqState
 	KeSetOnScreenStatus
 	KeChangeWpState
+	
+	; Console
+	KePrintActiveConsole
+	KeWriteConsole
+	KeWriteConsoleChar
+	KeScanConsole
+	KiScreenX
+	KiScreenY
+	KiPutChar
+	KiPutString
 	
 	;
 	; Io
@@ -126,6 +132,7 @@ EXPORTS
 	IoCloseFile
 	IoReadFile
 	IoWriteFile
+	IoQueryInformationFile
 	IoDeviceIoControlFile
 	IoCompleteRequest
 	IoRegisterFileSystem
@@ -212,6 +219,10 @@ EXPORTS
 	MmAllocatePage
 	MmFreePage
 	MmCreatePagingFile
+	LdrLookupModule
+	LdrGetProcedureAddressByOrdinal
+	LdrGetProcedureAddressByName
+	
 	
 	;
 	; Processes
@@ -255,7 +266,11 @@ EXPORTS
 	RtlInitString
 	memset
 	memcpy
+	memcmp
+	memmem
 	memmove
+	strstr
+	wcsstr
 	sprintf
 	vsprintf
 	wcscmp

@@ -744,7 +744,7 @@ KESYSAPI
 int
 CRTAPI
 printf(
-	char *fmt,
+	const char *fmt,
 	...
 	)
 {
@@ -765,7 +765,7 @@ KESYSAPI
 void
 CRTAPI
 panic(
-	char *fmt,
+	const char *fmt,
 	...
 	)
 {
@@ -788,7 +788,7 @@ int
 CRTAPI
 fprintf(
 	void *v,
-	char *fmt,
+	const char *fmt,
 	...
 	)
 {
@@ -822,7 +822,7 @@ char*
 CRTAPI
 strcpy(
 	char *s1,
-	char *s2
+	const char *s2
 	)
 {
 	return strncpy (s1, s2, strlen(s2));
@@ -833,7 +833,7 @@ KESYSAPI
 INT
 CRTAPI
 wcslen(
-	PWSTR wstr
+	PCWSTR wstr
 	)
 {
 	int length;
@@ -845,7 +845,7 @@ KESYSAPI
 INT
 CRTAPI
 strlen(
-	char *str
+	const char *str
 	)
 {
 	int length;
@@ -857,13 +857,13 @@ KESYSAPI
 char*
 CRTAPI
 strchr(
-	char *str,
+	const char *str,
 	char chr
 	)
 {
-	for (char *ch=str; *ch; ch++)
+	for (const char *ch=str; *ch; ch++)
 		if (*ch == chr)
-			return ch;
+			return (char*) ch;
 
 	return NULL;
 }
@@ -872,14 +872,14 @@ KESYSAPI
 char*
 CRTAPI
 strrchr(
-	char *str,
+	const char *str,
 	char chr
 	)
 {
 	int len = strlen(str);
-	for (char *ch=(str+len-1); ch!=str; ch--)
+	for (const char *ch=(str+len-1); ch!=str; ch--)
 		if (*ch == chr)
-			return ch;
+			return (char*) ch;
 
 	return NULL;
 }
@@ -889,7 +889,7 @@ ULONG
 CRTAPI
 wcstomb(
 	char *mbs,
-	WCHAR *wcs,
+	const WCHAR *wcs,
 	ULONG count
 	)
 {
@@ -912,7 +912,7 @@ ULONG
 CRTAPI
 mbstowcs(
 	WCHAR *wcs,
-	char *mbs,
+	const char *mbs,
 	ULONG count
 	)
 {
@@ -934,8 +934,8 @@ KESYSAPI
 INT 
 CRTAPI
 strncmp(
-	char *s1,
-	char *s2,
+	const char *s1,
+	const char *s2,
 	ULONG count
 	)
 {
@@ -954,8 +954,8 @@ KESYSAPI
 INT 
 CRTAPI
 strcmp(
-	char *s1,
-	char *s2
+	const char *s1,
+	const char *s2
 	)
 {
 	int l1 = strlen(s1);
@@ -972,8 +972,8 @@ KESYSAPI
 INT 
 CRTAPI
 strnicmp(
-	char *s1,
-	char *s2,
+	const char *s1,
+	const char *s2,
 	ULONG count
 	)
 {
@@ -992,8 +992,8 @@ KESYSAPI
 INT 
 CRTAPI
 stricmp(
-	char *s1,
-	char *s2
+	const char *s1,
+	const char *s2
 	)
 {
 	int l1 = strlen(s1);
@@ -1010,18 +1010,58 @@ char*
 CRTAPI
 strcat(
 	char *s1,
-	char *s2
+	const char *s2
 	)
 {
 	return strcpy (s1 + strlen(s1), s2);
 }
 
 KESYSAPI
+char*
+CRTAPI
+strstr(
+	const char *s1,
+	const char *s2
+	)
+{
+	int l2 = strlen(s2);
+	for (const char *sp = s1; *sp; sp++)
+	{
+		if (*sp == *s2 &&
+				!memcmp (&sp[1], &s2[1], l2-1))
+		{
+			return (char*) sp;
+		}
+	}
+	return NULL;
+}
+
+KESYSAPI
+PWSTR
+CRTAPI
+wcsstr(
+	PCWSTR s1,
+	PCWSTR s2
+	)
+{
+	int l2 = wcslen(s2);
+	for (PCWSTR sp = s1; *sp; sp++)
+	{
+		if (*sp == *s2 &&
+				!memcmp (&sp[1], &s2[1], (l2-1)*2))
+		{
+			return (PWSTR) sp;
+		}
+	}
+	return NULL;
+}
+
+KESYSAPI
 INT
 CRTAPI
 wcscmp(
-	PWSTR wstr,
-	PWSTR wstr2
+	PCWSTR wstr,
+	PCWSTR wstr2
 	)
 {
 	int l1 = wcslen(wstr);
@@ -1045,8 +1085,8 @@ KESYSAPI
 INT
 CRTAPI
 wcsicmp(
-	PWSTR wstr,
-	PWSTR wstr2
+	PCWSTR wstr,
+	PCWSTR wstr2
 	)
 {
 	int l1 = wcslen(wstr);
@@ -1071,7 +1111,7 @@ VOID
 CRTAPI
 wcsncpy(
 	PWSTR dst,
-	PWSTR src,
+	PCWSTR src,
 	INT count
 	)
 {
@@ -1083,7 +1123,7 @@ VOID
 CRTAPI
 wcscpy(
 	PWSTR dst,
-	PWSTR src
+	PCWSTR src
 	)
 {
 	wcsncpy (dst, src, wcslen(src)+1);
@@ -1094,7 +1134,7 @@ VOID
 CRTAPI
 wcscat(
 	PWSTR dst,
-	PWSTR src
+	PCWSTR src
 	)
 {
 	wcscpy (dst + wcslen(dst), src);
@@ -1104,7 +1144,7 @@ KESYSAPI
 VOID
 KEAPI
 wcssubstr(
-	PWSTR SourceString,
+	PCWSTR SourceString,
 	INT StartPosition,
 	INT Length,
 	PWSTR DestinationBuffer
@@ -1118,14 +1158,14 @@ KESYSAPI
 PWSTR
 CRTAPI
 wcsrchr(
-	 PWSTR SourceString,
+	 PCWSTR SourceString,
 	 WCHAR Char
 	 )
 {
-	for (PWSTR end = SourceString + wcslen(SourceString) - 1; end>=SourceString; end--)
+	for (PCWSTR end = SourceString + wcslen(SourceString) - 1; end>=SourceString; end--)
 	{
 		if (*end == Char)
-			return end;
+			return (PWSTR) end;
 	}
 	return NULL;
 }
@@ -1136,10 +1176,10 @@ VOID
 KEAPI
 RtlInitUnicodeString(
 	OUT PUNICODE_STRING UnicodeString,
-	IN PWSTR Buffer
+	IN PCWSTR Buffer
 	)
 {
-	UnicodeString->Buffer = Buffer;
+	UnicodeString->Buffer = (PWSTR) Buffer;
 	UnicodeString->Length = wcslen(Buffer)*2;
 	UnicodeString->MaxLength = UnicodeString->Length + 2;
 }
@@ -1149,10 +1189,10 @@ VOID
 KEAPI
 RtlInitString(
 	OUT PSTRING String,
-	IN PCHAR Buffer
+	IN PCSTR Buffer
 	)
 {
-	String->Buffer = Buffer;
+	String->Buffer = (PSTR) Buffer;
 	String->Length = strlen(Buffer);
 	String->MaxLength = String->Length + 2;
 }
@@ -1407,4 +1447,36 @@ extern "C" {
 	};
 	
 	F _iob[4];
+}
+
+KESYSAPI
+void*
+CRTAPI
+memmem(
+	const void* p1,
+	size_t l1,
+	const void *p2,
+	size_t l2
+	)
+{
+	const char *begin;
+	const char *const last_possible = (const char*) p1 + l1 - l2;
+	if (l2 == 0)
+		return (void*)p1;
+
+	if (l1 < l2)
+		return NULL;
+
+	for (begin = (const char*) p1; begin <= last_possible; ++begin)
+	{
+		if (begin[0] == ((const char*) p2)[0] &&
+			!memcmp((const void*) &begin[1],
+			(const void*) ((const char*) p2 + 1),
+			l2 - 1))
+		{
+			return (void*) begin;
+		}
+	}
+
+	return NULL;
 }

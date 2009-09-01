@@ -359,11 +359,30 @@ KeChangeWpState(
 	);
 
 KESYSAPI
+void*
+CRTAPI
+memmem(
+	const void* p1,
+	size_t l1,
+	const void *p2,
+	size_t l2
+	);
+
+KESYSAPI
+INT
+_cdecl
+memcmp(
+	IN const void* To,
+	IN const void* From,
+	IN ULONG Length
+	);
+
+KESYSAPI
 VOID
 _cdecl
 memcpy(
-	IN PVOID To,
-	IN PVOID From,
+	IN void* To,
+	IN const void* From,
 	IN ULONG Length
 	);
 
@@ -973,12 +992,15 @@ KEVAR UCHAR KiKeyboardStatusByte;
 typedef struct OBJECT_DIRECTORY *POBJECT_DIRECTORY;
 KEVAR POBJECT_DIRECTORY KeBaseNamedObjectsDirectory;
 
+KEVAR ULONG KiScreenX;
+KEVAR ULONG KiScreenY;
+
 KESYSAPI
 VOID
 KEAPI
 KeWriteConsoleChar(
-  IN UCHAR x,
-  IN UCHAR y,
+  IN ULONG x,
+  IN ULONG y,
   IN CHAR chr,
   IN UCHAR attribute
   );
@@ -987,8 +1009,8 @@ KESYSAPI
 VOID
 KEAPI
 KeWriteConsole(
-  IN UCHAR x,
-  IN UCHAR y,
+  IN ULONG x,
+  IN ULONG y,
   IN USHORT ByteCount,
   IN PVOID Buffer
   );
@@ -997,10 +1019,25 @@ KESYSAPI
 VOID
 KEAPI
 KeScanConsole(
-  IN UCHAR x,
-  IN UCHAR y,
+  IN ULONG x,
+  IN ULONG y,
   IN USHORT ByteCount,
   OUT PVOID Buffer
   );
+
+KESYSAPI
+VOID
+KEAPI
+KiPutString(
+	PCHAR String
+	);
+
+
+KESYSAPI
+VOID
+KEAPI
+KiPutChar(
+	CHAR ch
+	);
 
 // end_ddk

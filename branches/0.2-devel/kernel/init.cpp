@@ -157,7 +157,7 @@ KiLoadDeviceDrivers(
 	KeSetOnScreenStatus ("Loading device drivers");
 	InitIncrementProgressBar ();
 
-	RtlInitUnicodeString (&FdName, L"\\SystemRoot\\bootdrv.init");
+	RtlInitUnicodeString (&FdName, L"\\SystemRoot\\bootdrv.ini");
 	
 	Status = IoCreateFile (&File, FILE_READ_DATA, &FdName, &IoStatus, FILE_OPEN_EXISTING, 0);
 	if (!SUCCESS(Status)) 
@@ -170,10 +170,23 @@ KiLoadDeviceDrivers(
 					);
 	}
 
-	//PCHAR Buffer = (PCHAR) ExAllocateHeap (TRUE, PAGE_SIZE);
-	PCHAR Buffer = (PCHAR) MmAllocatePage ();
+	LARGE_INTEGER FileSize;
+	Status = IoQueryInformationFile(File, FileSizeInformation, sizeof(FileSize), &FileSize, &IoStatus);
+	if (!SUCCESS(Status))
+	{
+		KeBugCheck (KE_INITIALIZATION_FAILED,
+			__LINE__,
+			Status,
+			0,
+			0);
+	}
 
-	Status = IoReadFile (File, Buffer, PAGE_SIZE, NULL, 0, &IoStatus);
+	KdPrint(("INIT: bootdrv.ini size = %d bytes\n", FileSize.LowPart));
+
+	PCHAR Buffer = (PCHAR) ExAllocateHeap (TRUE, FileSize.LowPart + 1);
+	//PCHAR Buffer = (PCHAR) MmAllocatePage ();
+
+	Status = IoReadFile (File, Buffer, FileSize.LowPart, NULL, 0, &IoStatus);
 	if (!SUCCESS(Status)) 
 	{
 		KeBugCheck (KE_INITIALIZATION_FAILED,
@@ -184,9 +197,14 @@ KiLoadDeviceDrivers(
 					);
 	}
 
+	KdPrint(("INIT: Read bootdrv.ini: %d bytes read.\n", IoStatus.Information));
+
 	IoCloseFile (File);
 
-	KdPrint(("INIT: Read bootdrv.ini: \n%s\n\n", Buffer));
+	Buffer[IoStatus.Information] = 0;
+
+	//KdPrint(("INIT: Read bootdrv.ini: \n%s\n\n", Buffer));
+	//KeBugCheck (KE_INITIALIZATION_FAILED, __LINE__, 0xCC, 0, 0);
 
 	UNICODE_STRING DriverName, ImagePath;
 	PVOID ImageBase = 0;
@@ -197,6 +215,8 @@ KiLoadDeviceDrivers(
 	// Enumerate lines
 	for ( ; ((pNextLine = (pp = strchr (pLine, '\n'))) != NULL); pLine = pNextLine + 1)
 	{
+		ULONG Flags = 0;
+
 		// Remove \r and \n from the end of the line
 		do
 		{
@@ -239,6 +259,15 @@ KiLoadDeviceDrivers(
 		// Skip comment lines
 		if (pLine[0] == ';')
 			continue;
+
+		CHAR* pWdm = strstr(pLine, " WDM");
+		if (pWdm != NULL)
+		{
+			Flags |= LOAD_SYSIMAGE_WDM;
+			KdPrint(("INIT: Loading WDM image\n"));
+			*pWdm = 0;
+			cchLineLength = strlen (pLine);
+		}
 
 		KdPrint(("INIT: Processing entry '%s'\n", pLine));
 
@@ -286,10 +315,12 @@ KiLoadDeviceDrivers(
 		Status = MmLoadSystemImage (
 			&ImagePath,
 			&DriverName,
-			DriverMode,
+			//DriverMode,
+			KernelMode,
 			FALSE,
 			&ImageBase,
-			(PVOID*) &DriverObject
+			(PVOID*) &DriverObject,
+			Flags
 			);
 
 		if (!SUCCESS(Status))
@@ -305,7 +336,8 @@ KiLoadDeviceDrivers(
 		ExFreeHeap (pDriverName);
 	}
 
-	MmFreePage (Buffer);
+	//MmFreePage (Buffer);
+	ExFreeHeap (Buffer);
 
 	KdPrint(("INIT: Boot drivers loaded successfully\n"));
 
@@ -318,20 +350,7 @@ KiLoaderThread(
 	PVOID Argument
 	)
 {
-	KdPrint(("In KiDemoThread\n"));
-
-	//KeInitializeEvent (&ev, SynchronizationEvent, FALSE);
-
-
-	/*PVOID HeapBuffer = ExAllocateHeap (TRUE, 10);
-	strncpy ((char*)HeapBuffer, "1234", 5);
-
-	PMMPTE Pte = MiGetPteAddress (HeapBuffer);
-
-	KdPrint(("\n\n"));
-	KdPrint (("Allocated buffer %08x : %s [phys page %08x]\n", HeapBuffer, HeapBuffer, Pte->u1.e1.PageFrameNumber));
-
-	PMMD Mmd = MmAllocateMmd (HeapBuffer, 10000);*/
+	KdPrint(("In KiLoaderThread()\n"));
 
 	PMMD Mmd;
 	STATUS Status;
@@ -479,8 +498,10 @@ KiLoaderThread(
 	ObpDumpDirectory (IoDeviceDirectory, 0);
 	//ObpDumpDirectory (IoDriverDirectory, 0);
 
-  for(;;)
-  { }
+	for(;;)
+	{
+		__asm hlt
+	}
 
 	INT3
 
@@ -729,6 +750,19 @@ Kd2PrintString (
 	PSTR String
 	);
 
+PTHREAD IdleThread;
+
+VOID KEAPI KiIdleThread (PVOID)
+{
+	KdPrint(("In KiIdleThread\n"));
+	for (;;)
+	{
+		__asm hlt
+	}
+}
+
+USHORT KiUserCS, KiUserDS;
+
 KENORETURN
 VOID
 KEAPI
@@ -850,6 +884,39 @@ KiInitSystem(
 		*(ULONG*)SegSfTss, 
 		*(ULONG*)((ULONG)SF_Entry+4),
 		*(ULONG*)SF_Entry );
+
+	//
+	// Allocate descriptors for user-mode code, data & stack
+	//
+	KiUserCS = KeAllocateGdtDescriptor() | 3;
+	PSEG_DESCRIPTOR SegCS3 = KeGdtEntry(KiUserCS);
+	SegCS3->HighWord.Bits.Pres = TRUE;
+
+	KiUserDS = KeAllocateGdtDescriptor() | 3;
+	PSEG_DESCRIPTOR SegDS3 = KeGdtEntry(KiUserDS);
+	SegDS3->HighWord.Bits.Pres = TRUE;
+
+	KiDebugPrint ("INIT: Allocated user-mode selectors: cs=%04x, ds=%04x\n", KiUserCS, KiUserDS);
+
+	PSEG_DESCRIPTOR SegCS0, SegDS0;
+
+	__asm
+	{
+		push cs
+		call KeGdtEntry
+		mov SegCS0, eax
+
+		push ds
+		call KeGdtEntry
+		mov SegDS0, eax
+	}
+
+	*SegCS3 = *SegCS0;
+	*SegDS3 = *SegDS0;
+	SegCS3->HighWord.Bits.Dpl = 3;
+	SegDS3->HighWord.Bits.Dpl = 3;
+
+	KiDebugPrint ("INIT: cs0=%p, ds0=%p, cs3=%p, ds3=%p\n", SegCS0, SegDS0, SegCS3, SegDS3);
 
 	KiMoveLoadingProgressBar (1);
 
@@ -993,6 +1060,7 @@ KiInitSystem(
 //	PspCreateThread( &Thread1, &InitialSystemProcess, PsCounterThread, (PVOID)( 80*3 + 40 ) );
 //	PspCreateThread( &Thread2, &InitialSystemProcess, PsCounterThread, (PVOID)( 80*4 + 45 ) );
 	LoaderThread = PsCreateThread( &InitialSystemProcess, KiLoaderThread, NULL );
+	IdleThread = PsCreateThread (&InitialSystemProcess, KiIdleThread, NULL);
 
 	ASSERT (LoaderThread != NULL);
 

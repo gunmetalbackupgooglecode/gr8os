@@ -99,10 +99,11 @@ typedef STATUS (KEAPI *PIRP_HANDLER)(PDEVICE DeviceObject, PIRP Irp);
 // Flags for driver object
 //
 
-#define DRV_FLAGS_BUILTIN	0x00000001	// Driver is built-in. Its functions are within the kernel,
-										//  start and end addresses are zero
+#define DRV_FLAGS_BUILTIN		0x00000001	// Driver is built-in. Its functions are within the kernel,
+																				//  start and end addresses are zero
 #define DRV_FLAGS_CRITICAL	0x00000002	// Driver is critical. It is executed in ring0. Otherwise, 
-										//  it is executed in ring1. Built-in drivers are always critical
+																				//  it is executed in ring1. Built-in drivers are always critical
+#define DRV_FLAGS_WDM				0x00000004	// Driver is a WDM driver from Windows NT. It is wrapped by wdmdriver.sys
 
 #define IRP_CREATE		0
 #define IRP_READ		1
@@ -118,14 +119,21 @@ typedef STATUS (KEAPI *PIRP_HANDLER)(PDEVICE DeviceObject, PIRP Irp);
 #define IRP_MN_DISMOUNT	2
 #define IRP_MN_REQUEST_CACHED_PAGE	3
 
+enum FILE_INFORMATION_CLASS
+{
+	FileSizeInformation
+};
+
 struct DRIVER
 {
 	PVOID DriverStart;			// Start address of the driver in the memory. 0 for built-in drivers
 	PVOID DriverEnd;			// End   address of the driver in the memory. 0 for built-in drivers
+	PLDR_MODULE Module;
 	ULONG Flags;				// Driver object flags. See DRV_FLAGS_*
 	PDRIVER_ENTRY DriverEntry;	// Pointer to the driver entry routine. 0 for built-in drivers
 	PDRIVER_UNLOAD DriverUnload;		// Pointer to the driver unload routine. May be NULL
 	PIRP_HANDLER IrpHandlers[MAX_IRP];	// Pointer to the IRP handlers of this driver.
+	PVOID IoInternal;
 };
 
 typedef struct IRP_STACK_LOCATION
@@ -380,6 +388,17 @@ IoReadFile(
 KESYSAPI
 STATUS
 KEAPI
+IoQueryInformationFile(
+	IN PFILE FileObject,
+	IN ULONG FileInfoClass,
+	IN ULONG Length,
+	OUT PVOID Buffer,
+	OUT PIO_STATUS_BLOCK IoStatus
+	);
+
+KESYSAPI
+STATUS
+KEAPI
 IoWriteFile(
 	IN PFILE FileObject,
 	IN PVOID Buffer,
@@ -458,6 +477,7 @@ IopCreateDriverObject(
 	IN PVOID DriverEnd,
 	IN ULONG Flags,
 	IN PDRIVER_ENTRY DriverEntry,
+	IN PLDR_MODULE Module,
 	IN PUNICODE_STRING DriverName,
 	OUT PDRIVER *DriverObject
 	);
