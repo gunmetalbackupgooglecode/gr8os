@@ -15,7 +15,7 @@ KESYSAPI
 int
 CRTAPI
 printf(
-	char *fmt,
+	const char *fmt,
 	...
 	);
 
@@ -24,7 +24,7 @@ KESYSAPI
 void
 CRTAPI
 panic(
-	char *fmt,
+	const char *fmt,
 	...
 	);
 
@@ -33,7 +33,7 @@ int
 CRTAPI
 fprintf(
 	void *v,
-	char *fmt,
+	const char *fmt,
 	...
 	);
 
@@ -41,7 +41,7 @@ KESYSAPI
 char*
 CRTAPI
 strchr(
-	char *str,
+	const char *str,
 	char chr
 	);
 
@@ -49,7 +49,7 @@ KESYSAPI
 char*
 CRTAPI
 strrchr(
-	char *str,
+	const char *str,
 	char chr
 	);
 
@@ -86,7 +86,7 @@ KESYSAPI
 INT
 CRTAPI
 wcslen(
-	PWSTR wstr
+	PCWSTR wstr
 	);
 
 KESYSAPI
@@ -94,7 +94,7 @@ ULONG
 CRTAPI
 wcstomb(
 	char *mbs,
-	WCHAR *wcs,
+	const WCHAR *wcs,
 	ULONG count
 	);
 
@@ -103,7 +103,7 @@ ULONG
 CRTAPI
 mbstowcs(
 	WCHAR *wcs,
-	char *mbs,
+	const char *mbs,
 	ULONG count
 	);
 
@@ -111,8 +111,8 @@ KESYSAPI
 INT 
 CRTAPI
 strncmp(
-	char *s1,
-	char *s2,
+	const char *s1,
+	const char *s2,
 	ULONG count
 	);
 
@@ -120,8 +120,8 @@ KESYSAPI
 INT 
 CRTAPI
 strcmp(
-	char *s1,
-	char *s2
+	const char *s1,
+	const char *s2
 	);
 
 KESYSAPI
@@ -138,7 +138,7 @@ char*
 CRTAPI
 strcpy(
 	char *s1,
-	char *s2
+	const char *s2
 	);
 
 KESYSAPI
@@ -146,14 +146,14 @@ char*
 CRTAPI
 strcat(
 	char *s1,
-	char *s2
+	const char *s2
 	);
 
 KESYSAPI
 INT
 CRTAPI
 strlen(
-	char *str
+	const char *str
 	);
 
 #define STATIC_STRLEN(X) (sizeof(X) - 1)
@@ -163,8 +163,8 @@ KESYSAPI
 INT 
 CRTAPI
 strnicmp(
-	char *s1,
-	char *s2,
+	const char *s1,
+	const char *s2,
 	ULONG count
 	);
 
@@ -172,24 +172,40 @@ KESYSAPI
 INT 
 CRTAPI
 stricmp(
-	char *s1,
-	char *s2
+	const char *s1,
+	const char *s2
+	);
+
+KESYSAPI
+char*
+CRTAPI
+strstr(
+	const char *s1,
+	const char *s2
+	);
+
+KESYSAPI
+PWSTR
+CRTAPI
+wcsstr(
+	PCWSTR s1,
+	PCWSTR s2
 	);
 
 KESYSAPI
 INT
 CRTAPI
 wcscmp(
-	PWSTR wstr,
-	PWSTR wstr2
+	PCWSTR wstr,
+	PCWSTR wstr2
 	);
 
 KESYSAPI
 INT
 CRTAPI
 wcsicmp(
-	PWSTR wstr,
-	PWSTR wstr2
+	PCWSTR wstr,
+	PCWSTR wstr2
 	);
 
 KESYSAPI
@@ -197,7 +213,7 @@ VOID
 CRTAPI
 wcsncpy(
 	PWSTR dst,
-	PWSTR src,
+	PCWSTR src,
 	INT count
 	);
 
@@ -206,7 +222,7 @@ VOID
 CRTAPI
 wcscpy(
 	PWSTR dst,
-	PWSTR src
+	PCWSTR src
 	);
 
 KESYSAPI
@@ -214,7 +230,7 @@ VOID
 CRTAPI
 wcscat(
 	PWSTR dst,
-	PWSTR src
+	PCWSTR src
 	);
 
 
@@ -222,7 +238,7 @@ KESYSAPI
 VOID
 KEAPI
 wcssubstr(
-	PWSTR SourceString,
+	PCWSTR SourceString,
 	INT StartPosition,
 	INT Length,
 	PWSTR DestinationBuffer
@@ -232,7 +248,7 @@ KESYSAPI
 PWSTR
 CRTAPI
 wcsrchr(
-	 PWSTR SourceString,
+	 PCWSTR SourceString,
 	 WCHAR Char
 	 );
 
@@ -241,7 +257,7 @@ VOID
 KEAPI
 RtlInitUnicodeString(
 	OUT PUNICODE_STRING UnicodeString,
-	IN PWSTR Buffer
+	IN PCWSTR Buffer
 	);
 
 KESYSAPI
@@ -249,7 +265,7 @@ VOID
 KEAPI
 RtlInitString(
 	OUT PSTRING String,
-	IN PCHAR Buffer
+	IN PCSTR Buffer
 	);
 
 KESYSAPI

@@ -144,6 +144,10 @@ char *WaitTypes[] = {
 };
 #endif
 
+VOID
+KEAPI
+PspDumpSystemThreadsNoLock ();
+
 PTHREAD
 KEAPI
 FindReadyThread(
@@ -234,6 +238,8 @@ FindReadyThread(
 			Curr->State, Curr->State < 4 ?  ThreadStates[Curr->State] : 0
 			));
 
+		PspDumpSystemThreadsNoLock ();
+
 		KeBugCheck (PS_SCHEDULER_GENERAL_FAILURE,
 					PSP_NO_READY_THREADS,
 					__LINE__,
@@ -286,15 +292,12 @@ PspDumpReadyQueue(
 	while ((PLIST_ENTRY)Thread != &PsReadyListHead);
 }
 
-
 VOID
 KEAPI
-PspDumpSystemThreads(
+PspDumpSystemThreadsNoLock(
 	)
 {
 	PTHREAD Thread = CONTAINING_RECORD (InitialSystemProcess.ThreadListHead.Flink, THREAD, ProcessThreadListEntry);
-	BOOLEAN OldIrqState = PspLockSchedulerDatabase ();
-
 	KiDebugPrint ("~ Threads in system process:\n");
 
 	for( ;; )
@@ -328,10 +331,19 @@ PspDumpSystemThreads(
 
 		Thread = CONTAINING_RECORD (Thread->ProcessThreadListEntry.Flink, THREAD, ProcessThreadListEntry);
 	}
+}
+
+VOID
+KEAPI
+PspDumpSystemThreads(
+	)
+{
+	BOOLEAN OldIrqState = PspLockSchedulerDatabase ();
+
+	PspDumpSystemThreadsNoLock ();
 
 	PspUnlockSchedulerDatabase ();
 	KeReleaseIrqState (OldIrqState);
-	
 }
 
 

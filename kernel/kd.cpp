@@ -116,7 +116,7 @@ BochsPrintF(
 	BochsPrint (KiDebugPrintBuffer);
 }
 
-
+KESYSAPI
 VOID
 KEAPI
 KiPutChar(
@@ -198,12 +198,9 @@ KiPutChar(
 KESYSAPI
 VOID
 KEAPI
-KiDebugPrintRaw(
+KiPutString(
 	PCHAR String
 	)
-/*++
-	Out debug string
---*/
 {
 	if (KiFirstPrint)
 	{
@@ -220,6 +217,19 @@ KiDebugPrintRaw(
 			KiPutChar ('\r');
 		KiPutChar (*sp);
 	}
+}
+
+KESYSAPI
+VOID
+KEAPI
+KiDebugPrintRaw(
+	PCHAR String
+	)
+/*++
+	Out debug string
+--*/
+{
+	KiPutString (String);
 }
 
 KESYSAPI

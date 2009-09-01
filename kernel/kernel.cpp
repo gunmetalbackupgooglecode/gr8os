@@ -56,8 +56,8 @@ KESYSAPI
 VOID
 KEAPI
 KeWriteConsoleChar(
-  UCHAR x,
-  UCHAR y,
+  ULONG x,
+  ULONG y,
   CHAR chr,
   UCHAR attribute
   )
@@ -78,8 +78,8 @@ KESYSAPI
 VOID
 KEAPI
 KeScanConsole(
-  IN UCHAR x,
-  IN UCHAR y,
+  IN ULONG x,
+  IN ULONG y,
   IN USHORT ByteCount,
   OUT PVOID Buffer
   )
@@ -101,8 +101,8 @@ KESYSAPI
 VOID
 KEAPI
 KeWriteConsole(
-  IN UCHAR x,
-  IN UCHAR y,
+  IN ULONG x,
+  IN ULONG y,
   IN USHORT ByteCount,
   IN PVOID Buffer
   )

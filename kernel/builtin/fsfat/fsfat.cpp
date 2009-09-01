@@ -1236,6 +1236,56 @@ FsFatPerformRead(
 
 STATUS
 KEAPI
+FsFatQueryInformation(
+	PDEVICE DeviceObject,
+	PIRP Irp
+	)
+/*++
+	Query file information
+--*/
+{
+	STATUS Status = STATUS_INTERNAL_FAULT;
+	ULONG Length = 0;
+	PIRP_STACK_LOCATION irpSl = IoGetCurrentIrpStackLocation(Irp);
+
+	if (DeviceObject == FsDeviceObject)
+	{
+		//
+		// Deny all read/write operations for the FSD device object
+		//
+
+		Status = STATUS_INVALID_FUNCTION;
+	}
+	else
+	{
+		PFSFATFCB Fcb = (PFSFATFCB) Irp->FileObject->FsContext;
+		
+		switch (irpSl->Parameters.QuerySetInfo.InfoClass)
+		{
+		case FileSizeInformation:
+			if (Irp->BufferLength < sizeof(ULONGLONG))
+			{
+				Status = STATUS_BUFFER_TOO_SMALL;
+				break;
+			}
+			KdPrint(("FSFAT: Query size for %S: %d bytes\n", Irp->FileObject->RelativeFileName.Buffer, Fcb->DirEnt->FileSize));
+			((PLARGE_INTEGER)Irp->UserBuffer)->LowPart = Fcb->DirEnt->FileSize;
+			KdPrint(("Low part: %d\n", ((PLARGE_INTEGER)Irp->UserBuffer)->LowPart));
+			Status = STATUS_SUCCESS;
+			Length = sizeof(ULONGLONG);
+			break;
+
+		default:
+			KdPrint(("FSFAT: QueryInfo: invalid info class %d\n", irpSl->Parameters.QuerySetInfo.InfoClass));
+			Status = STATUS_INVALID_PARAMETER;
+		}
+	}
+
+	COMPLETE_IRP (Irp, Status, Length);
+}
+
+STATUS
+KEAPI
 FsFatRead(
 	PDEVICE DeviceObject,
 	PIRP Irp
@@ -1250,7 +1300,7 @@ FsFatRead(
 	if (DeviceObject == FsDeviceObject)
 	{
 		//
-		// Deny all read/wrete operations for the FSD device object
+		// Deny all read/write operations for the FSD device object
 		//
 
 		Status = STATUS_INVALID_FUNCTION;
@@ -1557,6 +1607,7 @@ FsFatDriverEntry (
 	DriverObject->IrpHandlers [IRP_CLOSE] = FsFatClose;
 	DriverObject->IrpHandlers [IRP_READ] = FsFatRead;
 	DriverObject->IrpHandlers [IRP_WRITE] = FsFatWrite;
+	DriverObject->IrpHandlers [IRP_QUERY_INFO] = FsFatQueryInformation;
 //	DriverObject->IrpHandlers [IRP_IOCTL] = FsFatIoctl;
 
 	//

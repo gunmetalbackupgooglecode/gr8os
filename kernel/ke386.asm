@@ -463,12 +463,50 @@ KiDpcListHead   dd 80000200h
 KiNumberDpcs    db 10
 KiDpcQueueLock  dw 0
 
+public memcmp as '_memcmp'
+;
+;KESYSAPI
+;INT
+;_cdecl
+;memcmp(
+; IN PVOID p1,
+; IN PVOID p2,
+; IN ULONG Length
+; );
+;
+
+memcmp:
+	push esi
+	push edi
+	
+	; Stack map
+	; ESP -> edi
+	; +4  -> esi
+	; +8  -> ret
+	; +12 -> p1
+	; +16 -> p2
+	; +20 -> Length
+	;
+	
+	cld
+	mov edi, [esp+16]
+	mov esi, [esp+12]
+	mov ecx, [esp+20]
+	repe cmpsb
+	xor eax, eax
+	mov al, [esi-1]
+	sub al, [edi-1]
+	movsx eax, al
+	pop edi
+	pop esi
+	retn
+
 
 public memcpy as '_memcpy'
 ;
 ;KESYSAPI
 ;VOID
-;KEFASTAPI
+;_cdecl
 ;memcpy(
 ;	IN PVOID To,
 ;	IN PVOID From,

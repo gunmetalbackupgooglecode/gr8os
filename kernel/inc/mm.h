@@ -822,6 +822,7 @@ MiCreateExtenderObject(
 	OUT PEXTENDER *ExtenderObject
 	);
 
+#define LOAD_SYSIMAGE_WDM		DRV_FLAGS_WDM
 
 KESYSAPI
 STATUS
@@ -832,7 +833,8 @@ MmLoadSystemImage(
 	IN PROCESSOR_MODE TargetMode,
 	IN BOOLEAN Extender,
 	OUT PVOID *ImageBase,
-	OUT PVOID *ModuleObject
+	OUT PVOID *ModuleObject,
+	IN ULONG Flags
 	);
 
 // end_ddk
@@ -880,7 +882,9 @@ typedef struct MAPPED_FILE
 	LIST_ENTRY FileMappingsEntry;
 } *PMAPPED_FILE;
 
+// begin_ddk
 typedef ULONG  HANDLE, *PHANDLE;
+// end_ddk
 
 typedef struct MAPPED_VIEW
 {
@@ -893,6 +897,10 @@ typedef struct MAPPED_VIEW
 	PMAPPED_FILE Mapping;
 	UCHAR Protection;
 } *PMAPPED_VIEW;
+
+// begin_ddk
+
+typedef struct FILE *PFILE;
 
 KESYSAPI
 STATUS
@@ -916,6 +924,16 @@ MmMapViewOfFile(
 	IN OUT PVOID *VirtualAddress
 	);
 
+KESYSAPI
+STATUS
+KEAPI
+MmUnmapViewOfFile(
+	IN HANDLE hMapping,
+	IN PVOID VirtualAddress
+	);
+
+// end_ddk
+
 STATUS
 KEAPI
 // WARN: Environment: mapping list locked.
@@ -923,10 +941,52 @@ MiUnmapViewOfFile(
 	IN PMAPPED_VIEW View
 	);
 
+// begin_ddk
+
+typedef struct LDR_MODULE *PLDR_MODULE;
+
 KESYSAPI
 STATUS
 KEAPI
-MmUnmapViewOfFile(
-	IN HANDLE hMapping,
-	IN PVOID VirtualAddress
+LdrLookupModule(
+	IN PUNICODE_STRING ModuleName,
+	OUT PLDR_MODULE *pModule
+	);
+
+KESYSAPI
+PVOID
+KEAPI
+LdrGetProcedureAddressByOrdinal(
+	IN PVOID Base,
+	IN USHORT Ordinal
+	);
+
+PVOID
+KEAPI
+LdrGetProcedureAddressByName(
+	IN PVOID Base,
+	IN PCHAR FunctionName
+	);
+
+// end_ddk
+
+PLDR_MODULE
+KEAPI
+LdrAddModuleToLoadedList(
+	IN PUNICODE_STRING ModuleName,
+	IN PVOID ImageBase,
+	IN ULONG ImageSize
+	);
+
+VOID
+KEAPI
+LdrRemoveModuleFromLoadedList(
+	IN PLDR_MODULE Module
+	);
+
+PUNICODE_STRING
+KEAPI
+MiModuleNameFromDriverName(
+	PUNICODE_STRING DriverName,
+	PUNICODE_STRING ModuleName
 	);

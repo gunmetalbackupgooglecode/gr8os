@@ -46,7 +46,7 @@ _MiGetHeaders(
 #define LdrPrint(x)
 #endif
 
-VOID
+PLDR_MODULE
 KEAPI
 LdrAddModuleToLoadedList(
 	IN PUNICODE_STRING ModuleName,
@@ -64,8 +64,25 @@ LdrAddModuleToLoadedList(
 	RtlDuplicateUnicodeString( ModuleName, &Module->ModuleName );
 
 	InterlockedInsertTailList (&PsLoadedModuleList, &Module->ListEntry);
+
+	return Module;
 }
 
+VOID
+KEAPI
+LdrRemoveModuleFromLoadedList(
+	IN PLDR_MODULE Module
+	)
+/**
+ * Remove module from loaded list.
+ */
+{
+	RtlFreeUnicodeString(&Module->ModuleName);
+	InterlockedRemoveEntryList (&PsLoadedModuleList, &Module->ListEntry);
+	ExFreeHeap(Module);
+}
+
+KESYSAPI
 STATUS
 KEAPI
 LdrLookupModule(
@@ -102,7 +119,7 @@ LdrLookupModule(
 	return Status;
 }
 
-
+KESYSAPI
 PVOID
 KEAPI
 LdrGetProcedureAddressByOrdinal(
@@ -268,7 +285,8 @@ STATUS
 KEAPI
 LdrWalkImportDescriptor(
 	IN PVOID ImageBase,
-	IN PIMAGE_OPTIONAL_HEADER OptHeader
+	IN PIMAGE_OPTIONAL_HEADER OptHeader,
+	IN ULONG Flags
 	)
 /*++
 	Walk image's import descriptor.
@@ -502,17 +520,36 @@ MiCreateExtenderObject(
 	return Status;
 }
 
+PUNICODE_STRING
+KEAPI
+MiModuleNameFromDriverName(
+	PUNICODE_STRING DriverName,
+	PUNICODE_STRING ModuleName
+	)
+{
+	*ModuleName = *DriverName;
+	PWSTR pSlash = wcsrchr (ModuleName->Buffer, L'\\');
+	if (pSlash)
+	{
+		ModuleName->Buffer = pSlash+1;
+		ModuleName->Length -= (ModuleName->Buffer - DriverName->Buffer)*2;
+		ModuleName->MaximumLength -= DriverName->Length - ModuleName->Length;
+	}
+
+	return ModuleName;
+}
 
 KESYSAPI
 STATUS
 KEAPI
 MmLoadSystemImage(
 	IN PUNICODE_STRING ImagePath,
-	IN PUNICODE_STRING ModuleName,
+	IN PUNICODE_STRING DriverName,
 	IN PROCESSOR_MODE TargetMode,
 	IN BOOLEAN Extender,
 	OUT PVOID *ImageBase,
-	OUT PVOID *ModuleObject
+	OUT PVOID *ModuleObject,
+	IN ULONG Flags
 	)
 /*++
 	Attempt to load system image into the memory.
@@ -571,7 +608,8 @@ MmLoadSystemImage(
 
 		LdrPrint (("LDR: Allocating page\n"));
 
-		Hdr = ExAllocateHeap (TRUE, PAGE_SIZE);
+		//Hdr = ExAllocateHeap (TRUE, PAGE_SIZE);
+		Hdr = MmAllocatePage();
 		if (!Hdr)
 			RETURN (STATUS_INSUFFICIENT_RESOURCES);
 
@@ -627,7 +665,8 @@ MmLoadSystemImage(
 		// Copy the first page
 		memcpy (Image, Hdr, PAGE_SIZE);
 
-		ExFreeHeap (Hdr);
+		//ExFreeHeap (Hdr);
+		MmFreePage (Hdr);
 		Hdr = NULL;
 		MiGetHeaders (Image, &FileHeader, &OptHeader, &SectHeader);
 
@@ -709,14 +748,25 @@ MmLoadSystemImage(
 
 		LdrPrint (("LDR: Resolving imports\n"));
 
-		Status = LdrWalkImportDescriptor (Image, OptHeader);
+		Status = LdrWalkImportDescriptor (Image, OptHeader, Flags);
 		if (!SUCCESS(Status))
 		{
 			LdrPrint(("LDR: FAILED %d\n", __LINE__));
 			__leave;
 		}
+		
+		//
+		// Add module to PsLoadedModuleList
+		//
 
-		if (Extender) {
+		UNICODE_STRING ModuleName;
+		PLDR_MODULE Module = LdrAddModuleToLoadedList(
+			MiModuleNameFromDriverName (ImagePath, &ModuleName),
+			Image, 
+			OptHeader->SizeOfImage);
+
+		if (Extender) 
+		{
 			LdrPrint (("LDR: Creating extender object\n"));
 
 			KeBugCheck (MEMORY_MANAGEMENT, __LINE__, STATUS_NOT_IMPLEMENTED, 0, 0);
@@ -730,14 +780,20 @@ MmLoadSystemImage(
 			Status = IopCreateDriverObject (
 				Image,
 				(PVOID)((ULONG)Image + OptHeader->SizeOfImage - 1),
-				(TargetMode == KernelMode ? DRV_FLAGS_CRITICAL : 0),
+				(TargetMode == KernelMode ? DRV_FLAGS_CRITICAL : 0) | Flags,
 				(PDRIVER_ENTRY) DriverEntry,
-				ModuleName,
+				Module,
+				DriverName,
 				(PDRIVER*)ModuleObject
 				);
 		}
 
-		LdrPrint (("LDR: Success\n"));
+		if (!SUCCESS(Status))
+		{
+			LdrRemoveModuleFromLoadedList (Module);
+		}
+
+		LdrPrint (("LDR: Success (driver entry completed with status %lx)\n", Status));
 	}
 	__finally
 	{
@@ -752,7 +808,8 @@ MmLoadSystemImage(
 		}
 
 		if (Hdr)
-			ExFreeHeap (Hdr);
+			//ExFreeHeap (Hdr);
+			MmFreePage (Hdr);
 
 		if (FileObject)
 			IoCloseFile (FileObject);
